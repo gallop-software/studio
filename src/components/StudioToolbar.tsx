@@ -132,11 +132,20 @@ export function StudioToolbar() {
 
         if (!response.ok) {
           const error = await response.json()
-          console.error('Upload failed:', error)
-          setAlertMessage({
-            title: 'Upload Failed',
-            message: `Failed to upload ${file.name}: ${error.error || 'Unknown error'}`,
-          })
+          // Only log server errors (500s), not validation messages (400s)
+          if (response.status >= 500) {
+            console.error('Upload error:', error)
+            setAlertMessage({
+              title: 'Upload Failed',
+              message: `Failed to upload ${file.name}: ${error.error || 'Unknown error'}`,
+            })
+          } else {
+            // Validation message - not an error, just guidance
+            setAlertMessage({
+              title: 'Cannot Upload Here',
+              message: error.error || 'Upload not allowed in this location.',
+            })
+          }
         }
       }
       triggerRefresh()
