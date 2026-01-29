@@ -115,10 +115,9 @@ export function StudioUI({ onClose }: StudioUIProps) {
   }, [])
 
   const selectRange = useCallback((fromPath: string, toPath: string, allItems: FileItem[]) => {
-    // Get only files (not folders)
-    const files = allItems.filter(item => item.type !== 'folder')
-    const fromIndex = files.findIndex(item => item.path === fromPath)
-    const toIndex = files.findIndex(item => item.path === toPath)
+    // Include all items (files and folders)
+    const fromIndex = allItems.findIndex(item => item.path === fromPath)
+    const toIndex = allItems.findIndex(item => item.path === toPath)
     
     if (fromIndex === -1 || toIndex === -1) return
     
@@ -128,7 +127,7 @@ export function StudioUI({ onClose }: StudioUIProps) {
     setSelectedItems((prev) => {
       const next = new Set(prev)
       for (let i = start; i <= end; i++) {
-        next.add(files[i].path)
+        next.add(allItems[i].path)
       }
       return next
     })
