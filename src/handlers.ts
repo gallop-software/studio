@@ -34,6 +34,11 @@ export async function GET(request: NextRequest) {
     return handleScan()
   }
 
+  // Route: /api/studio/count-unprocessed
+  if (route === 'count-unprocessed') {
+    return handleCountUnprocessed()
+  }
+
   return NextResponse.json({ error: 'Not found' }, { status: 404 })
 }
 
@@ -66,6 +71,11 @@ export async function POST(request: NextRequest) {
   // Route: /api/studio/reprocess
   if (route === 'reprocess') {
     return handleReprocess(request)
+  }
+
+  // Route: /api/studio/process-all
+  if (route === 'process-all') {
+    return handleProcessAll()
   }
 
   return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -635,6 +645,240 @@ async function handleReprocess(request: NextRequest) {
   } catch (error) {
     console.error('Failed to reprocess:', error)
     return NextResponse.json({ error: 'Failed to reprocess images' }, { status: 500 })
+  }
+}
+
+async function handleCountUnprocessed() {
+  try {
+    const meta = await loadMeta()
+    const unprocessedImages: string[] = []
+
+    // Scan public folder recursively for images, excluding public/images/
+    async function scanPublicFolder(dir: string, relativePath: string = ''): Promise<void> {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        
+        for (const entry of entries) {
+          if (entry.name.startsWith('.')) continue
+          
+          const fullPath = path.join(dir, entry.name)
+          const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+
+          // Skip the images folder - that's for generated thumbnails
+          if (relPath === 'images' || relPath.startsWith('images/')) continue
+
+          if (entry.isDirectory()) {
+            await scanPublicFolder(fullPath, relPath)
+          } else if (isImageFile(entry.name)) {
+            // Check if this image is already in meta
+            if (!meta.images[relPath]) {
+              unprocessedImages.push(relPath)
+            }
+          }
+        }
+      } catch {
+        // Directory might not exist
+      }
+    }
+
+    const publicDir = path.join(process.cwd(), 'public')
+    await scanPublicFolder(publicDir)
+
+    return NextResponse.json({
+      count: unprocessedImages.length,
+      images: unprocessedImages,
+    })
+  } catch (error) {
+    console.error('Failed to count unprocessed images:', error)
+    return NextResponse.json({ error: 'Failed to count unprocessed images' }, { status: 500 })
+  }
+}
+
+async function handleProcessAll() {
+  try {
+    const meta = await loadMeta()
+    const processed: string[] = []
+    const errors: string[] = []
+    const orphansRemoved: string[] = []
+
+    // Step 1: Scan public folder for unprocessed images (excluding public/images/)
+    const unprocessedImages: Array<{ key: string; fullPath: string }> = []
+
+    async function scanPublicFolder(dir: string, relativePath: string = ''): Promise<void> {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        
+        for (const entry of entries) {
+          if (entry.name.startsWith('.')) continue
+          
+          const fullPath = path.join(dir, entry.name)
+          const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+
+          // Skip the images folder
+          if (relPath === 'images' || relPath.startsWith('images/')) continue
+
+          if (entry.isDirectory()) {
+            await scanPublicFolder(fullPath, relPath)
+          } else if (isImageFile(entry.name)) {
+            // Check if this image is already in meta
+            if (!meta.images[relPath]) {
+              unprocessedImages.push({ key: relPath, fullPath })
+            }
+          }
+        }
+      } catch {
+        // Directory might not exist
+      }
+    }
+
+    const publicDir = path.join(process.cwd(), 'public')
+    await scanPublicFolder(publicDir)
+
+    // Step 2: Process each unprocessed image
+    for (const { key, fullPath } of unprocessedImages) {
+      try {
+        const buffer = await fs.readFile(fullPath)
+        const ext = path.extname(key).toLowerCase()
+        const isSvg = ext === '.svg'
+
+        if (isSvg) {
+          // SVG: copy to images folder, no thumbnail processing
+          const imageDir = path.dirname(key)
+          const imagesPath = path.join(process.cwd(), 'public', 'images', imageDir === '.' ? '' : imageDir)
+          await fs.mkdir(imagesPath, { recursive: true })
+          
+          const fileName = path.basename(key)
+          const destPath = path.join(imagesPath, fileName)
+          await fs.writeFile(destPath, buffer)
+
+          const sizePath = `/images/${imageDir === '.' ? '' : imageDir + '/'}${fileName}`
+          meta.images[key] = {
+            original: {
+              path: `/${key}`,
+              width: 0,
+              height: 0,
+              fileSize: buffer.length,
+            },
+            sizes: {
+              full: { path: sizePath, width: 0, height: 0 },
+              large: { path: sizePath, width: 0, height: 0 },
+              medium: { path: sizePath, width: 0, height: 0 },
+              small: { path: sizePath, width: 0, height: 0 },
+            },
+            blurhash: '',
+            dominantColor: '#888888',
+            cdn: null,
+          }
+        } else {
+          // Raster image: full processing
+          const dummyEntry: ImageEntry = {
+            original: {
+              path: `/${key}`,
+              width: 0,
+              height: 0,
+              fileSize: buffer.length,
+            },
+            sizes: {
+              full: { path: '', width: 0, height: 0 },
+              large: { path: '', width: 0, height: 0 },
+              medium: { path: '', width: 0, height: 0 },
+              small: { path: '', width: 0, height: 0 },
+            },
+            blurhash: '',
+            dominantColor: '#888888',
+            cdn: null,
+          }
+
+          const processedEntry = await processImage(buffer, dummyEntry, key)
+          meta.images[key] = processedEntry
+        }
+
+        processed.push(key)
+      } catch (error) {
+        console.error(`Failed to process ${key}:`, error)
+        errors.push(key)
+      }
+    }
+
+    // Step 3: Remove orphaned thumbnails (files in public/images/ not tracked in meta)
+    const trackedPaths = new Set<string>()
+    for (const entry of Object.values(meta.images)) {
+      for (const sizeData of Object.values(entry.sizes)) {
+        trackedPaths.add(sizeData.path)
+      }
+    }
+
+    async function findOrphans(dir: string, relativePath: string = ''): Promise<void> {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        
+        for (const entry of entries) {
+          if (entry.name.startsWith('.')) continue
+
+          const fullPath = path.join(dir, entry.name)
+          const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+
+          if (entry.isDirectory()) {
+            await findOrphans(fullPath, relPath)
+          } else if (isImageFile(entry.name)) {
+            const publicPath = `/images/${relPath}`
+            if (!trackedPaths.has(publicPath)) {
+              // This is an orphan - delete it
+              try {
+                await fs.unlink(fullPath)
+                orphansRemoved.push(publicPath)
+              } catch (err) {
+                console.error(`Failed to remove orphan ${publicPath}:`, err)
+              }
+            }
+          }
+        }
+      } catch {
+        // Directory might not exist
+      }
+    }
+
+    const imagesDir = path.join(process.cwd(), 'public', 'images')
+    await findOrphans(imagesDir)
+
+    // Step 4: Clean up empty directories in public/images/
+    async function removeEmptyDirs(dir: string): Promise<boolean> {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        let isEmpty = true
+
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            const subDirEmpty = await removeEmptyDirs(path.join(dir, entry.name))
+            if (!subDirEmpty) isEmpty = false
+          } else {
+            isEmpty = false
+          }
+        }
+
+        if (isEmpty && dir !== imagesDir) {
+          await fs.rmdir(dir)
+        }
+
+        return isEmpty
+      } catch {
+        return true
+      }
+    }
+
+    await removeEmptyDirs(imagesDir)
+
+    await saveMeta(meta)
+
+    return NextResponse.json({
+      success: true,
+      processed,
+      orphansRemoved,
+      errors: errors.length > 0 ? errors : undefined,
+    })
+  } catch (error) {
+    console.error('Failed to process all:', error)
+    return NextResponse.json({ error: 'Failed to process all images' }, { status: 500 })
   }
 }
 

@@ -152,7 +152,11 @@ export function StudioToolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [processing, setProcessing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showProcessConfirm, setShowProcessConfirm] = useState(false)
+  const [processCount, setProcessCount] = useState(0)
+  const [processMode, setProcessMode] = useState<'all' | 'selected'>('all')
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
 
   // Check if we're in the images folder (uploads not allowed there)
@@ -215,9 +219,126 @@ export function StudioToolbar() {
     }
   }, [currentPath, triggerRefresh])
 
-  const handleReprocess = useCallback(() => {
-    console.log('Reprocess clicked', selectedItems)
+  const handleProcessImages = useCallback(async () => {
+    const hasSelection = selectedItems.size > 0
+    
+    if (hasSelection) {
+      // Process selected images
+      const selectedImagePaths = Array.from(selectedItems).filter(p => {
+        const ext = p.split('.').pop()?.toLowerCase() || ''
+        return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif'].includes(ext)
+      })
+      
+      if (selectedImagePaths.length === 0) {
+        setAlertMessage({
+          title: 'No Images Selected',
+          message: 'Please select image files to process.',
+        })
+        return
+      }
+      
+      setProcessCount(selectedImagePaths.length)
+      setProcessMode('selected')
+      setShowProcessConfirm(true)
+    } else {
+      // Count unprocessed images for "process all"
+      try {
+        const response = await fetch('/api/studio/count-unprocessed')
+        const data = await response.json()
+        
+        if (data.count === 0) {
+          setAlertMessage({
+            title: 'All Images Processed',
+            message: 'All images in the public folder have already been processed.',
+          })
+          return
+        }
+        
+        setProcessCount(data.count)
+        setProcessMode('all')
+        setShowProcessConfirm(true)
+      } catch (error) {
+        console.error('Failed to count unprocessed images:', error)
+        setAlertMessage({
+          title: 'Error',
+          message: 'Failed to count unprocessed images.',
+        })
+      }
+    }
   }, [selectedItems])
+
+  const handleProcessConfirm = useCallback(async () => {
+    setShowProcessConfirm(false)
+    setProcessing(true)
+
+    try {
+      if (processMode === 'all') {
+        // Process all unprocessed images
+        const response = await fetch('/api/studio/process-all', {
+          method: 'POST',
+        })
+        
+        const data = await response.json()
+        
+        if (response.ok) {
+          const message = [
+            `Processed ${data.processed?.length || 0} images.`,
+            data.orphansRemoved?.length > 0 ? `Removed ${data.orphansRemoved.length} orphaned thumbnails.` : '',
+            data.errors?.length > 0 ? `${data.errors.length} errors occurred.` : '',
+          ].filter(Boolean).join(' ')
+          
+          setAlertMessage({
+            title: 'Processing Complete',
+            message,
+          })
+          triggerRefresh()
+        } else {
+          setAlertMessage({
+            title: 'Processing Failed',
+            message: data.error || 'Unknown error',
+          })
+        }
+      } else {
+        // Process selected images
+        const selectedImageKeys = Array.from(selectedItems)
+          .filter(p => {
+            const ext = p.split('.').pop()?.toLowerCase() || ''
+            return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif'].includes(ext)
+          })
+          .map(p => p.replace(/^public\//, ''))
+        
+        const response = await fetch('/api/studio/reprocess', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageKeys: selectedImageKeys }),
+        })
+        
+        const data = await response.json()
+        
+        if (response.ok) {
+          setAlertMessage({
+            title: 'Processing Complete',
+            message: `Processed ${data.processed?.length || 0} images.${data.errors?.length > 0 ? ` ${data.errors.length} errors occurred.` : ''}`,
+          })
+          clearSelection()
+          triggerRefresh()
+        } else {
+          setAlertMessage({
+            title: 'Processing Failed',
+            message: data.error || 'Unknown error',
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Processing error:', error)
+      setAlertMessage({
+        title: 'Processing Failed',
+        message: 'Processing failed. Check console for details.',
+      })
+    } finally {
+      setProcessing(false)
+    }
+  }, [processMode, selectedItems, clearSelection, triggerRefresh])
 
   const handleDeleteClick = useCallback(() => {
     if (selectedItems.size === 0) return
@@ -281,6 +402,19 @@ export function StudioToolbar() {
         />
       )}
 
+      {showProcessConfirm && (
+        <ConfirmModal
+          title="Process Images"
+          message={processMode === 'all' 
+            ? `Found ${processCount} unprocessed image${processCount !== 1 ? 's' : ''} in the public folder. This will generate thumbnails and remove any orphaned files from the images folder.`
+            : `Process ${processCount} selected image${processCount !== 1 ? 's' : ''}? This will regenerate thumbnails for these files.`
+          }
+          confirmLabel={processing ? 'Processing...' : 'Process'}
+          onConfirm={handleProcessConfirm}
+          onCancel={() => setShowProcessConfirm(false)}
+        />
+      )}
+
       {alertMessage && (
         <AlertModal
           title={alertMessage.title}
@@ -313,11 +447,11 @@ export function StudioToolbar() {
           
           <button
             css={styles.btn}
-            onClick={handleReprocess}
-            disabled={!hasSelection}
+            onClick={handleProcessImages}
+            disabled={processing}
           >
-            <RefreshIcon />
-            Reprocess
+            <ImageStackIcon />
+            {processing ? 'Processing...' : 'Process Images'}
           </button>
           <button
             css={[styles.btn, styles.btnDanger]}
@@ -432,6 +566,14 @@ function ListIcon() {
   return (
     <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+    </svg>
+  )
+}
+
+function ImageStackIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
     </svg>
   )
 }
