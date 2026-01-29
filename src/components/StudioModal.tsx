@@ -186,3 +186,124 @@ export function AlertModal({
     </div>
   )
 }
+
+const progressStyles = {
+  progressContainer: css`
+    margin-top: 16px;
+  `,
+  progressBar: css`
+    width: 100%;
+    height: 8px;
+    background-color: ${colors.background};
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  `,
+  progressFill: css`
+    height: 100%;
+    background: linear-gradient(90deg, ${colors.primary}, ${colors.primaryHover});
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  `,
+  progressText: css`
+    font-size: ${fontSize.sm};
+    color: ${colors.textSecondary};
+    margin: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  `,
+  currentFile: css`
+    font-size: ${fontSize.xs};
+    color: ${colors.textMuted};
+    margin: 8px 0 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  `,
+}
+
+export interface ProgressState {
+  current: number
+  total: number
+  percent: number
+  currentFile?: string
+  status: 'processing' | 'cleanup' | 'complete' | 'error'
+  message?: string
+  processed?: number
+  orphansRemoved?: number
+  errors?: number
+}
+
+interface ProgressModalProps {
+  title: string
+  progress: ProgressState
+  onClose?: () => void
+}
+
+export function ProgressModal({
+  title,
+  progress,
+  onClose,
+}: ProgressModalProps) {
+  const isComplete = progress.status === 'complete'
+  const isError = progress.status === 'error'
+  const canClose = isComplete || isError
+
+  return (
+    <div css={styles.overlay} onClick={canClose ? onClose : undefined}>
+      <div css={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div css={styles.header}>
+          <h3 css={styles.title}>{title}</h3>
+        </div>
+        <div css={styles.body}>
+          {isError ? (
+            <p css={styles.message}>{progress.message || 'An error occurred'}</p>
+          ) : isComplete ? (
+            <p css={styles.message}>
+              Processed {progress.processed} image{progress.processed !== 1 ? 's' : ''}.
+              {progress.orphansRemoved && progress.orphansRemoved > 0 && (
+                <> Removed {progress.orphansRemoved} orphaned thumbnail{progress.orphansRemoved !== 1 ? 's' : ''}.</>
+              )}
+              {progress.errors && progress.errors > 0 && (
+                <> {progress.errors} error{progress.errors !== 1 ? 's' : ''} occurred.</>
+              )}
+            </p>
+          ) : (
+            <>
+              <p css={styles.message}>
+                {progress.status === 'cleanup' 
+                  ? 'Cleaning up orphaned files...' 
+                  : `Processing images...`}
+              </p>
+              <div css={progressStyles.progressContainer}>
+                <div css={progressStyles.progressBar}>
+                  <div 
+                    css={progressStyles.progressFill} 
+                    style={{ width: `${progress.percent}%` }} 
+                  />
+                </div>
+                <div css={progressStyles.progressText}>
+                  <span>{progress.current} of {progress.total}</span>
+                  <span>{progress.percent}%</span>
+                </div>
+                {progress.currentFile && (
+                  <p css={progressStyles.currentFile} title={progress.currentFile}>
+                    {progress.currentFile}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        {canClose && (
+          <div css={styles.footer}>
+            <button css={[styles.btn, styles.btnConfirm]} onClick={onClose}>
+              Done
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

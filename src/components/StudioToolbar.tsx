@@ -4,7 +4,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
-import { ConfirmModal, AlertModal } from './StudioModal'
+import { ConfirmModal, AlertModal, ProgressModal, type ProgressState } from './StudioModal'
 import { colors, fontSize } from './tokens'
 
 // Standard button height for consistency
@@ -155,6 +155,13 @@ export function StudioToolbar() {
   const [processing, setProcessing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showProcessConfirm, setShowProcessConfirm] = useState(false)
+  const [showProgress, setShowProgress] = useState(false)
+  const [progressState, setProgressState] = useState<ProgressState>({
+    current: 0,
+    total: 0,
+    percent: 0,
+    status: 'processing',
+  })
   const [processCount, setProcessCount] = useState(0)
   const [processMode, setProcessMode] = useState<'all' | 'selected'>('all')
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
@@ -241,15 +248,15 @@ export function StudioToolbar() {
       setProcessMode('selected')
       setShowProcessConfirm(true)
     } else {
-      // Count unprocessed images for "process all"
+      // Count ALL images for "process all"
       try {
-        const response = await fetch('/api/studio/count-unprocessed')
+        const response = await fetch('/api/studio/count-images')
         const data = await response.json()
         
         if (data.count === 0) {
           setAlertMessage({
-            title: 'All Images Processed',
-            message: 'All images in the public folder have already been processed.',
+            title: 'No Images Found',
+            message: 'No images found in the public folder to process.',
           })
           return
         }
@@ -258,10 +265,10 @@ export function StudioToolbar() {
         setProcessMode('all')
         setShowProcessConfirm(true)
       } catch (error) {
-        console.error('Failed to count unprocessed images:', error)
+        console.error('Failed to count images:', error)
         setAlertMessage({
           title: 'Error',
-          message: 'Failed to count unprocessed images.',
+          message: 'Failed to count images.',
         })
       }
     }
@@ -273,33 +280,89 @@ export function StudioToolbar() {
 
     try {
       if (processMode === 'all') {
-        // Process all unprocessed images
+        // Process all images with streaming progress
+        setShowProgress(true)
+        setProgressState({
+          current: 0,
+          total: processCount,
+          percent: 0,
+          status: 'processing',
+        })
+
         const response = await fetch('/api/studio/process-all', {
           method: 'POST',
         })
-        
-        const data = await response.json()
-        
-        if (response.ok) {
-          const message = [
-            `Processed ${data.processed?.length || 0} images.`,
-            data.orphansRemoved?.length > 0 ? `Removed ${data.orphansRemoved.length} orphaned thumbnails.` : '',
-            data.errors?.length > 0 ? `${data.errors.length} errors occurred.` : '',
-          ].filter(Boolean).join(' ')
-          
-          setAlertMessage({
-            title: 'Processing Complete',
-            message,
-          })
-          triggerRefresh()
-        } else {
-          setAlertMessage({
-            title: 'Processing Failed',
-            message: data.error || 'Unknown error',
-          })
+
+        if (!response.body) {
+          throw new Error('No response body')
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const text = decoder.decode(value)
+          const lines = text.split('\n\n').filter(line => line.startsWith('data: '))
+
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line.replace('data: ', ''))
+              
+              if (data.type === 'start') {
+                setProgressState(prev => ({
+                  ...prev,
+                  total: data.total,
+                }))
+              } else if (data.type === 'progress') {
+                setProgressState({
+                  current: data.current,
+                  total: data.total,
+                  percent: data.percent,
+                  currentFile: data.currentFile,
+                  status: 'processing',
+                })
+              } else if (data.type === 'cleanup') {
+                setProgressState(prev => ({
+                  ...prev,
+                  status: 'cleanup',
+                  currentFile: undefined,
+                }))
+              } else if (data.type === 'complete') {
+                setProgressState({
+                  current: data.processed,
+                  total: data.processed,
+                  percent: 100,
+                  status: 'complete',
+                  processed: data.processed,
+                  orphansRemoved: data.orphansRemoved,
+                  errors: data.errors,
+                })
+                triggerRefresh()
+              } else if (data.type === 'error') {
+                setProgressState(prev => ({
+                  ...prev,
+                  status: 'error',
+                  message: data.message,
+                }))
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
         }
       } else {
-        // Process selected images
+        // Process selected images (no streaming for now)
+        setShowProgress(true)
+        setProgressState({
+          current: 0,
+          total: processCount,
+          percent: 0,
+          status: 'processing',
+        })
+
         const selectedImageKeys = Array.from(selectedItems)
           .filter(p => {
             const ext = p.split('.').pop()?.toLowerCase() || ''
@@ -316,29 +379,39 @@ export function StudioToolbar() {
         const data = await response.json()
         
         if (response.ok) {
-          setAlertMessage({
-            title: 'Processing Complete',
-            message: `Processed ${data.processed?.length || 0} images.${data.errors?.length > 0 ? ` ${data.errors.length} errors occurred.` : ''}`,
+          setProgressState({
+            current: data.processed?.length || 0,
+            total: data.processed?.length || 0,
+            percent: 100,
+            status: 'complete',
+            processed: data.processed?.length || 0,
+            errors: data.errors?.length || 0,
           })
           clearSelection()
           triggerRefresh()
         } else {
-          setAlertMessage({
-            title: 'Processing Failed',
+          setProgressState({
+            current: 0,
+            total: 0,
+            percent: 0,
+            status: 'error',
             message: data.error || 'Unknown error',
           })
         }
       }
     } catch (error) {
       console.error('Processing error:', error)
-      setAlertMessage({
-        title: 'Processing Failed',
+      setProgressState({
+        current: 0,
+        total: 0,
+        percent: 0,
+        status: 'error',
         message: 'Processing failed. Check console for details.',
       })
     } finally {
       setProcessing(false)
     }
-  }, [processMode, selectedItems, clearSelection, triggerRefresh])
+  }, [processMode, processCount, selectedItems, clearSelection, triggerRefresh])
 
   const handleDeleteClick = useCallback(() => {
     if (selectedItems.size === 0) return
@@ -406,12 +479,28 @@ export function StudioToolbar() {
         <ConfirmModal
           title="Process Images"
           message={processMode === 'all' 
-            ? `Found ${processCount} unprocessed image${processCount !== 1 ? 's' : ''} in the public folder. This will generate thumbnails and remove any orphaned files from the images folder.`
+            ? `Found ${processCount} image${processCount !== 1 ? 's' : ''} in the public folder. This will regenerate all thumbnails and remove any orphaned files from the images folder.`
             : `Process ${processCount} selected image${processCount !== 1 ? 's' : ''}? This will regenerate thumbnails for these files.`
           }
           confirmLabel={processing ? 'Processing...' : 'Process'}
           onConfirm={handleProcessConfirm}
           onCancel={() => setShowProcessConfirm(false)}
+        />
+      )}
+
+      {showProgress && (
+        <ProgressModal
+          title="Processing Images"
+          progress={progressState}
+          onClose={() => {
+            setShowProgress(false)
+            setProgressState({
+              current: 0,
+              total: 0,
+              percent: 0,
+              status: 'processing',
+            })
+          }}
         />
       )}
 
