@@ -5,9 +5,13 @@ import { useState } from 'react'
 import { css } from '@emotion/react'
 import { colors, fontSize, baseReset } from './tokens'
 
+// Standard button height for consistency
+const btnHeight = '36px'
+
 const styles = {
   btn: css`
-    padding: 8px;
+    height: ${btnHeight};
+    padding: 0 12px;
     background: ${colors.surface};
     border: 1px solid ${colors.border};
     border-radius: 6px;
@@ -23,8 +27,8 @@ const styles = {
     }
   `,
   icon: css`
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     color: ${colors.textSecondary};
   `,
   overlay: css`

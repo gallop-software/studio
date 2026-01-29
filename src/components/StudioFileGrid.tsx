@@ -83,6 +83,13 @@ const styles = {
       border-color: ${colors.primary};
     }
   `,
+  parentItem: css`
+    cursor: pointer;
+    
+    &:hover {
+      border-color: ${colors.primary};
+    }
+  `,
   checkboxWrapper: css`
     position: absolute;
     top: 0;
@@ -121,6 +128,11 @@ const styles = {
     width: 56px;
     height: 56px;
     color: #f5a623;
+  `,
+  parentIcon: css`
+    width: 56px;
+    height: 56px;
+    color: ${colors.textMuted};
   `,
   fileIcon: css`
     width: 40px;
@@ -165,15 +177,18 @@ const styles = {
   `,
   openBtn: css`
     flex-shrink: 0;
+    height: 28px;
     font-size: ${fontSize.xs};
     font-weight: 500;
     color: ${colors.primary};
     background: ${colors.surface};
     border: 1px solid ${colors.border};
-    padding: 4px 10px;
+    padding: 0 10px;
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
     
     &:hover {
       background-color: ${colors.primaryLight};
@@ -210,7 +225,7 @@ const styles = {
 }
 
 export function StudioFileGrid() {
-  const { currentPath, setCurrentPath, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey } = useStudio()
+  const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem } = useStudio()
   const [items, setItems] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -239,7 +254,10 @@ export function StudioFileGrid() {
     )
   }
 
-  if (items.length === 0) {
+  const isAtRoot = currentPath === 'public'
+
+  // Empty state only when truly empty (not counting parent folder)
+  if (items.length === 0 && isAtRoot) {
     return (
       <div css={styles.empty}>
         <svg css={styles.emptyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -258,7 +276,6 @@ export function StudioFileGrid() {
   })
 
   const handleItemClick = (item: FileItem, e: React.MouseEvent) => {
-    // For both files and folders, clicking toggles selection
     if (e.shiftKey && lastSelectedPath) {
       selectRange(lastSelectedPath, item.path, sortedItems)
     } else {
@@ -266,13 +283,14 @@ export function StudioFileGrid() {
     }
   }
 
-  const handleOpenFolder = (item: FileItem) => {
+  const handleOpen = (item: FileItem) => {
     if (item.type === 'folder') {
       setCurrentPath(item.path)
+    } else {
+      setFocusedItem(item)
     }
   }
 
-  // Count all items for select all (now includes folders)
   const allItemsSelected = sortedItems.length > 0 && sortedItems.every(item => selectedItems.has(item.path))
   const someItemsSelected = sortedItems.some(item => selectedItems.has(item.path))
 
@@ -303,13 +321,31 @@ export function StudioFileGrid() {
         </div>
       )}
       <div css={styles.grid}>
+        {/* Parent folder navigation */}
+        {!isAtRoot && (
+          <div 
+            css={[styles.item, styles.parentItem]}
+            onClick={navigateUp}
+          >
+            <div css={styles.content}>
+              <svg css={styles.parentIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+            </div>
+            <div css={styles.label}>
+              <p css={styles.name}>..</p>
+              <p css={styles.size}>Parent folder</p>
+            </div>
+          </div>
+        )}
+        
         {sortedItems.map((item) => (
           <GridItem
             key={item.path}
             item={item}
             isSelected={selectedItems.has(item.path)}
             onClick={(e) => handleItemClick(item, e)}
-            onOpen={() => handleOpenFolder(item)}
+            onOpen={() => handleOpen(item)}
           />
         ))}
       </div>
@@ -332,7 +368,6 @@ function GridItem({ item, isSelected, onClick, onOpen }: GridItemProps) {
       css={[styles.item, isSelected && styles.itemSelected]} 
       onClick={onClick}
     >
-      {/* Show checkbox for both files and folders */}
       <div
         css={styles.checkboxWrapper}
         onClick={(e) => e.stopPropagation()}
@@ -380,17 +415,15 @@ function GridItem({ item, isSelected, onClick, onOpen }: GridItemProps) {
               item.size !== undefined && <p css={styles.size}>{formatFileSize(item.size)}</p>
             )}
           </div>
-          {isFolder && (
-            <button
-              css={styles.openBtn}
-              onClick={(e) => {
-                e.stopPropagation()
-                onOpen()
-              }}
-            >
-              Open
-            </button>
-          )}
+          <button
+            css={styles.openBtn}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpen()
+            }}
+          >
+            Open
+          </button>
         </div>
       </div>
     </div>

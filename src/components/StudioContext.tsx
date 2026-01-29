@@ -30,6 +30,10 @@ export interface StudioState {
   viewMode: 'grid' | 'list'
   setViewMode: (mode: 'grid' | 'list') => void
 
+  // Focused item (for detail view)
+  focusedItem: FileItem | null
+  setFocusedItem: (item: FileItem | null) => void
+
   // Meta
   meta: StudioMeta | null
   setMeta: (meta: StudioMeta) => void
@@ -59,6 +63,8 @@ const defaultState: StudioState = {
   lastSelectedPath: null,
   viewMode: 'grid',
   setViewMode: () => {},
+  focusedItem: null,
+  setFocusedItem: () => {},
   meta: null,
   setMeta: () => {},
   isLoading: false,

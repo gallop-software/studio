@@ -7,6 +7,9 @@ import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal } from './StudioModal'
 import { colors, fontSize } from './tokens'
 
+// Standard button height for consistency
+const btnHeight = '36px'
+
 const spin = keyframes`
   to { transform: rotate(360deg); }
 `
@@ -28,13 +31,15 @@ const styles = {
   right: css`
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
   `,
   btn: css`
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    padding: 8px 14px;
+    height: ${btnHeight};
+    padding: 0 14px;
     border-radius: 6px;
     font-size: ${fontSize.base};
     font-weight: 500;
@@ -55,6 +60,9 @@ const styles = {
       opacity: 0.5;
     }
   `,
+  btnIconOnly: css`
+    padding: 0 10px;
+  `,
   btnPrimary: css`
     background: ${colors.primary};
     border-color: ${colors.primary};
@@ -74,8 +82,8 @@ const styles = {
     }
   `,
   icon: css`
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
   `,
   iconSpin: css`
     animation: ${spin} 1s linear infinite;
@@ -86,6 +94,7 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-right: 8px;
   `,
   clearBtn: css`
     color: ${colors.primary};
@@ -109,16 +118,17 @@ const styles = {
   viewToggle: css`
     display: flex;
     align-items: center;
-    background-color: ${colors.surfaceHover};
+    height: ${btnHeight};
+    background-color: ${colors.surface};
     border: 1px solid ${colors.border};
     border-radius: 6px;
-    padding: 2px;
+    overflow: hidden;
   `,
   viewBtn: css`
-    padding: 6px 8px;
+    height: 100%;
+    padding: 0 10px;
     background: transparent;
     border: none;
-    border-radius: 4px;
     cursor: pointer;
     color: ${colors.textSecondary};
     transition: all 0.15s ease;
@@ -128,17 +138,17 @@ const styles = {
     
     &:hover {
       color: ${colors.text};
+      background-color: ${colors.surfaceHover};
     }
   `,
   viewBtnActive: css`
-    background-color: ${colors.surface};
+    background-color: ${colors.background};
     color: ${colors.text};
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   `,
 }
 
 export function StudioToolbar() {
-  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh } = useStudio()
+  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem } = useStudio()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -253,6 +263,11 @@ export function StudioToolbar() {
 
   const hasSelection = selectedItems.size > 0
 
+  // Hide toolbar actions when viewing detail
+  if (focusedItem) {
+    return null
+  }
+
   return (
     <>
       {showDeleteConfirm && (
@@ -337,7 +352,7 @@ export function StudioToolbar() {
           )}
 
           <button
-            css={styles.btn}
+            css={[styles.btn, styles.btnIconOnly]}
             onClick={handleRefresh}
           >
             <RefreshIcon spinning={refreshing} />

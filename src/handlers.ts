@@ -249,8 +249,10 @@ async function handleUpload(request: NextRequest) {
     const baseName = path.basename(fileName, path.extname(fileName))
     const ext = path.extname(fileName).toLowerCase()
 
-    // SVG files can't be processed by sharp for thumbnails
+    // Check if this is an image that can be processed
+    const isImage = isImageFile(fileName)
     const isSvg = ext === '.svg'
+    const isProcessableImage = isImage && !isSvg
 
     const meta = await loadMeta()
     
@@ -275,8 +277,22 @@ async function handleUpload(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Save file to current location
+    const uploadDir = path.join(process.cwd(), 'public', relativeDir)
+    await fs.mkdir(uploadDir, { recursive: true })
+    await fs.writeFile(path.join(uploadDir, fileName), buffer)
+
+    // For non-image media files, just save and return success
+    if (!isImage) {
+      return NextResponse.json({ 
+        success: true, 
+        message: 'File uploaded successfully (non-image, no thumbnails generated)',
+        path: `public/${relativeDir ? relativeDir + '/' : ''}${fileName}`
+      })
+    }
     
-    // Image key is the relative path from public/ to the file
+    // For images, generate thumbnails and update meta
     const fullImageKey = relativeDir ? `${relativeDir}/${fileName}` : fileName
 
     if (meta.images[fullImageKey]) {
@@ -285,11 +301,6 @@ async function handleUpload(request: NextRequest) {
         { status: 409 }
       )
     }
-
-    // Save file to current location
-    const uploadDir = path.join(process.cwd(), 'public', relativeDir)
-    await fs.mkdir(uploadDir, { recursive: true })
-    await fs.writeFile(path.join(uploadDir, fileName), buffer)
 
     // Generate thumbnails in public/images/ with matching subpath
     const imagesPath = path.join(process.cwd(), 'public', 'images', relativeDir)
@@ -317,7 +328,7 @@ async function handleUpload(request: NextRequest) {
       sizes.large = { ...sizes.full }
       sizes.medium = { ...sizes.full }
       sizes.small = { ...sizes.full }
-    } else {
+    } else if (isProcessableImage) {
       // Raster images: process with sharp and generate thumbnails
       const sharpInstance = sharp(buffer)
       const metadata = await sharpInstance.metadata()

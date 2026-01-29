@@ -5,17 +5,19 @@ import { useEffect, useCallback, useState } from 'react'
 import { css } from '@emotion/react'
 import { StudioContext } from './StudioContext'
 import { StudioToolbar } from './StudioToolbar'
-import { StudioBreadcrumb } from './StudioBreadcrumb'
 import { StudioFileGrid } from './StudioFileGrid'
 import { StudioFileList } from './StudioFileList'
-import { StudioPreview } from './StudioPreview'
+import { StudioDetailView } from './StudioDetailView'
 import { StudioSettings } from './StudioSettings'
-import { colors, fontStack, fontSize, baseReset } from './tokens'
+import { colors, fontSize, baseReset } from './tokens'
 import type { FileItem, StudioMeta } from '../types'
 
 interface StudioUIProps {
   onClose: () => void
 }
+
+// Standard button height for consistency
+const btnHeight = '36px'
 
 const styles = {
   container: css`
@@ -29,12 +31,12 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 24px;
+    padding: 12px 24px;
     background: ${colors.surface};
     border-bottom: 1px solid ${colors.border};
   `,
   title: css`
-    font-size: ${fontSize.xl};
+    font-size: ${fontSize.lg};
     font-weight: 600;
     color: ${colors.text};
     margin: 0;
@@ -45,8 +47,9 @@ const styles = {
     align-items: center;
     gap: 8px;
   `,
-  closeBtn: css`
-    padding: 8px;
+  headerBtn: css`
+    height: ${btnHeight};
+    padding: 0 12px;
     background: ${colors.surface};
     border: 1px solid ${colors.border};
     border-radius: 6px;
@@ -61,9 +64,9 @@ const styles = {
       border-color: ${colors.borderHover};
     }
   `,
-  closeIcon: css`
-    width: 18px;
-    height: 18px;
+  headerIcon: css`
+    width: 16px;
+    height: 16px;
     color: ${colors.textSecondary};
   `,
   content: css`
@@ -88,6 +91,7 @@ export function StudioUI({ onClose }: StudioUIProps) {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [focusedItem, setFocusedItem] = useState<FileItem | null>(null)
   const [meta, setMeta] = useState<StudioMeta | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -107,6 +111,7 @@ export function StudioUI({ onClose }: StudioUIProps) {
   const setCurrentPath = useCallback((path: string) => {
     setCurrentPathInternal(path)
     setSelectedItems(new Set())
+    setFocusedItem(null)
   }, [])
 
   const toggleSelection = useCallback((path: string) => {
@@ -123,7 +128,6 @@ export function StudioUI({ onClose }: StudioUIProps) {
   }, [])
 
   const selectRange = useCallback((fromPath: string, toPath: string, allItems: FileItem[]) => {
-    // Include all items (files and folders)
     const fromIndex = allItems.findIndex(item => item.path === fromPath)
     const toIndex = allItems.findIndex(item => item.path === toPath)
     
@@ -153,10 +157,14 @@ export function StudioUI({ onClose }: StudioUIProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose()
+        if (focusedItem) {
+          setFocusedItem(null)
+        } else {
+          onClose()
+        }
       }
     },
-    [onClose]
+    [onClose, focusedItem]
   )
 
   useEffect(() => {
@@ -184,6 +192,8 @@ export function StudioUI({ onClose }: StudioUIProps) {
     lastSelectedPath,
     viewMode,
     setViewMode,
+    focusedItem,
+    setFocusedItem,
     meta,
     setMeta,
     isLoading,
@@ -200,7 +210,7 @@ export function StudioUI({ onClose }: StudioUIProps) {
           <div css={styles.headerActions}>
             <StudioSettings />
             <button
-              css={styles.closeBtn}
+              css={styles.headerBtn}
               onClick={onClose}
               aria-label="Close Studio"
             >
@@ -210,13 +220,15 @@ export function StudioUI({ onClose }: StudioUIProps) {
         </div>
 
         <StudioToolbar />
-        <StudioBreadcrumb />
 
         <div css={styles.content}>
-          <div css={styles.fileBrowser}>
-            {viewMode === 'grid' ? <StudioFileGrid /> : <StudioFileList />}
-          </div>
-          <StudioPreview />
+          {focusedItem ? (
+            <StudioDetailView />
+          ) : (
+            <div css={styles.fileBrowser}>
+              {viewMode === 'grid' ? <StudioFileGrid /> : <StudioFileList />}
+            </div>
+          )}
         </div>
       </div>
     </StudioContext.Provider>
@@ -226,7 +238,7 @@ export function StudioUI({ onClose }: StudioUIProps) {
 function CloseIcon() {
   return (
     <svg
-      css={styles.closeIcon}
+      css={styles.headerIcon}
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 24 24"
       fill="none"

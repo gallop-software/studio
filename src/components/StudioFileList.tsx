@@ -88,6 +88,13 @@ const styles = {
       background-color: ${colors.primaryLight};
     }
   `,
+  parentRow: css`
+    cursor: pointer;
+    
+    &:hover {
+      background-color: ${colors.surfaceHover};
+    }
+  `,
   td: css`
     padding: 12px 16px;
   `,
@@ -110,6 +117,12 @@ const styles = {
     width: 20px;
     height: 20px;
     color: #f5a623;
+    flex-shrink: 0;
+  `,
+  parentIcon: css`
+    width: 20px;
+    height: 20px;
+    color: ${colors.textMuted};
     flex-shrink: 0;
   `,
   fileIcon: css`
@@ -153,15 +166,19 @@ const styles = {
     color: ${colors.textMuted};
   `,
   openBtn: css`
+    height: 28px;
     font-size: ${fontSize.xs};
     font-weight: 500;
     color: ${colors.primary};
     background: ${colors.surface};
     border: 1px solid ${colors.border};
-    padding: 4px 12px;
+    padding: 0 12px;
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
     
     &:hover {
       background-color: ${colors.primaryLight};
@@ -171,7 +188,7 @@ const styles = {
 }
 
 export function StudioFileList() {
-  const { currentPath, setCurrentPath, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey } = useStudio()
+  const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem } = useStudio()
   const [items, setItems] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -200,7 +217,9 @@ export function StudioFileList() {
     )
   }
 
-  if (items.length === 0) {
+  const isAtRoot = currentPath === 'public'
+
+  if (items.length === 0 && isAtRoot) {
     return (
       <div css={styles.empty}>
         <p>No files in this folder</p>
@@ -215,7 +234,6 @@ export function StudioFileList() {
   })
 
   const handleItemClick = (item: FileItem, e: React.MouseEvent) => {
-    // For both files and folders, clicking toggles selection
     if (e.shiftKey && lastSelectedPath) {
       selectRange(lastSelectedPath, item.path, sortedItems)
     } else {
@@ -223,13 +241,14 @@ export function StudioFileList() {
     }
   }
 
-  const handleOpenFolder = (item: FileItem) => {
+  const handleOpen = (item: FileItem) => {
     if (item.type === 'folder') {
       setCurrentPath(item.path)
+    } else {
+      setFocusedItem(item)
     }
   }
 
-  // Count all items for select all (now includes folders)
   const allItemsSelected = sortedItems.length > 0 && sortedItems.every(item => selectedItems.has(item.path))
   const someItemsSelected = sortedItems.some(item => selectedItems.has(item.path))
 
@@ -242,40 +261,60 @@ export function StudioFileList() {
   }
 
   return (
-    <table css={styles.table}>
-      <thead>
-        <tr>
-          <th css={[styles.th, styles.thCheckbox]}>
-            {sortedItems.length > 0 && (
-              <input
-                type="checkbox"
-                css={styles.checkbox}
-                checked={allItemsSelected}
-                ref={(el) => {
-                  if (el) el.indeterminate = someItemsSelected && !allItemsSelected
-                }}
-                onChange={handleSelectAll}
-              />
-            )}
-          </th>
-          <th css={styles.th}>Name</th>
-          <th css={[styles.th, styles.thSize]}>Size</th>
-          <th css={[styles.th, styles.thDimensions]}>Dimensions</th>
-          <th css={[styles.th, styles.thCdn]}>CDN</th>
-        </tr>
-      </thead>
-      <tbody css={styles.tbody}>
-        {sortedItems.map((item) => (
-          <ListRow
-            key={item.path}
-            item={item}
-            isSelected={selectedItems.has(item.path)}
-            onClick={(e) => handleItemClick(item, e)}
-            onOpen={() => handleOpenFolder(item)}
-          />
-        ))}
-      </tbody>
-    </table>
+    <div css={styles.tableWrapper}>
+      <table css={styles.table}>
+        <thead>
+          <tr>
+            <th css={[styles.th, styles.thCheckbox]}>
+              {sortedItems.length > 0 && (
+                <input
+                  type="checkbox"
+                  css={styles.checkbox}
+                  checked={allItemsSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someItemsSelected && !allItemsSelected
+                  }}
+                  onChange={handleSelectAll}
+                />
+              )}
+            </th>
+            <th css={styles.th}>Name</th>
+            <th css={[styles.th, styles.thSize]}>Size</th>
+            <th css={[styles.th, styles.thDimensions]}>Dimensions</th>
+            <th css={[styles.th, styles.thCdn]}>CDN</th>
+          </tr>
+        </thead>
+        <tbody css={styles.tbody}>
+          {/* Parent folder navigation */}
+          {!isAtRoot && (
+            <tr css={styles.parentRow} onClick={navigateUp}>
+              <td css={styles.td}></td>
+              <td css={styles.td}>
+                <div css={styles.nameCell}>
+                  <svg css={styles.parentIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                  </svg>
+                  <span css={styles.name}>..</span>
+                </div>
+              </td>
+              <td css={[styles.td, styles.meta]}>--</td>
+              <td css={[styles.td, styles.meta]}>Parent folder</td>
+              <td css={styles.td}>--</td>
+            </tr>
+          )}
+          
+          {sortedItems.map((item) => (
+            <ListRow
+              key={item.path}
+              item={item}
+              isSelected={selectedItems.has(item.path)}
+              onClick={(e) => handleItemClick(item, e)}
+              onOpen={() => handleOpen(item)}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -298,7 +337,6 @@ function ListRow({ item, isSelected, onClick, onOpen }: ListRowProps) {
         css={[styles.td, styles.checkboxCell]}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Show checkbox for both files and folders */}
         <input
           type="checkbox"
           css={styles.checkbox}
@@ -320,17 +358,15 @@ function ListRow({ item, isSelected, onClick, onOpen }: ListRowProps) {
             </svg>
           )}
           <span css={styles.name}>{item.name}</span>
-          {isFolder && (
-            <button
-              css={styles.openBtn}
-              onClick={(e) => {
-                e.stopPropagation()
-                onOpen()
-              }}
-            >
-              Open
-            </button>
-          )}
+          <button
+            css={styles.openBtn}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpen()
+            }}
+          >
+            Open
+          </button>
         </div>
       </td>
       <td css={[styles.td, styles.meta]}>
