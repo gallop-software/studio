@@ -10,35 +10,20 @@ import { StudioFileGrid } from './StudioFileGrid'
 import { StudioFileList } from './StudioFileList'
 import { StudioPreview } from './StudioPreview'
 import { StudioSettings } from './StudioSettings'
+import { colors, fontStack, fontSize, baseReset } from './tokens'
 import type { FileItem, StudioMeta } from '../types'
 
 interface StudioUIProps {
   onClose: () => void
 }
 
-// Stripe-inspired design tokens
-const colors = {
-  primary: '#635bff',
-  primaryHover: '#5851e5',
-  background: '#f6f9fc',
-  surface: '#ffffff',
-  surfaceHover: '#f6f9fc',
-  border: '#e3e8ee',
-  borderLight: '#eef1f6',
-  text: '#1a1f36',
-  textSecondary: '#697386',
-  textMuted: '#8792a2',
-}
-
 const styles = {
   container: css`
+    ${baseReset}
     display: flex;
     flex-direction: column;
     height: 100%;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Ubuntu, sans-serif;
     background: ${colors.background};
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
   `,
   header: css`
     display: flex;
@@ -49,7 +34,7 @@ const styles = {
     border-bottom: 1px solid ${colors.border};
   `,
   title: css`
-    font-size: 17px;
+    font-size: ${fontSize.xl};
     font-weight: 600;
     color: ${colors.text};
     margin: 0;
@@ -62,8 +47,8 @@ const styles = {
   `,
   closeBtn: css`
     padding: 8px;
-    background: none;
-    border: none;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -73,6 +58,7 @@ const styles = {
     
     &:hover {
       background-color: ${colors.surfaceHover};
+      border-color: ${colors.borderHover};
     }
   `,
   closeIcon: css`

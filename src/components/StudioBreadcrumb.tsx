@@ -3,19 +3,7 @@
 
 import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
-
-// Stripe-inspired design tokens
-const colors = {
-  primary: '#635bff',
-  background: '#ffffff',
-  surface: '#ffffff',
-  surfaceHover: '#f6f9fc',
-  border: '#e3e8ee',
-  borderLight: '#eef1f6',
-  text: '#1a1f36',
-  textSecondary: '#697386',
-  textMuted: '#8792a2',
-}
+import { colors, fontSize } from './tokens'
 
 const styles = {
   container: css`
@@ -28,8 +16,8 @@ const styles = {
   `,
   backBtn: css`
     padding: 6px;
-    background: none;
-    border: none;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -39,6 +27,7 @@ const styles = {
     
     &:hover {
       background-color: ${colors.surfaceHover};
+      border-color: ${colors.borderHover};
     }
   `,
   backIcon: css`
@@ -50,7 +39,7 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 2px;
-    font-size: 13px;
+    font-size: ${fontSize.base};
   `,
   item: css`
     display: flex;
@@ -68,7 +57,7 @@ const styles = {
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.15s ease;
-    font-size: 13px;
+    font-size: ${fontSize.base};
     letter-spacing: -0.01em;
     
     &:hover {

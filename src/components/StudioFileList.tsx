@@ -4,22 +4,8 @@
 import { useEffect, useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
+import { colors, fontSize } from './tokens'
 import type { FileItem } from '../types'
-
-// Stripe-inspired design tokens
-const colors = {
-  primary: '#635bff',
-  primaryLight: '#f0f0ff',
-  background: '#f6f9fc',
-  surface: '#ffffff',
-  surfaceHover: '#f6f9fc',
-  border: '#e3e8ee',
-  borderLight: '#eef1f6',
-  text: '#1a1f36',
-  textSecondary: '#697386',
-  textMuted: '#8792a2',
-  success: '#0d7d4d',
-}
 
 const spin = keyframes`
   to { transform: rotate(360deg); }
@@ -141,20 +127,20 @@ const styles = {
     border: 1px solid ${colors.borderLight};
   `,
   name: css`
-    font-size: 14px;
+    font-size: ${fontSize.base};
     font-weight: 500;
     color: ${colors.text};
     letter-spacing: -0.01em;
   `,
   meta: css`
-    font-size: 13px;
+    font-size: ${fontSize.sm};
     color: ${colors.textSecondary};
   `,
   cdnBadge: css`
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 12px;
+    font-size: ${fontSize.xs};
     font-weight: 500;
     color: ${colors.success};
   `,
@@ -163,22 +149,23 @@ const styles = {
     height: 12px;
   `,
   cdnEmpty: css`
-    font-size: 13px;
+    font-size: ${fontSize.sm};
     color: ${colors.textMuted};
   `,
   openBtn: css`
-    font-size: 12px;
+    font-size: ${fontSize.xs};
     font-weight: 500;
     color: ${colors.primary};
-    background: none;
-    border: none;
-    padding: 4px 10px;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    padding: 4px 12px;
     cursor: pointer;
     border-radius: 4px;
-    transition: background-color 0.15s ease;
+    transition: all 0.15s ease;
     
     &:hover {
       background-color: ${colors.primaryLight};
+      border-color: ${colors.primary};
     }
   `,
 }

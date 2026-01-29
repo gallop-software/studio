@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal } from './StudioModal'
+import { colors, fontSize } from './tokens'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif']
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v']
@@ -19,25 +20,6 @@ function isVideoFile(filename: string): boolean {
   return VIDEO_EXTENSIONS.includes(ext)
 }
 
-// Stripe-inspired design tokens
-const colors = {
-  primary: '#635bff',
-  primaryHover: '#5851e5',
-  primaryLight: '#f0f0ff',
-  background: '#f6f9fc',
-  surface: '#ffffff',
-  surfaceHover: '#f6f9fc',
-  border: '#e3e8ee',
-  borderLight: '#eef1f6',
-  text: '#1a1f36',
-  textSecondary: '#697386',
-  textMuted: '#8792a2',
-  success: '#0d7d4d',
-  successLight: '#e6f7ef',
-  danger: '#df1b41',
-  dangerLight: '#fff5f7',
-}
-
 const styles = {
   panel: css`
     width: 320px;
@@ -47,7 +29,7 @@ const styles = {
     overflow: auto;
   `,
   title: css`
-    font-size: 13px;
+    font-size: ${fontSize.sm};
     font-weight: 600;
     color: ${colors.textSecondary};
     text-transform: uppercase;
@@ -74,7 +56,7 @@ const styles = {
   row: css`
     display: flex;
     justify-content: space-between;
-    font-size: 13px;
+    font-size: ${fontSize.sm};
   `,
   label: css`
     color: ${colors.textSecondary};
@@ -95,7 +77,7 @@ const styles = {
     border-top: 1px solid ${colors.borderLight};
   `,
   sectionTitle: css`
-    font-size: 11px;
+    font-size: ${fontSize.xs};
     font-weight: 600;
     color: ${colors.textMuted};
     text-transform: uppercase;
@@ -106,7 +88,7 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    font-size: ${fontSize.sm};
     color: ${colors.success};
     font-weight: 500;
   `,
@@ -116,7 +98,7 @@ const styles = {
   `,
   copyBtn: css`
     margin-top: 8px;
-    font-size: 13px;
+    font-size: ${fontSize.sm};
     font-weight: 500;
     color: ${colors.primary};
     background: none;
@@ -143,7 +125,7 @@ const styles = {
     text-align: center;
   `,
   emptyText: css`
-    font-size: 13px;
+    font-size: ${fontSize.sm};
     color: ${colors.textMuted};
     margin: 0;
   `,
@@ -181,7 +163,7 @@ const styles = {
   actionBtn: css`
     width: 100%;
     padding: 10px 14px;
-    font-size: 13px;
+    font-size: ${fontSize.base};
     font-weight: 500;
     background-color: ${colors.surface};
     border: 1px solid ${colors.border};

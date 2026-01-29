@@ -4,24 +4,8 @@
 import { useEffect, useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
+import { colors, fontSize } from './tokens'
 import type { FileItem } from '../types'
-
-// Stripe-inspired design tokens
-const colors = {
-  primary: '#635bff',
-  primaryHover: '#5851e5',
-  primaryLight: '#f0f0ff',
-  background: '#f6f9fc',
-  surface: '#ffffff',
-  surfaceHover: '#f6f9fc',
-  border: '#e3e8ee',
-  borderLight: '#eef1f6',
-  text: '#1a1f36',
-  textSecondary: '#697386',
-  textMuted: '#8792a2',
-  success: '#0d7d4d',
-  successLight: '#e6f7ef',
-}
 
 const spin = keyframes`
   to { transform: rotate(360deg); }
@@ -57,12 +41,12 @@ const styles = {
     opacity: 0.5;
   `,
   emptyText: css`
-    font-size: 14px;
+    font-size: ${fontSize.base};
     margin: 0 0 4px 0;
     
     &:last-child {
       color: ${colors.textMuted};
-      font-size: 13px;
+      font-size: ${fontSize.sm};
     }
   `,
   grid: css`
@@ -165,7 +149,7 @@ const styles = {
     min-width: 0;
   `,
   name: css`
-    font-size: 13px;
+    font-size: ${fontSize.sm};
     font-weight: 500;
     color: ${colors.text};
     white-space: nowrap;
@@ -175,24 +159,25 @@ const styles = {
     letter-spacing: -0.01em;
   `,
   size: css`
-    font-size: 12px;
+    font-size: ${fontSize.xs};
     color: ${colors.textMuted};
     margin: 2px 0 0 0;
   `,
   openBtn: css`
     flex-shrink: 0;
-    font-size: 12px;
+    font-size: ${fontSize.xs};
     font-weight: 500;
     color: ${colors.primary};
-    background: none;
-    border: none;
-    padding: 4px 8px;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    padding: 4px 10px;
     cursor: pointer;
     border-radius: 4px;
-    transition: background-color 0.15s ease;
+    transition: all 0.15s ease;
     
     &:hover {
       background-color: ${colors.primaryLight};
+      border-color: ${colors.primary};
     }
   `,
   selectAllRow: css`
@@ -208,7 +193,7 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 13px;
+    font-size: ${fontSize.base};
     font-weight: 500;
     color: ${colors.textSecondary};
     cursor: pointer;

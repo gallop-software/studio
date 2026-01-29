@@ -3,24 +3,29 @@
 
 import { useState } from 'react'
 import { css } from '@emotion/react'
+import { colors, fontSize, baseReset } from './tokens'
 
 const styles = {
   btn: css`
     padding: 8px;
-    background: none;
-    border: none;
-    border-radius: 8px;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
     cursor: pointer;
-    transition: background-color 0.15s;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     
     &:hover {
-      background-color: #f3f4f6;
+      background-color: ${colors.surfaceHover};
+      border-color: ${colors.borderHover};
     }
   `,
   icon: css`
-    width: 20px;
-    height: 20px;
-    color: #6b7280;
+    width: 18px;
+    height: 18px;
+    color: ${colors.textSecondary};
   `,
   overlay: css`
     position: fixed;
@@ -32,20 +37,15 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: center;
-  `,
-  backdrop: css`
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    background-color: rgba(0, 0, 0, 0.3);
+    background-color: rgba(26, 31, 54, 0.4);
+    backdrop-filter: blur(4px);
   `,
   panel: css`
+    ${baseReset}
     position: relative;
-    background-color: white;
+    background-color: ${colors.surface};
     border-radius: 12px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 30px 60px -12px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.3);
     width: 100%;
     max-width: 512px;
     padding: 24px;
@@ -57,19 +57,26 @@ const styles = {
     margin-bottom: 24px;
   `,
   title: css`
-    font-size: 18px;
+    font-size: ${fontSize.xl};
     font-weight: 600;
+    color: ${colors.text};
     margin: 0;
+    letter-spacing: -0.02em;
   `,
   closeBtn: css`
-    padding: 4px;
-    background: none;
-    border: none;
-    border-radius: 8px;
+    padding: 6px;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
     cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     
     &:hover {
-      background-color: #f3f4f6;
+      background-color: ${colors.surfaceHover};
+      border-color: ${colors.borderHover};
     }
   `,
   sections: css`
@@ -78,23 +85,24 @@ const styles = {
     gap: 24px;
   `,
   sectionTitle: css`
-    font-size: 14px;
-    font-weight: 500;
-    color: #111827;
+    font-size: ${fontSize.base};
+    font-weight: 600;
+    color: ${colors.text};
     margin: 0 0 12px 0;
   `,
   description: css`
-    font-size: 12px;
-    color: #6b7280;
+    font-size: ${fontSize.sm};
+    color: ${colors.textSecondary};
     margin: 0 0 12px 0;
   `,
   code: css`
-    background-color: #f9fafb;
+    background-color: ${colors.background};
     border-radius: 8px;
     padding: 12px;
-    font-family: monospace;
-    font-size: 12px;
-    color: #4b5563;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: ${fontSize.xs};
+    color: ${colors.textSecondary};
+    border: 1px solid ${colors.border};
   `,
   codeLine: css`
     margin: 0 0 4px 0;
@@ -105,14 +113,22 @@ const styles = {
   `,
   input: css`
     width: 100%;
-    padding: 8px 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 14px;
+    padding: 10px 14px;
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
+    font-size: ${fontSize.base};
+    color: ${colors.text};
+    background: ${colors.surface};
+    transition: all 0.15s ease;
     
     &:focus {
       outline: none;
-      box-shadow: 0 0 0 2px #a855f7;
+      border-color: ${colors.primary};
+      box-shadow: 0 0 0 3px ${colors.primaryLight};
+    }
+    
+    &::placeholder {
+      color: ${colors.textMuted};
     }
   `,
   grid: css`
@@ -121,41 +137,50 @@ const styles = {
     gap: 12px;
   `,
   label: css`
-    font-size: 12px;
-    color: #6b7280;
+    font-size: ${fontSize.xs};
+    font-weight: 500;
+    color: ${colors.textSecondary};
     display: block;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
   `,
   footer: css`
     margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid ${colors.border};
     display: flex;
     justify-content: flex-end;
     gap: 12px;
   `,
   cancelBtn: css`
-    padding: 8px 16px;
-    font-size: 14px;
-    color: #4b5563;
-    background: none;
-    border: none;
-    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: ${fontSize.base};
+    font-weight: 500;
+    color: ${colors.text};
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
     cursor: pointer;
+    transition: all 0.15s ease;
     
     &:hover {
-      background-color: #f3f4f6;
+      background-color: ${colors.surfaceHover};
+      border-color: ${colors.borderHover};
     }
   `,
   saveBtn: css`
-    padding: 8px 16px;
-    font-size: 14px;
+    padding: 10px 18px;
+    font-size: ${fontSize.base};
+    font-weight: 500;
     color: white;
-    background-color: #9333ea;
-    border: none;
-    border-radius: 8px;
+    background-color: ${colors.primary};
+    border: 1px solid ${colors.primary};
+    border-radius: 6px;
     cursor: pointer;
+    transition: all 0.15s ease;
     
     &:hover {
-      background-color: #7c3aed;
+      background-color: ${colors.primaryHover};
+      border-color: ${colors.primaryHover};
     }
   `,
 }
@@ -188,10 +213,8 @@ export function StudioSettings() {
 
 function SettingsPanel({ onClose }: { onClose: () => void }) {
   return (
-    <div css={styles.overlay}>
-      <div css={styles.backdrop} onClick={onClose} />
-
-      <div css={styles.panel}>
+    <div css={styles.overlay} onClick={onClose}>
+      <div css={styles.panel} onClick={(e) => e.stopPropagation()}>
         <div css={styles.header}>
           <h2 css={styles.title}>Settings</h2>
           <button css={styles.closeBtn} onClick={onClose}>

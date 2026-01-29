@@ -3,6 +3,7 @@
 
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { css, keyframes } from '@emotion/react'
+import { colors, fontStack, fontSize, baseReset } from './tokens'
 
 // Lazy load the full Studio UI to avoid bundling in production
 const StudioUI = lazy(() => import('./StudioUI'))
@@ -12,20 +13,6 @@ const spin = keyframes`
     transform: rotate(360deg);
   }
 `
-
-// Stripe-inspired design tokens
-const colors = {
-  primary: '#635bff',
-  primaryHover: '#5851e5',
-  primaryLight: '#e8e6ff',
-  background: '#f6f9fc',
-  surface: '#ffffff',
-  border: '#e3e8ee',
-  text: '#1a1f36',
-  textSecondary: '#697386',
-  shadow: 'rgba(50, 50, 93, 0.1)',
-  shadowDark: 'rgba(50, 50, 93, 0.2)',
-}
 
 const styles = {
   button: css`
@@ -45,6 +32,7 @@ const styles = {
     border: none;
     cursor: pointer;
     transition: all 0.15s ease;
+    font-family: ${fontStack};
     
     &:hover {
       transform: translateY(-2px);
@@ -84,6 +72,7 @@ const styles = {
     backdrop-filter: blur(4px);
   `,
   modal: css`
+    ${baseReset}
     position: absolute;
     top: 24px;
     right: 24px;
@@ -102,6 +91,7 @@ const styles = {
     justify-content: center;
     height: 100%;
     background: ${colors.background};
+    font-family: ${fontStack};
   `,
   loadingContent: css`
     display: flex;
@@ -119,7 +109,7 @@ const styles = {
   `,
   loadingText: css`
     color: ${colors.textSecondary};
-    font-size: 14px;
+    font-size: ${fontSize.base};
     font-weight: 500;
     margin: 0;
     letter-spacing: -0.01em;

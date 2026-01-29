@@ -2,20 +2,7 @@
 'use client'
 
 import { css, keyframes } from '@emotion/react'
-
-// Stripe-inspired design tokens
-const colors = {
-  primary: '#635bff',
-  primaryHover: '#5851e5',
-  background: '#f6f9fc',
-  surface: '#ffffff',
-  surfaceHover: '#f6f9fc',
-  border: '#e3e8ee',
-  text: '#1a1f36',
-  textSecondary: '#697386',
-  danger: '#df1b41',
-  dangerHover: '#c41535',
-}
+import { colors, fontSize, fontStack, baseReset } from './tokens'
 
 const fadeIn = keyframes`
   from { opacity: 0; }
@@ -44,8 +31,10 @@ const styles = {
     justify-content: center;
     z-index: 10000;
     animation: ${fadeIn} 0.15s ease-out;
+    font-family: ${fontStack};
   `,
   modal: css`
+    ${baseReset}
     background-color: ${colors.surface};
     border-radius: 12px;
     box-shadow: 0 30px 60px -12px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.3);
@@ -58,7 +47,7 @@ const styles = {
     padding: 24px 24px 0;
   `,
   title: css`
-    font-size: 17px;
+    font-size: ${fontSize.lg};
     font-weight: 600;
     color: ${colors.text};
     margin: 0;
@@ -68,7 +57,7 @@ const styles = {
     padding: 12px 24px 24px;
   `,
   message: css`
-    font-size: 14px;
+    font-size: ${fontSize.base};
     color: ${colors.textSecondary};
     margin: 0;
     line-height: 1.6;
@@ -83,7 +72,7 @@ const styles = {
   `,
   btn: css`
     padding: 10px 18px;
-    font-size: 14px;
+    font-size: ${fontSize.base};
     font-weight: 500;
     border-radius: 6px;
     cursor: pointer;
@@ -97,7 +86,7 @@ const styles = {
     
     &:hover {
       background-color: ${colors.surfaceHover};
-      border-color: #d0d5dd;
+      border-color: ${colors.borderHover};
     }
   `,
   btnConfirm: css`

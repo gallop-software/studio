@@ -5,21 +5,7 @@ import { useCallback, useRef, useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal } from './StudioModal'
-
-// Stripe-inspired design tokens
-const colors = {
-  primary: '#635bff',
-  primaryHover: '#5851e5',
-  primaryLight: '#f0f0ff',
-  background: '#ffffff',
-  surface: '#ffffff',
-  surfaceHover: '#f6f9fc',
-  border: '#e3e8ee',
-  text: '#1a1f36',
-  textSecondary: '#697386',
-  danger: '#df1b41',
-  dangerLight: '#fff5f7',
-}
+import { colors, fontSize } from './tokens'
 
 const spin = keyframes`
   to { transform: rotate(360deg); }
@@ -31,13 +17,13 @@ const styles = {
     align-items: center;
     justify-content: space-between;
     padding: 12px 24px;
-    background-color: ${colors.background};
+    background-color: ${colors.surface};
     border-bottom: 1px solid ${colors.border};
   `,
   left: css`
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   `,
   right: css`
     display: flex;
@@ -48,9 +34,9 @@ const styles = {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
+    padding: 8px 14px;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: ${fontSize.base};
     font-weight: 500;
     background: ${colors.surface};
     border: 1px solid ${colors.border};
@@ -61,7 +47,7 @@ const styles = {
     
     &:hover:not(:disabled) {
       background-color: ${colors.surfaceHover};
-      border-color: #d0d5dd;
+      border-color: ${colors.borderHover};
     }
     
     &:disabled {
@@ -87,24 +73,15 @@ const styles = {
       border-color: ${colors.danger};
     }
   `,
-  btnGhost: css`
-    border-color: transparent;
-    background: transparent;
-    
-    &:hover:not(:disabled) {
-      background-color: ${colors.surfaceHover};
-      border-color: transparent;
-    }
-  `,
   icon: css`
-    width: 14px;
-    height: 14px;
+    width: 15px;
+    height: 15px;
   `,
   iconSpin: css`
     animation: ${spin} 1s linear infinite;
   `,
   selectionCount: css`
-    font-size: 13px;
+    font-size: ${fontSize.base};
     color: ${colors.textSecondary};
     display: flex;
     align-items: center;
@@ -115,7 +92,7 @@ const styles = {
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 13px;
+    font-size: ${fontSize.base};
     font-weight: 500;
     padding: 0;
     
@@ -125,7 +102,7 @@ const styles = {
   `,
   divider: css`
     width: 1px;
-    height: 20px;
+    height: 24px;
     background: ${colors.border};
     margin: 0 4px;
   `,
@@ -133,6 +110,7 @@ const styles = {
     display: flex;
     align-items: center;
     background-color: ${colors.surfaceHover};
+    border: 1px solid ${colors.border};
     border-radius: 6px;
     padding: 2px;
   `,
@@ -155,7 +133,7 @@ const styles = {
   viewBtnActive: css`
     background-color: ${colors.surface};
     color: ${colors.text};
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   `,
 }
 
@@ -319,7 +297,7 @@ export function StudioToolbar() {
           <div css={styles.divider} />
           
           <button
-            css={[styles.btn, styles.btnGhost]}
+            css={styles.btn}
             onClick={handleReprocess}
             disabled={!hasSelection}
           >
@@ -327,7 +305,7 @@ export function StudioToolbar() {
             Reprocess
           </button>
           <button
-            css={[styles.btn, styles.btnGhost, styles.btnDanger]}
+            css={[styles.btn, styles.btnDanger]}
             onClick={handleDeleteClick}
             disabled={!hasSelection}
           >
@@ -335,14 +313,14 @@ export function StudioToolbar() {
             Delete
           </button>
           <button
-            css={[styles.btn, styles.btnGhost]}
+            css={styles.btn}
             onClick={handleSyncCdn}
             disabled={!hasSelection}
           >
             <CloudIcon />
             Sync CDN
           </button>
-          <button css={[styles.btn, styles.btnGhost]} onClick={handleScan}>
+          <button css={styles.btn} onClick={handleScan}>
             <ScanIcon />
             Scan
           </button>
@@ -359,7 +337,7 @@ export function StudioToolbar() {
           )}
 
           <button
-            css={[styles.btn, styles.btnGhost]}
+            css={styles.btn}
             onClick={handleRefresh}
           >
             <RefreshIcon spinning={refreshing} />
