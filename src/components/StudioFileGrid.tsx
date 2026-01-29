@@ -127,6 +127,16 @@ const styles = {
     background-color: white;
     border-top: 1px solid #e5e7eb;
   `,
+  labelRow: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  `,
+  labelText: css`
+    flex: 1;
+    min-width: 0;
+  `,
   name: css`
     font-size: 12px;
     color: #374151;
@@ -139,6 +149,20 @@ const styles = {
     font-size: 12px;
     color: #9ca3af;
     margin: 0;
+  `,
+  openBtn: css`
+    flex-shrink: 0;
+    font-size: 11px;
+    color: #9333ea;
+    background: none;
+    border: none;
+    padding: 2px 6px;
+    cursor: pointer;
+    border-radius: 4px;
+    
+    &:hover {
+      background-color: #f3e8ff;
+    }
   `,
   selectAllRow: css`
     display: flex;
@@ -223,8 +247,7 @@ export function StudioFileGrid() {
     }
   }
 
-  const handleItemDoubleClick = (item: FileItem) => {
-    // Double-click on folder navigates into it
+  const handleOpenFolder = (item: FileItem) => {
     if (item.type === 'folder') {
       setCurrentPath(item.path)
     }
@@ -267,7 +290,7 @@ export function StudioFileGrid() {
             item={item}
             isSelected={selectedItems.has(item.path)}
             onClick={(e) => handleItemClick(item, e)}
-            onDoubleClick={() => handleItemDoubleClick(item)}
+            onOpen={() => handleOpenFolder(item)}
           />
         ))}
       </div>
@@ -279,17 +302,16 @@ interface GridItemProps {
   item: FileItem
   isSelected: boolean
   onClick: (e: React.MouseEvent) => void
-  onDoubleClick: () => void
+  onOpen: () => void
 }
 
-function GridItem({ item, isSelected, onClick, onDoubleClick }: GridItemProps) {
+function GridItem({ item, isSelected, onClick, onOpen }: GridItemProps) {
   const isFolder = item.type === 'folder'
 
   return (
     <div 
       css={[styles.item, isSelected && styles.itemSelected]} 
       onClick={onClick}
-      onDoubleClick={onDoubleClick}
     >
       {/* Show checkbox for both files and folders */}
       <div
@@ -326,16 +348,31 @@ function GridItem({ item, isSelected, onClick, onDoubleClick }: GridItemProps) {
       </div>
 
       <div css={styles.label}>
-        <p css={styles.name} title={item.name}>{item.name}</p>
-        {isFolder ? (
-          <p css={styles.size}>
-            {item.fileCount !== undefined ? `${item.fileCount} files` : ''}
-            {item.fileCount !== undefined && item.totalSize !== undefined ? ' · ' : ''}
-            {item.totalSize !== undefined ? formatFileSize(item.totalSize) : ''}
-          </p>
-        ) : (
-          item.size !== undefined && <p css={styles.size}>{formatFileSize(item.size)}</p>
-        )}
+        <div css={styles.labelRow}>
+          <div css={styles.labelText}>
+            <p css={styles.name} title={item.name}>{item.name}</p>
+            {isFolder ? (
+              <p css={styles.size}>
+                {item.fileCount !== undefined ? `${item.fileCount} files` : ''}
+                {item.fileCount !== undefined && item.totalSize !== undefined ? ' · ' : ''}
+                {item.totalSize !== undefined ? formatFileSize(item.totalSize) : ''}
+              </p>
+            ) : (
+              item.size !== undefined && <p css={styles.size}>{formatFileSize(item.size)}</p>
+            )}
+          </div>
+          {isFolder && (
+            <button
+              css={styles.openBtn}
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpen()
+              }}
+            >
+              Open
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

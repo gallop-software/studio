@@ -136,6 +136,19 @@ const styles = {
     font-size: 12px;
     color: #9ca3af;
   `,
+  openBtn: css`
+    font-size: 12px;
+    color: #9333ea;
+    background: none;
+    border: none;
+    padding: 2px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    
+    &:hover {
+      background-color: #f3e8ff;
+    }
+  `,
 }
 
 export function StudioFileList() {
@@ -191,8 +204,7 @@ export function StudioFileList() {
     }
   }
 
-  const handleItemDoubleClick = (item: FileItem) => {
-    // Double-click on folder navigates into it
+  const handleOpenFolder = (item: FileItem) => {
     if (item.type === 'folder') {
       setCurrentPath(item.path)
     }
@@ -240,7 +252,7 @@ export function StudioFileList() {
             item={item}
             isSelected={selectedItems.has(item.path)}
             onClick={(e) => handleItemClick(item, e)}
-            onDoubleClick={() => handleItemDoubleClick(item)}
+            onOpen={() => handleOpenFolder(item)}
           />
         ))}
       </tbody>
@@ -252,17 +264,16 @@ interface ListRowProps {
   item: FileItem
   isSelected: boolean
   onClick: (e: React.MouseEvent) => void
-  onDoubleClick: () => void
+  onOpen: () => void
 }
 
-function ListRow({ item, isSelected, onClick, onDoubleClick }: ListRowProps) {
+function ListRow({ item, isSelected, onClick, onOpen }: ListRowProps) {
   const isFolder = item.type === 'folder'
 
   return (
     <tr 
       css={[styles.row, isSelected && styles.rowSelected]} 
       onClick={onClick}
-      onDoubleClick={onDoubleClick}
     >
       <td
         css={[styles.td, styles.checkboxCell]}
@@ -290,6 +301,17 @@ function ListRow({ item, isSelected, onClick, onDoubleClick }: ListRowProps) {
             </svg>
           )}
           <span css={styles.name}>{item.name}</span>
+          {isFolder && (
+            <button
+              css={styles.openBtn}
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpen()
+              }}
+            >
+              Open
+            </button>
+          )}
         </div>
       </td>
       <td css={[styles.td, styles.meta]}>
