@@ -183,13 +183,7 @@ export function StudioFileList() {
   })
 
   const handleItemClick = (item: FileItem, e: React.MouseEvent) => {
-    if (item.type === 'folder') {
-      // Clicking on folder row navigates into it
-      setCurrentPath(item.path)
-      return
-    }
-
-    // For files, toggle selection
+    // For both files and folders, clicking toggles selection
     if (e.shiftKey && lastSelectedPath) {
       selectRange(lastSelectedPath, item.path, sortedItems)
     } else {
@@ -197,12 +191,10 @@ export function StudioFileList() {
     }
   }
 
-  const handleCheckboxClick = (item: FileItem, e: React.MouseEvent) => {
-    // Checkbox click always toggles selection (for both files and folders)
-    if (e.shiftKey && lastSelectedPath) {
-      selectRange(lastSelectedPath, item.path, sortedItems)
-    } else {
-      toggleSelection(item.path)
+  const handleItemDoubleClick = (item: FileItem) => {
+    // Double-click on folder navigates into it
+    if (item.type === 'folder') {
+      setCurrentPath(item.path)
     }
   }
 
@@ -248,7 +240,7 @@ export function StudioFileList() {
             item={item}
             isSelected={selectedItems.has(item.path)}
             onClick={(e) => handleItemClick(item, e)}
-            onCheckboxClick={(e) => handleCheckboxClick(item, e)}
+            onDoubleClick={() => handleItemDoubleClick(item)}
           />
         ))}
       </tbody>
@@ -260,27 +252,28 @@ interface ListRowProps {
   item: FileItem
   isSelected: boolean
   onClick: (e: React.MouseEvent) => void
-  onCheckboxClick: (e: React.MouseEvent) => void
+  onDoubleClick: () => void
 }
 
-function ListRow({ item, isSelected, onClick, onCheckboxClick }: ListRowProps) {
+function ListRow({ item, isSelected, onClick, onDoubleClick }: ListRowProps) {
   const isFolder = item.type === 'folder'
 
   return (
-    <tr css={[styles.row, isSelected && styles.rowSelected]} onClick={onClick}>
+    <tr 
+      css={[styles.row, isSelected && styles.rowSelected]} 
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+    >
       <td
         css={[styles.td, styles.checkboxCell]}
-        onClick={(e) => {
-          e.stopPropagation()
-          onCheckboxClick(e)
-        }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Show checkbox for both files and folders */}
         <input
           type="checkbox"
           css={styles.checkbox}
           checked={isSelected}
-          onChange={() => {}}
+          onChange={() => onClick({} as React.MouseEvent)}
         />
       </td>
       <td css={styles.td}>
