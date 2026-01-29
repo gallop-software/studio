@@ -1,21 +1,235 @@
+/** @jsxImportSource @emotion/react */
 'use client'
 
+import { useState } from 'react'
+import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
+import { ConfirmModal, AlertModal } from './StudioModal'
 
-/**
- * Preview panel for selected image
- */
+const styles = {
+  panel: css`
+    width: 320px;
+    border-left: 1px solid #e5e7eb;
+    background-color: #f9fafb;
+    padding: 16px;
+    overflow: auto;
+  `,
+  title: css`
+    font-size: 14px;
+    font-weight: 500;
+    color: #111827;
+    margin: 0 0 16px 0;
+  `,
+  imageContainer: css`
+    background-color: white;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    padding: 8px;
+    margin-bottom: 16px;
+  `,
+  image: css`
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+  `,
+  info: css`
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  `,
+  row: css`
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+  `,
+  label: css`
+    color: #6b7280;
+  `,
+  value: css`
+    color: #111827;
+  `,
+  valueTruncate: css`
+    max-width: 128px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  `,
+  section: css`
+    padding-top: 8px;
+    border-top: 1px solid #e5e7eb;
+  `,
+  sectionTitle: css`
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+    margin: 0 0 8px 0;
+  `,
+  cdnStatus: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #16a34a;
+  `,
+  cdnIcon: css`
+    width: 16px;
+    height: 16px;
+  `,
+  copyBtn: css`
+    margin-top: 8px;
+    font-size: 12px;
+    color: #9333ea;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  `,
+  colorSwatch: css`
+    margin-top: 8px;
+    height: 32px;
+    border-radius: 4px;
+  `,
+  emptyState: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+  `,
+  emptyText: css`
+    font-size: 14px;
+    color: #9ca3af;
+    margin: 0;
+  `,
+  actions: css`
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  actionBtn: css`
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 14px;
+    background-color: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    color: #374151;
+    
+    &:hover {
+      background-color: #f9fafb;
+    }
+  `,
+  actionBtnDanger: css`
+    color: #dc2626;
+    
+    &:hover {
+      background-color: #fef2f2;
+    }
+  `,
+}
+
 export function StudioPreview() {
-  const { selectedItems, meta } = useStudio()
+  const { selectedItems, meta, triggerRefresh, clearSelection } = useStudio()
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
 
-  // Only show preview for single selection
-  if (selectedItems.size !== 1) {
-    return null
+  const handleDeleteClick = () => {
+    if (selectedItems.size === 0) return
+    setShowDeleteConfirm(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    setShowDeleteConfirm(false)
+
+    try {
+      const response = await fetch('/api/studio/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: Array.from(selectedItems) }),
+      })
+
+      if (response.ok) {
+        clearSelection()
+        triggerRefresh()
+      } else {
+        const error = await response.json()
+        setAlertMessage({
+          title: 'Delete Failed',
+          message: error.error || 'Unknown error',
+        })
+      }
+    } catch (error) {
+      console.error('Delete error:', error)
+      setAlertMessage({
+        title: 'Delete Failed',
+        message: 'Delete failed. Check console for details.',
+      })
+    }
+  }
+
+  const modals = (
+    <>
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title="Delete Items"
+          message={`Are you sure you want to delete ${selectedItems.size} item(s)? This action cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
+
+      {alertMessage && (
+        <AlertModal
+          title={alertMessage.title}
+          message={alertMessage.message}
+          onClose={() => setAlertMessage(null)}
+        />
+      )}
+    </>
+  )
+
+  // Always show the sidebar
+  if (selectedItems.size === 0) {
+    return (
+      <>
+        {modals}
+        <div css={styles.panel}>
+          <h3 css={styles.title}>Preview</h3>
+          <div css={styles.emptyState}>
+            <p css={styles.emptyText}>Select an image to preview</p>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  if (selectedItems.size > 1) {
+    return (
+      <>
+        {modals}
+        <div css={styles.panel}>
+          <h3 css={styles.title}>{selectedItems.size} items selected</h3>
+          <div css={styles.actions}>
+            <button css={[styles.actionBtn, styles.actionBtnDanger]} onClick={handleDeleteClick}>
+              Delete {selectedItems.size} items
+            </button>
+          </div>
+        </div>
+      </>
+    )
   }
 
   const selectedPath = Array.from(selectedItems)[0]
-
-  // Extract the image key from the path (e.g., "public/images/hero.jpg" -> "hero.jpg")
   const imageKey = selectedPath
     .replace(/^public\/images\//, '')
     .replace(/^public\/originals\//, '')
@@ -23,20 +237,20 @@ export function StudioPreview() {
   const imageData = meta?.images?.[imageKey]
 
   return (
-    <div className="w-80 border-l border-gray-200 bg-gray-50 p-4 overflow-auto">
-      <h3 className="text-sm font-medium text-gray-900 mb-4">Preview</h3>
+    <>
+      {modals}
+      <div css={styles.panel}>
+        <h3 css={styles.title}>Preview</h3>
 
-      {/* Image preview */}
-      <div className="bg-white rounded-lg border border-gray-200 p-2 mb-4">
-        <img
-          src={selectedPath.replace('public', '')}
-          alt="Preview"
-          className="w-full h-auto rounded"
-        />
-      </div>
+        <div css={styles.imageContainer}>
+          <img
+            css={styles.image}
+            src={selectedPath.replace('public', '')}
+            alt="Preview"
+          />
+        </div>
 
-      {/* File info */}
-      <div className="space-y-3">
+      <div css={styles.info}>
         <InfoRow label="Filename" value={selectedPath.split('/').pop() || ''} />
 
         {imageData && (
@@ -50,43 +264,27 @@ export function StudioPreview() {
               value={formatFileSize(imageData.original.fileSize)}
             />
 
-            <div className="pt-2 border-t border-gray-200">
-              <p className="text-xs font-medium text-gray-500 mb-2">
-                Generated sizes
-              </p>
+            <div css={styles.section}>
+              <p css={styles.sectionTitle}>Generated sizes</p>
               {Object.entries(imageData.sizes).map(([size, data]) => (
-                <InfoRow
-                  key={size}
-                  label={size}
-                  value={`${data.width}x${data.height}`}
-                />
+                <InfoRow key={size} label={size} value={`${data.width}x${data.height}`} />
               ))}
             </div>
 
             {imageData.cdn?.synced && (
-              <div className="pt-2 border-t border-gray-200">
-                <p className="text-xs font-medium text-gray-500 mb-2">CDN</p>
-                <div className="flex items-center gap-2 text-xs text-green-600">
-                  <svg
-                    className="w-4 h-4"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    />
+              <div css={styles.section}>
+                <p css={styles.sectionTitle}>CDN</p>
+                <div css={styles.cdnStatus}>
+                  <svg css={styles.cdnIcon} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
                   Synced to CDN
                 </div>
                 <button
+                  css={styles.copyBtn}
                   onClick={() => {
-                    navigator.clipboard.writeText(
-                      `${imageData.cdn?.baseUrl}${imageData.sizes.full.path}`
-                    )
+                    navigator.clipboard.writeText(`${imageData.cdn?.baseUrl}${imageData.sizes.full.path}`)
                   }}
-                  className="mt-2 text-xs text-purple-600 hover:underline"
                 >
                   Copy CDN URL
                 </button>
@@ -94,10 +292,10 @@ export function StudioPreview() {
             )}
 
             {imageData.blurhash && (
-              <div className="pt-2 border-t border-gray-200">
+              <div css={styles.section}>
                 <InfoRow label="Blurhash" value={imageData.blurhash} truncate />
                 <div
-                  className="mt-2 h-8 rounded"
+                  css={styles.colorSwatch}
                   style={{ backgroundColor: imageData.dominantColor }}
                   title={`Dominant color: ${imageData.dominantColor}`}
                 />
@@ -107,35 +305,20 @@ export function StudioPreview() {
         )}
       </div>
 
-      {/* Actions */}
-      <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
-        <button className="w-full px-3 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-          Rename
-        </button>
-        <button className="w-full px-3 py-2 text-sm text-red-600 bg-white border border-gray-200 rounded-lg hover:bg-red-50 transition-colors">
-          Delete
-        </button>
+        <div css={styles.actions}>
+          <button css={styles.actionBtn}>Rename</button>
+          <button css={[styles.actionBtn, styles.actionBtnDanger]} onClick={handleDeleteClick}>Delete</button>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
-function InfoRow({
-  label,
-  value,
-  truncate,
-}: {
-  label: string
-  value: string
-  truncate?: boolean
-}) {
+function InfoRow({ label, value, truncate }: { label: string; value: string; truncate?: boolean }) {
   return (
-    <div className="flex justify-between text-xs">
-      <span className="text-gray-500">{label}</span>
-      <span
-        className={`text-gray-900 ${truncate ? 'truncate max-w-32' : ''}`}
-        title={truncate ? value : undefined}
-      >
+    <div css={styles.row}>
+      <span css={styles.label}>{label}</span>
+      <span css={[styles.value, truncate && styles.valueTruncate]} title={truncate ? value : undefined}>
         {value}
       </span>
     </div>

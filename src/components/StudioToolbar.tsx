@@ -1,102 +1,289 @@
+/** @jsxImportSource @emotion/react */
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
+import { ConfirmModal, AlertModal } from './StudioModal'
 
-/**
- * Toolbar with action buttons
- */
+const styles = {
+  toolbar: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background-color: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+  `,
+  left: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  `,
+  right: css`
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  `,
+  btn: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+  `,
+  btnDefault: css`
+    color: #374151;
+    
+    &:hover:not(:disabled) {
+      background-color: white;
+    }
+  `,
+  btnDanger: css`
+    color: #dc2626;
+    
+    &:hover:not(:disabled) {
+      background-color: #fef2f2;
+    }
+  `,
+  icon: css`
+    width: 16px;
+    height: 16px;
+  `,
+  selectionCount: css`
+    font-size: 14px;
+    color: #4b5563;
+  `,
+  clearBtn: css`
+    margin-left: 8px;
+    color: #9333ea;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  `,
+  viewToggle: css`
+    display: flex;
+    align-items: center;
+    background-color: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  `,
+  viewBtn: css`
+    padding: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #6b7280;
+    transition: all 0.15s;
+    
+    &:hover {
+      background-color: #f9fafb;
+    }
+  `,
+  viewBtnActive: css`
+    background-color: #f3e8ff;
+    color: #7c3aed;
+  `,
+}
+
 export function StudioToolbar() {
-  const { selectedItems, viewMode, setViewMode, clearSelection } = useStudio()
+  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh } = useStudio()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
 
   const handleUpload = useCallback(() => {
-    // TODO: Implement upload
-    console.log('Upload clicked')
+    fileInputRef.current?.click()
   }, [])
 
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('path', currentPath)
+
+        const response = await fetch('/api/studio/upload', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          console.error('Upload failed:', error)
+          setAlertMessage({
+            title: 'Upload Failed',
+            message: `Failed to upload ${file.name}: ${error.error || 'Unknown error'}`,
+          })
+        }
+      }
+      triggerRefresh()
+    } catch (error) {
+      console.error('Upload error:', error)
+      setAlertMessage({
+        title: 'Upload Failed',
+        message: 'Upload failed. Check console for details.',
+      })
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }, [currentPath, triggerRefresh])
+
   const handleReprocess = useCallback(() => {
-    // TODO: Implement reprocess
     console.log('Reprocess clicked', selectedItems)
   }, [selectedItems])
 
-  const handleDelete = useCallback(() => {
-    // TODO: Implement delete
-    console.log('Delete clicked', selectedItems)
+  const handleDeleteClick = useCallback(() => {
+    if (selectedItems.size === 0) return
+    setShowDeleteConfirm(true)
   }, [selectedItems])
 
+  const handleDeleteConfirm = useCallback(async () => {
+    setShowDeleteConfirm(false)
+    
+    try {
+      const response = await fetch('/api/studio/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: Array.from(selectedItems) }),
+      })
+
+      if (response.ok) {
+        clearSelection()
+        triggerRefresh()
+      } else {
+        const error = await response.json()
+        setAlertMessage({
+          title: 'Delete Failed',
+          message: error.error || 'Unknown error',
+        })
+      }
+    } catch (error) {
+      console.error('Delete error:', error)
+      setAlertMessage({
+        title: 'Delete Failed',
+        message: 'Delete failed. Check console for details.',
+      })
+    }
+  }, [selectedItems, clearSelection, triggerRefresh])
+
   const handleSyncCdn = useCallback(() => {
-    // TODO: Implement CDN sync
     console.log('Sync CDN clicked', selectedItems)
   }, [selectedItems])
 
   const handleScan = useCallback(() => {
-    // TODO: Implement scan
     console.log('Scan clicked')
   }, [])
 
   const hasSelection = selectedItems.size > 0
 
   return (
-    <div className="flex items-center justify-between px-6 py-3 bg-gray-50 border-b border-gray-200">
-      <div className="flex items-center gap-2">
-        {/* Upload */}
-        <ToolbarButton onClick={handleUpload} icon="upload" label="Upload" />
+    <>
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title="Delete Items"
+          message={`Are you sure you want to delete ${selectedItems.size} item(s)? This action cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
 
-        {/* Reprocess */}
+      {alertMessage && (
+        <AlertModal
+          title={alertMessage.title}
+          message={alertMessage.message}
+          onClose={() => setAlertMessage(null)}
+        />
+      )}
+
+      <div css={styles.toolbar}>
+        {/* Hidden file input for upload */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/*"
+          onChange={handleFileChange}
+          style={{ display: 'none' }}
+        />
+      
+      <div css={styles.left}>
+        <ToolbarButton 
+          onClick={handleUpload} 
+          icon="upload" 
+          label={uploading ? 'Uploading...' : 'Upload'} 
+          disabled={uploading}
+        />
         <ToolbarButton
           onClick={handleReprocess}
           icon="refresh"
           label="Reprocess"
           disabled={!hasSelection}
         />
-
-        {/* Delete */}
         <ToolbarButton
-          onClick={handleDelete}
+          onClick={handleDeleteClick}
           icon="trash"
           label="Delete"
           disabled={!hasSelection}
           variant="danger"
         />
-
-        {/* Sync CDN */}
         <ToolbarButton
           onClick={handleSyncCdn}
           icon="cloud"
           label="Sync CDN"
           disabled={!hasSelection}
         />
-
-        {/* Scan */}
         <ToolbarButton onClick={handleScan} icon="scan" label="Scan" />
       </div>
 
-      <div className="flex items-center gap-4">
-        {/* Selection count */}
+      <div css={styles.right}>
         {hasSelection && (
-          <span className="text-sm text-gray-600">
+          <span css={styles.selectionCount}>
             {selectedItems.size} selected
-            <button
-              onClick={clearSelection}
-              className="ml-2 text-purple-600 hover:underline"
-            >
+            <button css={styles.clearBtn} onClick={clearSelection}>
               Clear
             </button>
           </span>
         )}
 
-        {/* View toggle */}
-        <div className="flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div css={styles.viewToggle}>
           <button
+            css={[styles.viewBtn, viewMode === 'grid' && styles.viewBtnActive]}
             onClick={() => setViewMode('grid')}
-            className={`p-2 ${viewMode === 'grid' ? 'bg-purple-100 text-purple-700' : 'text-gray-500 hover:bg-gray-50'}`}
             aria-label="Grid view"
           >
             <GridIcon />
           </button>
           <button
+            css={[styles.viewBtn, viewMode === 'list' && styles.viewBtnActive]}
             onClick={() => setViewMode('list')}
-            className={`p-2 ${viewMode === 'list' ? 'bg-purple-100 text-purple-700' : 'text-gray-500 hover:bg-gray-50'}`}
             aria-label="List view"
           >
             <ListIcon />
@@ -104,6 +291,7 @@ export function StudioToolbar() {
         </div>
       </div>
     </div>
+    </>
   )
 }
 
@@ -122,18 +310,11 @@ function ToolbarButton({
   disabled,
   variant = 'default',
 }: ToolbarButtonProps) {
-  const baseStyles =
-    'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors'
-  const variantStyles =
-    variant === 'danger'
-      ? 'text-red-600 hover:bg-red-50 disabled:text-red-300'
-      : 'text-gray-700 hover:bg-white disabled:text-gray-400'
-
   return (
     <button
+      css={[styles.btn, variant === 'danger' ? styles.btnDanger : styles.btnDefault]}
       onClick={onClick}
       disabled={disabled}
-      className={`${baseStyles} ${variantStyles} ${disabled ? 'cursor-not-allowed' : ''}`}
     >
       <IconComponent icon={icon} />
       {label}
@@ -142,87 +323,35 @@ function ToolbarButton({
 }
 
 function IconComponent({ icon }: { icon: string }) {
-  const className = 'w-4 h-4'
-
   switch (icon) {
     case 'upload':
       return (
-        <svg
-          className={className}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-          />
+        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
         </svg>
       )
     case 'refresh':
       return (
-        <svg
-          className={className}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-          />
+        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
       )
     case 'trash':
       return (
-        <svg
-          className={className}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-          />
+        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
         </svg>
       )
     case 'cloud':
       return (
-        <svg
-          className={className}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-          />
+        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
         </svg>
       )
     case 'scan':
       return (
-        <svg
-          className={className}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
+        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
       )
     default:
@@ -232,36 +361,16 @@ function IconComponent({ icon }: { icon: string }) {
 
 function GridIcon() {
   return (
-    <svg
-      className="w-4 h-4"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
-      />
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
     </svg>
   )
 }
 
 function ListIcon() {
   return (
-    <svg
-      className="w-4 h-4"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M4 6h16M4 10h16M4 14h16M4 18h16"
-      />
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
     </svg>
   )
 }

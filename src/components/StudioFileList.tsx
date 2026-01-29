@@ -1,15 +1,132 @@
+/** @jsxImportSource @emotion/react */
 'use client'
 
 import { useEffect, useState } from 'react'
+import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import type { FileItem } from '../types'
 
-/**
- * List view of files and folders
- */
+const spin = keyframes`
+  to { transform: rotate(360deg); }
+`
+
+const styles = {
+  loading: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 256px;
+  `,
+  spinner: css`
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    border-bottom-color: #9333ea;
+    animation: ${spin} 1s linear infinite;
+  `,
+  empty: css`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 256px;
+    color: #6b7280;
+  `,
+  table: css`
+    width: 100%;
+    border-collapse: collapse;
+  `,
+  th: css`
+    text-align: left;
+    font-size: 12px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-bottom: 8px;
+    font-weight: normal;
+  `,
+  thCheckbox: css`
+    width: 32px;
+  `,
+  thSize: css`
+    width: 96px;
+  `,
+  thDimensions: css`
+    width: 128px;
+  `,
+  thCdn: css`
+    width: 96px;
+  `,
+  tbody: css`
+    border-top: 1px solid #f3f4f6;
+  `,
+  row: css`
+    cursor: pointer;
+    transition: background-color 0.15s;
+    
+    &:hover {
+      background-color: #f9fafb;
+    }
+  `,
+  rowSelected: css`
+    background-color: #faf5ff;
+    
+    &:hover {
+      background-color: #faf5ff;
+    }
+  `,
+  td: css`
+    padding: 8px 0;
+    border-bottom: 1px solid #f3f4f6;
+  `,
+  checkbox: css`
+    width: 16px;
+    height: 16px;
+    accent-color: #9333ea;
+  `,
+  nameCell: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  `,
+  folderIcon: css`
+    width: 20px;
+    height: 20px;
+    color: #facc15;
+  `,
+  fileIcon: css`
+    width: 20px;
+    height: 20px;
+    color: #9ca3af;
+  `,
+  name: css`
+    font-size: 14px;
+    color: #111827;
+  `,
+  meta: css`
+    font-size: 14px;
+    color: #6b7280;
+  `,
+  cdnBadge: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #15803d;
+  `,
+  cdnIcon: css`
+    width: 12px;
+    height: 12px;
+  `,
+  cdnEmpty: css`
+    font-size: 12px;
+    color: #9ca3af;
+  `,
+}
+
 export function StudioFileList() {
-  const { currentPath, setCurrentPath, selectedItems, toggleSelection } =
-    useStudio()
+  const { currentPath, setCurrentPath, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey } = useStudio()
   const [items, setItems] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -17,9 +134,7 @@ export function StudioFileList() {
     async function loadItems() {
       setLoading(true)
       try {
-        const response = await fetch(
-          `/api/studio/list?path=${encodeURIComponent(currentPath)}`
-        )
+        const response = await fetch(`/api/studio/list?path=${encodeURIComponent(currentPath)}`)
         if (response.ok) {
           const data = await response.json()
           setItems(data.items || [])
@@ -30,54 +145,85 @@ export function StudioFileList() {
       setLoading(false)
     }
     loadItems()
-  }, [currentPath])
+  }, [currentPath, refreshKey])
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600" />
+      <div css={styles.loading}>
+        <div css={styles.spinner} />
       </div>
     )
   }
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+      <div css={styles.empty}>
         <p>No files in this folder</p>
       </div>
     )
   }
 
-  // Sort: folders first, then files
   const sortedItems = [...items].sort((a, b) => {
     if (a.type === 'folder' && b.type !== 'folder') return -1
     if (a.type !== 'folder' && b.type === 'folder') return 1
     return a.name.localeCompare(b.name)
   })
 
+  const files = sortedItems.filter(item => item.type !== 'folder')
+  const allFilesSelected = files.length > 0 && files.every(item => selectedItems.has(item.path))
+  const someFilesSelected = files.some(item => selectedItems.has(item.path))
+
+  const handleSelectAll = () => {
+    if (allFilesSelected) {
+      clearSelection()
+    } else {
+      selectAll(files)
+    }
+  }
+
+  const handleItemClick = (item: FileItem, e: React.MouseEvent) => {
+    if (item.type === 'folder') {
+      setCurrentPath(item.path)
+      return
+    }
+
+    if (e.shiftKey && lastSelectedPath) {
+      selectRange(lastSelectedPath, item.path, sortedItems)
+    } else {
+      toggleSelection(item.path)
+    }
+  }
+
   return (
-    <table className="w-full">
+    <table css={styles.table}>
       <thead>
-        <tr className="text-left text-xs text-gray-500 uppercase tracking-wider">
-          <th className="w-8 pb-2"></th>
-          <th className="pb-2">Name</th>
-          <th className="pb-2 w-24">Size</th>
-          <th className="pb-2 w-32">Dimensions</th>
-          <th className="pb-2 w-24">CDN</th>
+        <tr>
+          <th css={[styles.th, styles.thCheckbox]}>
+            {files.length > 0 && (
+              <input
+                type="checkbox"
+                css={styles.checkbox}
+                checked={allFilesSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = someFilesSelected && !allFilesSelected
+                }}
+                onChange={handleSelectAll}
+              />
+            )}
+          </th>
+          <th css={styles.th}>Name</th>
+          <th css={[styles.th, styles.thSize]}>Size</th>
+          <th css={[styles.th, styles.thDimensions]}>Dimensions</th>
+          <th css={[styles.th, styles.thCdn]}>CDN</th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-gray-100">
+      <tbody css={styles.tbody}>
         {sortedItems.map((item) => (
           <ListRow
             key={item.path}
             item={item}
             isSelected={selectedItems.has(item.path)}
-            onSelect={() => toggleSelection(item.path)}
-            onOpen={() => {
-              if (item.type === 'folder') {
-                setCurrentPath(item.path)
-              }
-            }}
+            onClick={(e) => handleItemClick(item, e)}
           />
         ))}
       </tbody>
@@ -88,79 +234,56 @@ export function StudioFileList() {
 interface ListRowProps {
   item: FileItem
   isSelected: boolean
-  onSelect: () => void
-  onOpen: () => void
+  onClick: (e: React.MouseEvent) => void
 }
 
-function ListRow({ item, isSelected, onSelect, onOpen }: ListRowProps) {
+function ListRow({ item, isSelected, onClick }: ListRowProps) {
   const isFolder = item.type === 'folder'
 
   return (
-    <tr
-      className={`cursor-pointer transition-colors ${
-        isSelected ? 'bg-purple-50' : 'hover:bg-gray-50'
-      }`}
-      onDoubleClick={onOpen}
-    >
-      <td className="py-2">
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={onSelect}
-          onClick={(e) => e.stopPropagation()}
-          className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-        />
+    <tr css={[styles.row, isSelected && styles.rowSelected]} onClick={onClick}>
+      <td css={styles.td}>
+        {/* Only show checkbox for files, not folders */}
+        {!isFolder && (
+          <input
+            type="checkbox"
+            css={styles.checkbox}
+            checked={isSelected}
+            onChange={() => {}}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
       </td>
-      <td className="py-2">
-        <div className="flex items-center gap-2">
+      <td css={styles.td}>
+        <div css={styles.nameCell}>
           {isFolder ? (
-            <svg
-              className="w-5 h-5 text-yellow-400"
-              fill="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
               <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
             </svg>
           ) : (
-            <svg
-              className="w-5 h-5 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
+            <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           )}
-          <span className="text-sm text-gray-900">{item.name}</span>
+          <span css={styles.name}>{item.name}</span>
         </div>
       </td>
-      <td className="py-2 text-sm text-gray-500">
+      <td css={[styles.td, styles.meta]}>
         {item.size ? formatFileSize(item.size) : '--'}
       </td>
-      <td className="py-2 text-sm text-gray-500">
-        {item.dimensions
-          ? `${item.dimensions.width}x${item.dimensions.height}`
-          : '--'}
+      <td css={[styles.td, styles.meta]}>
+        {item.dimensions ? `${item.dimensions.width}x${item.dimensions.height}` : '--'}
       </td>
-      <td className="py-2">
+      <td css={styles.td}>
         {item.cdnSynced ? (
-          <span className="inline-flex items-center gap-1 text-xs text-green-700">
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                clipRule="evenodd"
-              />
+          <span css={styles.cdnBadge}>
+            <svg css={styles.cdnIcon} fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
             </svg>
             Synced
           </span>
         ) : (
-          <span className="text-xs text-gray-400">--</span>
+          <span css={styles.cdnEmpty}>--</span>
         )}
       </td>
     </tr>

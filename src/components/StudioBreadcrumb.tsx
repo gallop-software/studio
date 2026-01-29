@@ -1,10 +1,74 @@
+/** @jsxImportSource @emotion/react */
 'use client'
 
+import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
 
-/**
- * Breadcrumb navigation bar
- */
+const styles = {
+  container: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 24px;
+    background-color: white;
+    border-bottom: 1px solid #f3f4f6;
+  `,
+  backBtn: css`
+    padding: 4px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    
+    &:hover {
+      background-color: #f3f4f6;
+    }
+  `,
+  backIcon: css`
+    width: 16px;
+    height: 16px;
+    color: #6b7280;
+  `,
+  nav: css`
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+  `,
+  item: css`
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  `,
+  separator: css`
+    color: #d1d5db;
+  `,
+  btn: css`
+    padding: 2px 4px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    
+    &:hover {
+      background-color: #f3f4f6;
+    }
+  `,
+  btnActive: css`
+    color: #111827;
+    font-weight: 500;
+  `,
+  btnInactive: css`
+    color: #6b7280;
+    
+    &:hover {
+      color: #374151;
+    }
+  `,
+}
+
 export function StudioBreadcrumb() {
   const { currentPath, setCurrentPath, navigateUp } = useStudio()
 
@@ -16,42 +80,22 @@ export function StudioBreadcrumb() {
   }
 
   return (
-    <div className="flex items-center gap-2 px-6 py-2 bg-white border-b border-gray-100">
-      {/* Back button */}
+    <div css={styles.container}>
       {currentPath !== 'public' && (
-        <button
-          onClick={navigateUp}
-          className="p-1 hover:bg-gray-100 rounded transition-colors"
-          aria-label="Go back"
-        >
-          <svg
-            className="w-4 h-4 text-gray-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
+        <button css={styles.backBtn} onClick={navigateUp} aria-label="Go back">
+          <svg css={styles.backIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
       )}
 
-      {/* Breadcrumb trail */}
-      <nav className="flex items-center gap-1 text-sm">
+      <nav css={styles.nav}>
         {parts.map((part, index) => (
-          <span key={index} className="flex items-center gap-1">
-            {index > 0 && <span className="text-gray-300">/</span>}
+          <span key={index} css={styles.item}>
+            {index > 0 && <span css={styles.separator}>/</span>}
             <button
+              css={[styles.btn, index === parts.length - 1 ? styles.btnActive : styles.btnInactive]}
               onClick={() => handleClick(index)}
-              className={`px-1 py-0.5 rounded hover:bg-gray-100 transition-colors ${
-                index === parts.length - 1
-                  ? 'text-gray-900 font-medium'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
             >
               {part}
             </button>

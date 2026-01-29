@@ -1,6 +1,6 @@
 {
   "name": "@gallop.software/studio",
-  "version": "0.1.0",
+  "version": "0.1.9",
   "description": "Media manager for Gallop templates - upload, process, and sync images to CDN",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -11,35 +11,10 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     },
-    "./api/list": {
-      "types": "./dist/api/list.d.ts",
-      "import": "./dist/api/list.mjs",
-      "require": "./dist/api/list.js"
-    },
-    "./api/upload": {
-      "types": "./dist/api/upload.d.ts",
-      "import": "./dist/api/upload.mjs",
-      "require": "./dist/api/upload.js"
-    },
-    "./api/delete": {
-      "types": "./dist/api/delete.d.ts",
-      "import": "./dist/api/delete.mjs",
-      "require": "./dist/api/delete.js"
-    },
-    "./api/scan": {
-      "types": "./dist/api/scan.d.ts",
-      "import": "./dist/api/scan.mjs",
-      "require": "./dist/api/scan.js"
-    },
-    "./api/sync": {
-      "types": "./dist/api/sync.d.ts",
-      "import": "./dist/api/sync.mjs",
-      "require": "./dist/api/sync.js"
-    },
-    "./api/reprocess": {
-      "types": "./dist/api/reprocess.d.ts",
-      "import": "./dist/api/reprocess.mjs",
-      "require": "./dist/api/reprocess.js"
+    "./handlers": {
+      "types": "./dist/handlers.d.ts",
+      "import": "./dist/handlers.mjs",
+      "require": "./dist/handlers.js"
     }
   },
   "files": [
@@ -77,6 +52,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.705.0",
+    "@emotion/react": "^11.14.0",
     "blurhash": "^2.0.5",
     "clsx": "^2.1.1",
     "react-dropzone": "^14.3.5",

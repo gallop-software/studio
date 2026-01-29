@@ -1,95 +1,177 @@
+/** @jsxImportSource @emotion/react */
 'use client'
 
-import { useEffect, useCallback } from 'react'
-import { useStudio } from './StudioContext'
-import { StudioToolbar } from './StudioToolbar'
-import { StudioBreadcrumb } from './StudioBreadcrumb'
-import { StudioFileGrid } from './StudioFileGrid'
-import { StudioFileList } from './StudioFileList'
-import { StudioPreview } from './StudioPreview'
-import { StudioSettings } from './StudioSettings'
+import { css, keyframes } from '@emotion/react'
 
-/**
- * Main Studio modal overlay
- */
-export function StudioModal() {
-  const { isOpen, closeStudio, viewMode } = useStudio()
+const fadeIn = keyframes`
+  from { opacity: 0; }
+  to { opacity: 1; }
+`
 
-  // Handle escape key
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        closeStudio()
-      }
-    },
-    [closeStudio]
-  )
+const slideIn = keyframes`
+  from { 
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to { 
+    opacity: 1;
+    transform: scale(1);
+  }
+`
 
-  useEffect(() => {
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown)
-      document.body.style.overflow = 'hidden'
+const styles = {
+  overlay: css`
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: ${fadeIn} 0.15s ease-out;
+  `,
+  modal: css`
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    max-width: 400px;
+    width: 90%;
+    animation: ${slideIn} 0.15s ease-out;
+  `,
+  header: css`
+    padding: 20px 24px 0;
+  `,
+  title: css`
+    font-size: 18px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0;
+  `,
+  body: css`
+    padding: 12px 24px 24px;
+  `,
+  message: css`
+    font-size: 14px;
+    color: #6b7280;
+    margin: 0;
+    line-height: 1.5;
+  `,
+  footer: css`
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid #e5e7eb;
+    background-color: #f9fafb;
+    border-radius: 0 0 12px 12px;
+  `,
+  btn: css`
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  `,
+  btnCancel: css`
+    background-color: white;
+    border: 1px solid #d1d5db;
+    color: #374151;
+    
+    &:hover {
+      background-color: #f9fafb;
     }
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-      document.body.style.overflow = ''
+  `,
+  btnConfirm: css`
+    background-color: #9333ea;
+    border: 1px solid #9333ea;
+    color: white;
+    
+    &:hover {
+      background-color: #7c3aed;
     }
-  }, [isOpen, handleKeyDown])
+  `,
+  btnDanger: css`
+    background-color: #dc2626;
+    border: 1px solid #dc2626;
+    color: white;
+    
+    &:hover {
+      background-color: #b91c1c;
+    }
+  `,
+}
 
-  if (!isOpen) return null
+interface ConfirmModalProps {
+  title: string
+  message: string
+  confirmLabel?: string
+  cancelLabel?: string
+  variant?: 'default' | 'danger'
+  onConfirm: () => void
+  onCancel: () => void
+}
 
+export function ConfirmModal({
+  title,
+  message,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  variant = 'default',
+  onConfirm,
+  onCancel,
+}: ConfirmModalProps) {
   return (
-    <div className="fixed inset-0 z-[9999]">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={closeStudio}
-      />
-
-      {/* Modal */}
-      <div className="absolute inset-8 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h1 className="text-xl font-semibold text-gray-900">Studio</h1>
-          <div className="flex items-center gap-2">
-            <StudioSettings />
-            <button
-              onClick={closeStudio}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              aria-label="Close Studio"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="w-5 h-5 text-gray-500"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
+    <div css={styles.overlay} onClick={onCancel}>
+      <div css={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div css={styles.header}>
+          <h3 css={styles.title}>{title}</h3>
         </div>
+        <div css={styles.body}>
+          <p css={styles.message}>{message}</p>
+        </div>
+        <div css={styles.footer}>
+          <button css={[styles.btn, styles.btnCancel]} onClick={onCancel}>
+            {cancelLabel}
+          </button>
+          <button
+            css={[styles.btn, variant === 'danger' ? styles.btnDanger : styles.btnConfirm]}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
-        {/* Toolbar */}
-        <StudioToolbar />
+interface AlertModalProps {
+  title: string
+  message: string
+  buttonLabel?: string
+  onClose: () => void
+}
 
-        {/* Breadcrumb */}
-        <StudioBreadcrumb />
-
-        {/* Content */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* File browser */}
-          <div className="flex-1 overflow-auto p-4">
-            {viewMode === 'grid' ? <StudioFileGrid /> : <StudioFileList />}
-          </div>
-
-          {/* Preview panel */}
-          <StudioPreview />
+export function AlertModal({
+  title,
+  message,
+  buttonLabel = 'OK',
+  onClose,
+}: AlertModalProps) {
+  return (
+    <div css={styles.overlay} onClick={onClose}>
+      <div css={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div css={styles.header}>
+          <h3 css={styles.title}>{title}</h3>
+        </div>
+        <div css={styles.body}>
+          <p css={styles.message}>{message}</p>
+        </div>
+        <div css={styles.footer}>
+          <button css={[styles.btn, styles.btnConfirm]} onClick={onClose}>
+            {buttonLabel}
+          </button>
         </div>
       </div>
     </div>
