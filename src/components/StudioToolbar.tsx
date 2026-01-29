@@ -273,6 +273,12 @@ export function StudioToolbar() {
           </span>
         )}
 
+        <ToolbarButton
+          onClick={triggerRefresh}
+          icon="reload"
+          label="Refresh"
+        />
+
         <div css={styles.viewToggle}>
           <button
             css={[styles.viewBtn, viewMode === 'grid' && styles.viewBtnActive]}
@@ -297,7 +303,7 @@ export function StudioToolbar() {
 
 interface ToolbarButtonProps {
   onClick: () => void
-  icon: 'upload' | 'refresh' | 'trash' | 'cloud' | 'scan'
+  icon: 'upload' | 'refresh' | 'trash' | 'cloud' | 'scan' | 'reload'
   label: string
   disabled?: boolean
   variant?: 'default' | 'danger'
@@ -352,6 +358,12 @@ function IconComponent({ icon }: { icon: string }) {
       return (
         <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      )
+    case 'reload':
+      return (
+        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
       )
     default:

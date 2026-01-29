@@ -227,16 +227,19 @@ async function handleUpload(request: NextRequest) {
       meta.images = {}
     }
 
-    // Calculate the subdirectory within images/originals
-    // If viewing public/images/photos, the subdir is "photos"
-    let subDir = ''
-    if (targetPath.startsWith('public/images/')) {
-      subDir = targetPath.replace('public/images/', '')
-    } else if (targetPath.startsWith('public/originals/')) {
-      subDir = targetPath.replace('public/originals/', '')
+    // Calculate relative path from public/ for the original
+    // e.g., "public/photos" -> "photos", "public" -> ""
+    let relativeDir = ''
+    if (targetPath.startsWith('public/')) {
+      relativeDir = targetPath.replace('public/', '')
+      // Don't save originals into images/ folder
+      if (relativeDir.startsWith('images/') || relativeDir === 'images') {
+        relativeDir = relativeDir.replace(/^images\/?/, '')
+      }
     }
     
-    const fullImageKey = subDir ? `${subDir}/${fileName}` : fileName
+    // Image key is the relative path from public/ to the file
+    const fullImageKey = relativeDir ? `${relativeDir}/${fileName}` : fileName
 
     if (meta.images[fullImageKey]) {
       return NextResponse.json(
@@ -245,13 +248,13 @@ async function handleUpload(request: NextRequest) {
       )
     }
 
-    // Save original
-    const originalsPath = path.join(process.cwd(), 'public', 'originals', subDir)
-    await fs.mkdir(originalsPath, { recursive: true })
-    await fs.writeFile(path.join(originalsPath, fileName), buffer)
+    // Save original to public/ (not public/originals/)
+    const originalDir = path.join(process.cwd(), 'public', relativeDir)
+    await fs.mkdir(originalDir, { recursive: true })
+    await fs.writeFile(path.join(originalDir, fileName), buffer)
 
-    // Generate thumbnails directory
-    const imagesPath = path.join(process.cwd(), 'public', 'images', subDir)
+    // Generate thumbnails in public/images/ with matching subpath
+    const imagesPath = path.join(process.cwd(), 'public', 'images', relativeDir)
     await fs.mkdir(imagesPath, { recursive: true })
 
     let originalWidth = 0
@@ -269,7 +272,7 @@ async function handleUpload(request: NextRequest) {
       // SVG: just copy to images folder, no processing
       const fullPath = path.join(imagesPath, fileName)
       await fs.writeFile(fullPath, buffer)
-      sizes.full = { path: `/images/${subDir ? subDir + '/' : ''}${fileName}`, width: 0, height: 0 }
+      sizes.full = { path: `/images/${relativeDir ? relativeDir + '/' : ''}${fileName}`, width: 0, height: 0 }
       sizes.large = { ...sizes.full }
       sizes.medium = { ...sizes.full }
       sizes.small = { ...sizes.full }
@@ -290,7 +293,7 @@ async function handleUpload(request: NextRequest) {
       } else {
         await sharp(buffer).jpeg({ quality: 85 }).toFile(fullPath)
       }
-      sizes.full = { path: `/images/${subDir ? subDir + '/' : ''}${fullFileName}`, width: originalWidth, height: originalHeight }
+      sizes.full = { path: `/images/${relativeDir ? relativeDir + '/' : ''}${fullFileName}`, width: originalWidth, height: originalHeight }
 
       // Generate each thumbnail size
       for (const [sizeName, maxWidth] of Object.entries(DEFAULT_SIZES) as [ImageSize, number][]) {
@@ -311,7 +314,7 @@ async function handleUpload(request: NextRequest) {
         }
 
         sizes[sizeName] = {
-          path: `/images/${subDir ? subDir + '/' : ''}${sizeFileName}`,
+          path: `/images/${relativeDir ? relativeDir + '/' : ''}${sizeFileName}`,
           width: maxWidth,
           height: newHeight,
         }
@@ -331,9 +334,12 @@ async function handleUpload(request: NextRequest) {
       dominantColor = `#${dominant.r.toString(16).padStart(2, '0')}${dominant.g.toString(16).padStart(2, '0')}${dominant.b.toString(16).padStart(2, '0')}`
     }
 
+    // Original path is relative to public/ (e.g., "/flower.jpg" or "/photos/wedding.jpg")
+    const originalPath = `/${relativeDir ? relativeDir + '/' : ''}${fileName}`
+
     const entry: ImageEntry = {
       original: {
-        path: `/originals/${subDir ? subDir + '/' : ''}${fileName}`,
+        path: originalPath,
         width: originalWidth,
         height: originalHeight,
         fileSize: buffer.length,
@@ -380,9 +386,10 @@ async function handleDelete(request: NextRequest) {
         if (stats.isDirectory()) {
           await fs.rm(absolutePath, { recursive: true })
           
+          // Remove prefix to get image key pattern
           const prefix = itemPath
-            .replace(/^public\/originals\/?/, '')
             .replace(/^public\/images\/?/, '')
+            .replace(/^public\/?/, '')
           
           for (const key of Object.keys(meta.images)) {
             if (key.startsWith(prefix)) {
@@ -392,13 +399,15 @@ async function handleDelete(request: NextRequest) {
         } else {
           await fs.unlink(absolutePath)
 
-          const imageKey = itemPath
-            .replace(/^public\/originals\//, '')
-            .replace(/^public\/images\//, '')
-
-          if (itemPath.includes('/originals/')) {
+          // Check if this is an original (in public/, not in public/images/)
+          const isInImagesFolder = itemPath.startsWith('public/images/')
+          
+          if (!isInImagesFolder) {
+            // Deleting an original from public/ - also delete its thumbnails
+            const imageKey = itemPath.replace(/^public\//, '')
             const entry = meta.images[imageKey]
             if (entry) {
+              // Delete all generated thumbnails
               for (const sizeData of Object.values(entry.sizes)) {
                 const sizePath = path.join(process.cwd(), 'public', sizeData.path)
                 try { await fs.unlink(sizePath) } catch { /* ignore */ }
@@ -406,6 +415,7 @@ async function handleDelete(request: NextRequest) {
               delete meta.images[imageKey]
             }
           }
+          // If deleting from images/, just delete the file (already done above)
         }
 
         deleted.push(itemPath)
