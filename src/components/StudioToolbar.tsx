@@ -2,9 +2,13 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import { css } from '@emotion/react'
+import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal } from './StudioModal'
+
+const spin = keyframes`
+  to { transform: rotate(360deg); }
+`
 
 const styles = {
   toolbar: css`
@@ -61,6 +65,9 @@ const styles = {
     width: 16px;
     height: 16px;
   `,
+  iconSpin: css`
+    animation: ${spin} 1s linear infinite;
+  `,
   selectionCount: css`
     font-size: 14px;
     color: #4b5563;
@@ -107,12 +114,23 @@ export function StudioToolbar() {
   const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh } = useStudio()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
+
+  // Check if we're in the images folder (uploads not allowed there)
+  const isInImagesFolder = currentPath === 'public/images' || currentPath.startsWith('public/images/')
 
   const handleUpload = useCallback(() => {
     fileInputRef.current?.click()
   }, [])
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true)
+    triggerRefresh()
+    // Stop spinning after a short delay (the actual refresh is instant)
+    setTimeout(() => setRefreshing(false), 600)
+  }, [triggerRefresh])
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -248,7 +266,7 @@ export function StudioToolbar() {
           onClick={handleUpload} 
           icon="upload" 
           label={uploading ? 'Uploading...' : 'Upload'} 
-          disabled={uploading}
+          disabled={uploading || isInImagesFolder}
         />
         <ToolbarButton
           onClick={handleReprocess}
@@ -283,9 +301,10 @@ export function StudioToolbar() {
         )}
 
         <ToolbarButton
-          onClick={triggerRefresh}
+          onClick={handleRefresh}
           icon="reload"
           label="Refresh"
+          spinning={refreshing}
         />
 
         <div css={styles.viewToggle}>
@@ -316,6 +335,7 @@ interface ToolbarButtonProps {
   label: string
   disabled?: boolean
   variant?: 'default' | 'danger'
+  spinning?: boolean
 }
 
 function ToolbarButton({
@@ -324,6 +344,7 @@ function ToolbarButton({
   label,
   disabled,
   variant = 'default',
+  spinning,
 }: ToolbarButtonProps) {
   return (
     <button
@@ -331,13 +352,13 @@ function ToolbarButton({
       onClick={onClick}
       disabled={disabled}
     >
-      <IconComponent icon={icon} />
+      <IconComponent icon={icon} spinning={spinning} />
       {label}
     </button>
   )
 }
 
-function IconComponent({ icon }: { icon: string }) {
+function IconComponent({ icon, spinning }: { icon: string; spinning?: boolean }) {
   switch (icon) {
     case 'upload':
       return (
@@ -371,7 +392,7 @@ function IconComponent({ icon }: { icon: string }) {
       )
     case 'reload':
       return (
-        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg css={[styles.icon, spinning && styles.iconSpin]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
       )
