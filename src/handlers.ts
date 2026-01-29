@@ -589,59 +589,16 @@ async function loadMeta(): Promise<StudioMeta> {
     const content = await fs.readFile(metaPath, 'utf-8')
     const parsed = JSON.parse(content)
     
-    // Handle legacy flat format (keys are image paths at root level)
-    // vs new format with { images: {...} }
     if (parsed.images && typeof parsed.images === 'object') {
-      // New format - already has images property
       return parsed
-    } else {
-      // Legacy format - convert flat structure to new format
-      // Filter out metadata keys like $schema, version, generatedAt
-      const images: Record<string, ImageEntry> = {}
-      for (const [key, value] of Object.entries(parsed)) {
-        if (key.startsWith('/images/') && typeof value === 'object' && value !== null) {
-          // Convert legacy format to new format
-          const legacyEntry = value as Record<string, { width: number; height: number; file: string }>
-          const sizes: Record<ImageSize, { path: string; width: number; height: number }> = {
-            full: { path: '', width: 0, height: 0 },
-            large: { path: '', width: 0, height: 0 },
-            medium: { path: '', width: 0, height: 0 },
-            small: { path: '', width: 0, height: 0 },
-          }
-          
-          for (const [sizeName, sizeData] of Object.entries(legacyEntry)) {
-            if (sizeName === 'small' || sizeName === 'medium' || sizeName === 'large' || sizeName === 'full') {
-              sizes[sizeName] = {
-                path: sizeData.file,
-                width: sizeData.width,
-                height: sizeData.height,
-              }
-            }
-          }
-          
-          // Extract image key from path (e.g., "/images/banner.jpg" -> "banner.jpg")
-          const imageKey = key.replace(/^\/images\//, '')
-          images[imageKey] = {
-            original: {
-              path: key.replace('/images/', '/originals/'),
-              width: sizes.full.width,
-              height: sizes.full.height,
-              fileSize: 0,
-            },
-            sizes,
-            blurhash: '',
-            dominantColor: '#888888',
-            cdn: null,
-          }
-        }
-      }
-      
-      return {
-        $schema: 'https://gallop.software/schemas/studio-meta.json',
-        version: 1,
-        generatedAt: new Date().toISOString(),
-        images,
-      }
+    }
+    
+    // Return empty meta if format is invalid
+    return {
+      $schema: 'https://gallop.software/schemas/studio-meta.json',
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      images: {},
     }
   } catch {
     return {
