@@ -57,6 +57,11 @@ export interface FileItem {
   size?: number
   dimensions?: { width: number; height: number }
   cdnSynced?: boolean
+  // Folder-specific properties
+  fileCount?: number
+  totalSize?: number
+  // For showing thumbnails in list view
+  thumbnail?: string
 }
 
 /**

@@ -106,6 +106,11 @@ const styles = {
     height: 64px;
     color: #facc15;
   `,
+  fileIcon: css`
+    width: 48px;
+    height: 48px;
+    color: #9ca3af;
+  `,
   image: css`
     max-width: 100%;
     max-height: 100%;
@@ -204,24 +209,14 @@ export function StudioFileGrid() {
     return a.name.localeCompare(b.name)
   })
 
-  const files = sortedItems.filter(item => item.type !== 'folder')
-  const allFilesSelected = files.length > 0 && files.every(item => selectedItems.has(item.path))
-  const someFilesSelected = files.some(item => selectedItems.has(item.path))
-
-  const handleSelectAll = () => {
-    if (allFilesSelected) {
-      clearSelection()
-    } else {
-      selectAll(files)
-    }
-  }
-
   const handleItemClick = (item: FileItem, e: React.MouseEvent) => {
     if (item.type === 'folder') {
+      // Clicking on folder box navigates into it
       setCurrentPath(item.path)
       return
     }
 
+    // For files, toggle selection
     if (e.shiftKey && lastSelectedPath) {
       selectRange(lastSelectedPath, item.path, sortedItems)
     } else {
@@ -229,21 +224,42 @@ export function StudioFileGrid() {
     }
   }
 
+  const handleCheckboxClick = (item: FileItem, e: React.MouseEvent) => {
+    // Checkbox click always toggles selection (for both files and folders)
+    if (e.shiftKey && lastSelectedPath) {
+      selectRange(lastSelectedPath, item.path, sortedItems)
+    } else {
+      toggleSelection(item.path)
+    }
+  }
+
+  // Count all items for select all (now includes folders)
+  const allItemsSelected = sortedItems.length > 0 && sortedItems.every(item => selectedItems.has(item.path))
+  const someItemsSelected = sortedItems.some(item => selectedItems.has(item.path))
+
+  const handleSelectAll = () => {
+    if (allItemsSelected) {
+      clearSelection()
+    } else {
+      selectAll(sortedItems)
+    }
+  }
+
   return (
     <div>
-      {files.length > 0 && (
+      {sortedItems.length > 0 && (
         <div css={styles.selectAllRow}>
           <label css={styles.selectAllLabel}>
             <input
               type="checkbox"
               css={styles.selectAllCheckbox}
-              checked={allFilesSelected}
+              checked={allItemsSelected}
               ref={(el) => {
-                if (el) el.indeterminate = someFilesSelected && !allFilesSelected
+                if (el) el.indeterminate = someItemsSelected && !allItemsSelected
               }}
               onChange={handleSelectAll}
             />
-            Select all ({files.length})
+            Select all ({sortedItems.length})
           </label>
         </div>
       )}
@@ -254,6 +270,7 @@ export function StudioFileGrid() {
             item={item}
             isSelected={selectedItems.has(item.path)}
             onClick={(e) => handleItemClick(item, e)}
+            onCheckboxClick={(e) => handleCheckboxClick(item, e)}
           />
         ))}
       </div>
@@ -265,27 +282,25 @@ interface GridItemProps {
   item: FileItem
   isSelected: boolean
   onClick: (e: React.MouseEvent) => void
+  onCheckboxClick: (e: React.MouseEvent) => void
 }
 
-function GridItem({ item, isSelected, onClick }: GridItemProps) {
+function GridItem({ item, isSelected, onClick, onCheckboxClick }: GridItemProps) {
   const isFolder = item.type === 'folder'
 
   return (
     <div css={[styles.item, isSelected && styles.itemSelected]} onClick={onClick}>
-      {/* Only show checkbox for files, not folders */}
-      {!isFolder && (
-        <input
-          type="checkbox"
-          css={styles.checkbox}
-          checked={isSelected}
-          onChange={() => {}}
-          onClick={(e) => {
-            e.stopPropagation()
-            // Trigger the same click handler as the container
-            onClick(e as unknown as React.MouseEvent)
-          }}
-        />
-      )}
+      {/* Show checkbox for both files and folders */}
+      <input
+        type="checkbox"
+        css={styles.checkbox}
+        checked={isSelected}
+        onChange={() => {}}
+        onClick={(e) => {
+          e.stopPropagation()
+          onCheckboxClick(e)
+        }}
+      />
 
       {item.cdnSynced && <span css={styles.cdnBadge}>CDN</span>}
 
@@ -294,19 +309,31 @@ function GridItem({ item, isSelected, onClick }: GridItemProps) {
           <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
             <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
           </svg>
-        ) : (
+        ) : item.thumbnail ? (
           <img
             css={styles.image}
-            src={item.path.replace('public', '')}
+            src={item.thumbnail}
             alt={item.name}
             loading="lazy"
           />
+        ) : (
+          <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
         )}
       </div>
 
       <div css={styles.label}>
         <p css={styles.name} title={item.name}>{item.name}</p>
-        {item.size && <p css={styles.size}>{formatFileSize(item.size)}</p>}
+        {isFolder ? (
+          <p css={styles.size}>
+            {item.fileCount !== undefined ? `${item.fileCount} files` : ''}
+            {item.fileCount !== undefined && item.totalSize !== undefined ? ' · ' : ''}
+            {item.totalSize !== undefined ? formatFileSize(item.totalSize) : ''}
+          </p>
+        ) : (
+          item.size !== undefined && <p css={styles.size}>{formatFileSize(item.size)}</p>
+        )}
       </div>
     </div>
   )

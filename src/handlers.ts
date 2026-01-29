@@ -107,18 +107,25 @@ async function handleList(request: NextRequest) {
       const itemPath = path.join(safePath, entry.name)
 
       if (entry.isDirectory()) {
+        // Calculate folder stats
+        const folderStats = await getFolderStats(path.join(absolutePath, entry.name))
         items.push({
           name: entry.name,
           path: itemPath,
           type: 'folder',
+          fileCount: folderStats.fileCount,
+          totalSize: folderStats.totalSize,
         })
-      } else if (isImageFile(entry.name)) {
+      } else if (isMediaFile(entry.name)) {
         const stats = await fs.stat(path.join(absolutePath, entry.name))
+        // For images, provide thumbnail path (the file itself serves as thumbnail)
+        const thumbnail = isImageFile(entry.name) ? itemPath.replace('public', '') : undefined
         items.push({
           name: entry.name,
           path: itemPath,
           type: 'file',
           size: stats.size,
+          thumbnail,
         })
       }
     }
@@ -128,6 +135,31 @@ async function handleList(request: NextRequest) {
     console.error('Failed to list directory:', error)
     return NextResponse.json({ error: 'Failed to list directory' }, { status: 500 })
   }
+}
+
+async function getFolderStats(folderPath: string): Promise<{ fileCount: number; totalSize: number }> {
+  let fileCount = 0
+  let totalSize = 0
+
+  async function scanFolder(dir: string): Promise<void> {
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue
+        const fullPath = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          await scanFolder(fullPath)
+        } else if (isMediaFile(entry.name)) {
+          fileCount++
+          const stats = await fs.stat(fullPath)
+          totalSize += stats.size
+        }
+      }
+    } catch { /* ignore errors */ }
+  }
+
+  await scanFolder(folderPath)
+  return { fileCount, totalSize }
 }
 
 async function handleScan() {
@@ -635,7 +667,20 @@ async function saveMeta(meta: StudioMeta): Promise<void> {
 
 function isImageFile(filename: string): boolean {
   const ext = path.extname(filename).toLowerCase()
-  return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'].includes(ext)
+  return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif'].includes(ext)
+}
+
+function isMediaFile(filename: string): boolean {
+  const ext = path.extname(filename).toLowerCase()
+  // Images
+  if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif'].includes(ext)) return true
+  // Videos
+  if (['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v'].includes(ext)) return true
+  // Audio
+  if (['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac'].includes(ext)) return true
+  // Documents/PDFs
+  if (['.pdf'].includes(ext)) return true
+  return false
 }
 
 function getContentType(filePath: string): string {

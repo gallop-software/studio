@@ -101,6 +101,13 @@ const styles = {
     height: 20px;
     color: #9ca3af;
   `,
+  thumbnail: css`
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+  `,
   name: css`
     font-size: 14px;
     color: #111827;
@@ -170,28 +177,39 @@ export function StudioFileList() {
     return a.name.localeCompare(b.name)
   })
 
-  const files = sortedItems.filter(item => item.type !== 'folder')
-  const allFilesSelected = files.length > 0 && files.every(item => selectedItems.has(item.path))
-  const someFilesSelected = files.some(item => selectedItems.has(item.path))
-
-  const handleSelectAll = () => {
-    if (allFilesSelected) {
-      clearSelection()
-    } else {
-      selectAll(files)
-    }
-  }
-
   const handleItemClick = (item: FileItem, e: React.MouseEvent) => {
     if (item.type === 'folder') {
+      // Clicking on folder row navigates into it
       setCurrentPath(item.path)
       return
     }
 
+    // For files, toggle selection
     if (e.shiftKey && lastSelectedPath) {
       selectRange(lastSelectedPath, item.path, sortedItems)
     } else {
       toggleSelection(item.path)
+    }
+  }
+
+  const handleCheckboxClick = (item: FileItem, e: React.MouseEvent) => {
+    // Checkbox click always toggles selection (for both files and folders)
+    if (e.shiftKey && lastSelectedPath) {
+      selectRange(lastSelectedPath, item.path, sortedItems)
+    } else {
+      toggleSelection(item.path)
+    }
+  }
+
+  // Count all items for select all (now includes folders)
+  const allItemsSelected = sortedItems.length > 0 && sortedItems.every(item => selectedItems.has(item.path))
+  const someItemsSelected = sortedItems.some(item => selectedItems.has(item.path))
+
+  const handleSelectAll = () => {
+    if (allItemsSelected) {
+      clearSelection()
+    } else {
+      selectAll(sortedItems)
     }
   }
 
@@ -200,13 +218,13 @@ export function StudioFileList() {
       <thead>
         <tr>
           <th css={[styles.th, styles.thCheckbox]}>
-            {files.length > 0 && (
+            {sortedItems.length > 0 && (
               <input
                 type="checkbox"
                 css={styles.checkbox}
-                checked={allFilesSelected}
+                checked={allItemsSelected}
                 ref={(el) => {
-                  if (el) el.indeterminate = someFilesSelected && !allFilesSelected
+                  if (el) el.indeterminate = someItemsSelected && !allItemsSelected
                 }}
                 onChange={handleSelectAll}
               />
@@ -225,6 +243,7 @@ export function StudioFileList() {
             item={item}
             isSelected={selectedItems.has(item.path)}
             onClick={(e) => handleItemClick(item, e)}
+            onCheckboxClick={(e) => handleCheckboxClick(item, e)}
           />
         ))}
       </tbody>
@@ -236,28 +255,26 @@ interface ListRowProps {
   item: FileItem
   isSelected: boolean
   onClick: (e: React.MouseEvent) => void
+  onCheckboxClick: (e: React.MouseEvent) => void
 }
 
-function ListRow({ item, isSelected, onClick }: ListRowProps) {
+function ListRow({ item, isSelected, onClick, onCheckboxClick }: ListRowProps) {
   const isFolder = item.type === 'folder'
 
   return (
     <tr css={[styles.row, isSelected && styles.rowSelected]} onClick={onClick}>
       <td css={styles.td}>
-        {/* Only show checkbox for files, not folders */}
-        {!isFolder && (
-          <input
-            type="checkbox"
-            css={styles.checkbox}
-            checked={isSelected}
-            onChange={() => {}}
-            onClick={(e) => {
-              e.stopPropagation()
-              // Trigger the same click handler as the row
-              onClick(e as unknown as React.MouseEvent)
-            }}
-          />
-        )}
+        {/* Show checkbox for both files and folders */}
+        <input
+          type="checkbox"
+          css={styles.checkbox}
+          checked={isSelected}
+          onChange={() => {}}
+          onClick={(e) => {
+            e.stopPropagation()
+            onCheckboxClick(e)
+          }}
+        />
       </td>
       <td css={styles.td}>
         <div css={styles.nameCell}>
@@ -265,19 +282,27 @@ function ListRow({ item, isSelected, onClick }: ListRowProps) {
             <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
               <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
             </svg>
+          ) : item.thumbnail ? (
+            <img css={styles.thumbnail} src={item.thumbnail} alt={item.name} loading="lazy" />
           ) : (
             <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
           )}
           <span css={styles.name}>{item.name}</span>
         </div>
       </td>
       <td css={[styles.td, styles.meta]}>
-        {item.size ? formatFileSize(item.size) : '--'}
+        {isFolder 
+          ? (item.fileCount !== undefined ? `${item.fileCount} files` : '--')
+          : (item.size !== undefined ? formatFileSize(item.size) : '--')
+        }
       </td>
       <td css={[styles.td, styles.meta]}>
-        {item.dimensions ? `${item.dimensions.width}x${item.dimensions.height}` : '--'}
+        {isFolder 
+          ? (item.totalSize !== undefined ? formatFileSize(item.totalSize) : '--')
+          : (item.dimensions ? `${item.dimensions.width}x${item.dimensions.height}` : '--')
+        }
       </td>
       <td css={styles.td}>
         {item.cdnSynced ? (
