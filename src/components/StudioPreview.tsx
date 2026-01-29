@@ -19,70 +19,96 @@ function isVideoFile(filename: string): boolean {
   return VIDEO_EXTENSIONS.includes(ext)
 }
 
+// Stripe-inspired design tokens
+const colors = {
+  primary: '#635bff',
+  primaryHover: '#5851e5',
+  primaryLight: '#f0f0ff',
+  background: '#f6f9fc',
+  surface: '#ffffff',
+  surfaceHover: '#f6f9fc',
+  border: '#e3e8ee',
+  borderLight: '#eef1f6',
+  text: '#1a1f36',
+  textSecondary: '#697386',
+  textMuted: '#8792a2',
+  success: '#0d7d4d',
+  successLight: '#e6f7ef',
+  danger: '#df1b41',
+  dangerLight: '#fff5f7',
+}
+
 const styles = {
   panel: css`
     width: 320px;
-    border-left: 1px solid #e5e7eb;
-    background-color: #f9fafb;
-    padding: 16px;
+    border-left: 1px solid ${colors.border};
+    background-color: ${colors.surface};
+    padding: 20px;
     overflow: auto;
   `,
   title: css`
-    font-size: 14px;
-    font-weight: 500;
-    color: #111827;
+    font-size: 13px;
+    font-weight: 600;
+    color: ${colors.textSecondary};
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     margin: 0 0 16px 0;
   `,
   imageContainer: css`
-    background-color: white;
+    background-color: ${colors.background};
     border-radius: 8px;
-    border: 1px solid #e5e7eb;
-    padding: 8px;
-    margin-bottom: 16px;
+    border: 1px solid ${colors.border};
+    padding: 12px;
+    margin-bottom: 20px;
   `,
   image: css`
     width: 100%;
     height: auto;
-    border-radius: 4px;
+    border-radius: 6px;
   `,
   info: css`
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
   `,
   row: css`
     display: flex;
     justify-content: space-between;
-    font-size: 12px;
+    font-size: 13px;
   `,
   label: css`
-    color: #6b7280;
+    color: ${colors.textSecondary};
   `,
   value: css`
-    color: #111827;
+    color: ${colors.text};
+    font-weight: 500;
   `,
   valueTruncate: css`
-    max-width: 128px;
+    max-width: 140px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   `,
   section: css`
-    padding-top: 8px;
-    border-top: 1px solid #e5e7eb;
+    padding-top: 12px;
+    margin-top: 4px;
+    border-top: 1px solid ${colors.borderLight};
   `,
   sectionTitle: css`
-    font-size: 12px;
-    font-weight: 500;
-    color: #6b7280;
-    margin: 0 0 8px 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: ${colors.textMuted};
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 10px 0;
   `,
   cdnStatus: css`
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12px;
-    color: #16a34a;
+    font-size: 13px;
+    color: ${colors.success};
+    font-weight: 500;
   `,
   cdnIcon: css`
     width: 16px;
@@ -90,8 +116,9 @@ const styles = {
   `,
   copyBtn: css`
     margin-top: 8px;
-    font-size: 12px;
-    color: #9333ea;
+    font-size: 13px;
+    font-weight: 500;
+    color: ${colors.primary};
     background: none;
     border: none;
     cursor: pointer;
@@ -104,17 +131,20 @@ const styles = {
   colorSwatch: css`
     margin-top: 8px;
     height: 32px;
-    border-radius: 4px;
+    border-radius: 6px;
+    border: 1px solid ${colors.border};
   `,
   emptyState: css`
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 200px;
+    text-align: center;
   `,
   emptyText: css`
-    font-size: 14px;
-    color: #9ca3af;
+    font-size: 13px;
+    color: ${colors.textMuted};
     margin: 0;
   `,
   filePlaceholder: css`
@@ -122,50 +152,55 @@ const styles = {
     align-items: center;
     justify-content: center;
     height: 120px;
+    background: ${colors.background};
+    border-radius: 6px;
   `,
   fileIcon: css`
-    width: 64px;
-    height: 64px;
-    color: #9ca3af;
+    width: 56px;
+    height: 56px;
+    color: ${colors.textMuted};
   `,
   folderIcon: css`
-    width: 64px;
-    height: 64px;
-    color: #facc15;
+    width: 56px;
+    height: 56px;
+    color: #f5a623;
   `,
   video: css`
     width: 100%;
     height: auto;
-    border-radius: 4px;
+    border-radius: 6px;
   `,
   actions: css`
-    margin-top: 16px;
-    padding-top: 16px;
-    border-top: 1px solid #e5e7eb;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid ${colors.border};
     display: flex;
     flex-direction: column;
     gap: 8px;
   `,
   actionBtn: css`
     width: 100%;
-    padding: 8px 12px;
-    font-size: 14px;
-    background-color: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    background-color: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
     cursor: pointer;
-    transition: background-color 0.15s;
-    color: #374151;
+    transition: all 0.15s ease;
+    color: ${colors.text};
     
     &:hover {
-      background-color: #f9fafb;
+      background-color: ${colors.surfaceHover};
+      border-color: #d0d5dd;
     }
   `,
   actionBtnDanger: css`
-    color: #dc2626;
+    color: ${colors.danger};
     
     &:hover {
-      background-color: #fef2f2;
+      background-color: ${colors.dangerLight};
+      border-color: ${colors.danger};
     }
   `,
 }

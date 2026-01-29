@@ -6,6 +6,21 @@ import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import type { FileItem } from '../types'
 
+// Stripe-inspired design tokens
+const colors = {
+  primary: '#635bff',
+  primaryLight: '#f0f0ff',
+  background: '#f6f9fc',
+  surface: '#ffffff',
+  surfaceHover: '#f6f9fc',
+  border: '#e3e8ee',
+  borderLight: '#eef1f6',
+  text: '#1a1f36',
+  textSecondary: '#697386',
+  textMuted: '#8792a2',
+  success: '#0d7d4d',
+}
+
 const spin = keyframes`
   to { transform: rotate(360deg); }
 `
@@ -21,9 +36,9 @@ const styles = {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    border: 2px solid transparent;
-    border-bottom-color: #9333ea;
-    animation: ${spin} 1s linear infinite;
+    border: 3px solid ${colors.border};
+    border-top-color: ${colors.primary};
+    animation: ${spin} 0.8s linear infinite;
   `,
   empty: css`
     display: flex;
@@ -31,7 +46,13 @@ const styles = {
     align-items: center;
     justify-content: center;
     height: 256px;
-    color: #6b7280;
+    color: ${colors.textSecondary};
+  `,
+  tableWrapper: css`
+    background: ${colors.surface};
+    border-radius: 8px;
+    border: 1px solid ${colors.border};
+    overflow: hidden;
   `,
   table: css`
     width: 100%;
@@ -39,15 +60,17 @@ const styles = {
   `,
   th: css`
     text-align: left;
-    font-size: 12px;
-    color: #6b7280;
+    font-size: 11px;
+    color: ${colors.textMuted};
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    padding-bottom: 8px;
-    font-weight: normal;
+    padding: 12px 16px;
+    font-weight: 600;
+    background: ${colors.background};
+    border-bottom: 1px solid ${colors.border};
   `,
   thCheckbox: css`
-    width: 32px;
+    width: 48px;
   `,
   thSize: css`
     width: 96px;
@@ -58,95 +81,104 @@ const styles = {
   thCdn: css`
     width: 96px;
   `,
-  tbody: css`
-    border-top: 1px solid #f3f4f6;
-  `,
+  tbody: css``,
   row: css`
     cursor: pointer;
-    transition: background-color 0.15s;
+    transition: background-color 0.15s ease;
     user-select: none;
     
     &:hover {
-      background-color: #f9fafb;
+      background-color: ${colors.surfaceHover};
+    }
+    
+    &:not(:last-child) td {
+      border-bottom: 1px solid ${colors.borderLight};
     }
   `,
   rowSelected: css`
-    background-color: #faf5ff;
+    background-color: ${colors.primaryLight};
     
     &:hover {
-      background-color: #faf5ff;
+      background-color: ${colors.primaryLight};
     }
   `,
   td: css`
-    padding: 8px 0;
-    border-bottom: 1px solid #f3f4f6;
+    padding: 12px 16px;
   `,
   checkboxCell: css`
-    padding: 8px 12px;
+    padding: 12px 16px;
     cursor: pointer;
   `,
   checkbox: css`
     width: 16px;
     height: 16px;
-    accent-color: #9333ea;
+    accent-color: ${colors.primary};
     cursor: pointer;
   `,
   nameCell: css`
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
   `,
   folderIcon: css`
     width: 20px;
     height: 20px;
-    color: #facc15;
+    color: #f5a623;
+    flex-shrink: 0;
   `,
   fileIcon: css`
     width: 20px;
     height: 20px;
-    color: #9ca3af;
+    color: ${colors.textMuted};
+    flex-shrink: 0;
   `,
   thumbnail: css`
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: 6px;
     flex-shrink: 0;
+    border: 1px solid ${colors.borderLight};
   `,
   name: css`
     font-size: 14px;
-    color: #111827;
+    font-weight: 500;
+    color: ${colors.text};
+    letter-spacing: -0.01em;
   `,
   meta: css`
-    font-size: 14px;
-    color: #6b7280;
+    font-size: 13px;
+    color: ${colors.textSecondary};
   `,
   cdnBadge: css`
     display: inline-flex;
     align-items: center;
     gap: 4px;
     font-size: 12px;
-    color: #15803d;
+    font-weight: 500;
+    color: ${colors.success};
   `,
   cdnIcon: css`
     width: 12px;
     height: 12px;
   `,
   cdnEmpty: css`
-    font-size: 12px;
-    color: #9ca3af;
+    font-size: 13px;
+    color: ${colors.textMuted};
   `,
   openBtn: css`
     font-size: 12px;
-    color: #9333ea;
+    font-weight: 500;
+    color: ${colors.primary};
     background: none;
     border: none;
-    padding: 2px 8px;
+    padding: 4px 10px;
     cursor: pointer;
     border-radius: 4px;
+    transition: background-color 0.15s ease;
     
     &:hover {
-      background-color: #f3e8ff;
+      background-color: ${colors.primaryLight};
     }
   `,
 }

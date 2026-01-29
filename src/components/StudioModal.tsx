@@ -3,6 +3,20 @@
 
 import { css, keyframes } from '@emotion/react'
 
+// Stripe-inspired design tokens
+const colors = {
+  primary: '#635bff',
+  primaryHover: '#5851e5',
+  background: '#f6f9fc',
+  surface: '#ffffff',
+  surfaceHover: '#f6f9fc',
+  border: '#e3e8ee',
+  text: '#1a1f36',
+  textSecondary: '#697386',
+  danger: '#df1b41',
+  dangerHover: '#c41535',
+}
+
 const fadeIn = keyframes`
   from { opacity: 0; }
   to { opacity: 1; }
@@ -11,11 +25,11 @@ const fadeIn = keyframes`
 const slideIn = keyframes`
   from { 
     opacity: 0;
-    transform: scale(0.95);
+    transform: translateY(-8px) scale(0.98);
   }
   to { 
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0) scale(1);
   }
 `
 
@@ -23,7 +37,8 @@ const styles = {
   overlay: css`
     position: fixed;
     inset: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: rgba(26, 31, 54, 0.4);
+    backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -31,73 +46,78 @@ const styles = {
     animation: ${fadeIn} 0.15s ease-out;
   `,
   modal: css`
-    background-color: white;
+    background-color: ${colors.surface};
     border-radius: 12px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    max-width: 400px;
+    box-shadow: 0 30px 60px -12px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.3);
+    max-width: 420px;
     width: 90%;
-    animation: ${slideIn} 0.15s ease-out;
+    animation: ${slideIn} 0.2s ease-out;
+    overflow: hidden;
   `,
   header: css`
-    padding: 20px 24px 0;
+    padding: 24px 24px 0;
   `,
   title: css`
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 600;
-    color: #111827;
+    color: ${colors.text};
     margin: 0;
+    letter-spacing: -0.02em;
   `,
   body: css`
     padding: 12px 24px 24px;
   `,
   message: css`
     font-size: 14px;
-    color: #6b7280;
+    color: ${colors.textSecondary};
     margin: 0;
-    line-height: 1.5;
+    line-height: 1.6;
   `,
   footer: css`
     display: flex;
     justify-content: flex-end;
     gap: 12px;
     padding: 16px 24px;
-    border-top: 1px solid #e5e7eb;
-    background-color: #f9fafb;
-    border-radius: 0 0 12px 12px;
+    border-top: 1px solid ${colors.border};
+    background-color: ${colors.background};
   `,
   btn: css`
-    padding: 8px 16px;
+    padding: 10px 18px;
     font-size: 14px;
     font-weight: 500;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.15s ease;
+    letter-spacing: -0.01em;
   `,
   btnCancel: css`
-    background-color: white;
-    border: 1px solid #d1d5db;
-    color: #374151;
+    background-color: ${colors.surface};
+    border: 1px solid ${colors.border};
+    color: ${colors.text};
     
     &:hover {
-      background-color: #f9fafb;
+      background-color: ${colors.surfaceHover};
+      border-color: #d0d5dd;
     }
   `,
   btnConfirm: css`
-    background-color: #9333ea;
-    border: 1px solid #9333ea;
+    background-color: ${colors.primary};
+    border: 1px solid ${colors.primary};
     color: white;
     
     &:hover {
-      background-color: #7c3aed;
+      background-color: ${colors.primaryHover};
+      border-color: ${colors.primaryHover};
     }
   `,
   btnDanger: css`
-    background-color: #dc2626;
-    border: 1px solid #dc2626;
+    background-color: ${colors.danger};
+    border: 1px solid ${colors.danger};
     color: white;
     
     &:hover {
-      background-color: #b91c1c;
+      background-color: ${colors.dangerHover};
+      border-color: ${colors.dangerHover};
     }
   `,
 }

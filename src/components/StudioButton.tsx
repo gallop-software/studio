@@ -13,28 +13,47 @@ const spin = keyframes`
   }
 `
 
+// Stripe-inspired design tokens
+const colors = {
+  primary: '#635bff',
+  primaryHover: '#5851e5',
+  primaryLight: '#e8e6ff',
+  background: '#f6f9fc',
+  surface: '#ffffff',
+  border: '#e3e8ee',
+  text: '#1a1f36',
+  textSecondary: '#697386',
+  shadow: 'rgba(50, 50, 93, 0.1)',
+  shadowDark: 'rgba(50, 50, 93, 0.2)',
+}
+
 const styles = {
   button: css`
     position: fixed;
     bottom: 24px;
     right: 24px;
     z-index: 9998;
-    width: 48px;
-    height: 48px;
+    width: 52px;
+    height: 52px;
     border-radius: 50%;
-    background: linear-gradient(to bottom right, #a855f7, #ec4899);
+    background: ${colors.primary};
     color: white;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 12px ${colors.shadowDark}, 0 1px 3px ${colors.shadow};
     display: flex;
     align-items: center;
     justify-content: center;
     border: none;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
     
     &:hover {
-      transform: scale(1.05);
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px ${colors.shadowDark}, 0 2px 6px ${colors.shadow};
+      background: ${colors.primaryHover};
+    }
+    
+    &:active {
+      transform: translateY(0);
     }
   `,
   buttonIcon: css`
@@ -48,7 +67,7 @@ const styles = {
     bottom: 0;
     left: 0;
     z-index: 9999;
-    transition: opacity 0.2s, visibility 0.2s;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
   `,
   overlayHidden: css`
     opacity: 0;
@@ -61,18 +80,18 @@ const styles = {
     right: 0;
     bottom: 0;
     left: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: rgba(26, 31, 54, 0.4);
     backdrop-filter: blur(4px);
   `,
   modal: css`
     position: absolute;
-    top: 32px;
-    right: 32px;
-    bottom: 32px;
-    left: 32px;
-    background-color: white;
-    border-radius: 16px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    top: 24px;
+    right: 24px;
+    bottom: 24px;
+    left: 24px;
+    background-color: ${colors.surface};
+    border-radius: 12px;
+    box-shadow: 0 30px 60px -12px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.3);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -82,6 +101,7 @@ const styles = {
     align-items: center;
     justify-content: center;
     height: 100%;
+    background: ${colors.background};
   `,
   loadingContent: css`
     display: flex;
@@ -90,17 +110,19 @@ const styles = {
     gap: 16px;
   `,
   spinner: css`
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    border: 2px solid transparent;
-    border-bottom-color: #9333ea;
-    animation: ${spin} 1s linear infinite;
+    border: 3px solid ${colors.border};
+    border-top-color: ${colors.primary};
+    animation: ${spin} 0.8s linear infinite;
   `,
   loadingText: css`
-    color: #6b7280;
+    color: ${colors.textSecondary};
     font-size: 14px;
+    font-weight: 500;
     margin: 0;
+    letter-spacing: -0.01em;
   `,
 }
 

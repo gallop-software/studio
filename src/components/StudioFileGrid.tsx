@@ -6,6 +6,23 @@ import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import type { FileItem } from '../types'
 
+// Stripe-inspired design tokens
+const colors = {
+  primary: '#635bff',
+  primaryHover: '#5851e5',
+  primaryLight: '#f0f0ff',
+  background: '#f6f9fc',
+  surface: '#ffffff',
+  surfaceHover: '#f6f9fc',
+  border: '#e3e8ee',
+  borderLight: '#eef1f6',
+  text: '#1a1f36',
+  textSecondary: '#697386',
+  textMuted: '#8792a2',
+  success: '#0d7d4d',
+  successLight: '#e6f7ef',
+}
+
 const spin = keyframes`
   to { transform: rotate(360deg); }
 `
@@ -21,9 +38,9 @@ const styles = {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    border: 2px solid transparent;
-    border-bottom-color: #9333ea;
-    animation: ${spin} 1s linear infinite;
+    border: 3px solid ${colors.border};
+    border-top-color: ${colors.primary};
+    animation: ${spin} 0.8s linear infinite;
   `,
   empty: css`
     display: flex;
@@ -31,21 +48,27 @@ const styles = {
     align-items: center;
     justify-content: center;
     height: 256px;
-    color: #6b7280;
+    color: ${colors.textSecondary};
   `,
   emptyIcon: css`
     width: 48px;
     height: 48px;
     margin-bottom: 16px;
+    opacity: 0.5;
   `,
   emptyText: css`
     font-size: 14px;
-    margin: 0;
+    margin: 0 0 4px 0;
+    
+    &:last-child {
+      color: ${colors.textMuted};
+      font-size: 13px;
+    }
   `,
   grid: css`
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
+    gap: 12px;
     
     @media (min-width: 640px) { grid-template-columns: repeat(3, 1fr); }
     @media (min-width: 768px) { grid-template-columns: repeat(4, 1fr); }
@@ -55,23 +78,25 @@ const styles = {
   item: css`
     position: relative;
     border-radius: 8px;
-    border: 2px solid transparent;
+    border: 1px solid ${colors.border};
     overflow: hidden;
     cursor: pointer;
-    transition: all 0.15s;
-    background-color: #f9fafb;
+    transition: all 0.15s ease;
+    background-color: ${colors.surface};
     user-select: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     
     &:hover {
-      border-color: #e5e7eb;
+      border-color: #d0d5dd;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
     }
   `,
   itemSelected: css`
-    border-color: #a855f7;
-    background-color: #faf5ff;
+    border-color: ${colors.primary};
+    box-shadow: 0 0 0 1px ${colors.primary};
     
     &:hover {
-      border-color: #a855f7;
+      border-color: ${colors.primary};
     }
   `,
   checkboxWrapper: css`
@@ -85,7 +110,7 @@ const styles = {
   checkbox: css`
     width: 16px;
     height: 16px;
-    accent-color: #9333ea;
+    accent-color: ${colors.primary};
     cursor: pointer;
   `,
   cdnBadge: css`
@@ -93,11 +118,12 @@ const styles = {
     top: 8px;
     right: 8px;
     z-index: 10;
-    background-color: #dcfce7;
-    color: #15803d;
-    font-size: 12px;
-    padding: 2px 6px;
-    border-radius: 9999px;
+    background-color: ${colors.successLight};
+    color: ${colors.success};
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 4px;
   `,
   content: css`
     aspect-ratio: 1;
@@ -105,16 +131,17 @@ const styles = {
     align-items: center;
     justify-content: center;
     padding: 16px;
+    background: ${colors.background};
   `,
   folderIcon: css`
-    width: 64px;
-    height: 64px;
-    color: #facc15;
+    width: 56px;
+    height: 56px;
+    color: #f5a623;
   `,
   fileIcon: css`
-    width: 48px;
-    height: 48px;
-    color: #9ca3af;
+    width: 40px;
+    height: 40px;
+    color: ${colors.textMuted};
   `,
   image: css`
     max-width: 100%;
@@ -123,70 +150,77 @@ const styles = {
     border-radius: 4px;
   `,
   label: css`
-    padding: 6px 8px;
-    background-color: white;
-    border-top: 1px solid #e5e7eb;
+    padding: 10px 12px;
+    background-color: ${colors.surface};
+    border-top: 1px solid ${colors.borderLight};
   `,
   labelRow: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 4px;
+    gap: 8px;
   `,
   labelText: css`
     flex: 1;
     min-width: 0;
   `,
   name: css`
-    font-size: 12px;
-    color: #374151;
+    font-size: 13px;
+    font-weight: 500;
+    color: ${colors.text};
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     margin: 0;
+    letter-spacing: -0.01em;
   `,
   size: css`
     font-size: 12px;
-    color: #9ca3af;
-    margin: 0;
+    color: ${colors.textMuted};
+    margin: 2px 0 0 0;
   `,
   openBtn: css`
     flex-shrink: 0;
-    font-size: 11px;
-    color: #9333ea;
+    font-size: 12px;
+    font-weight: 500;
+    color: ${colors.primary};
     background: none;
     border: none;
-    padding: 2px 6px;
+    padding: 4px 8px;
     cursor: pointer;
     border-radius: 4px;
+    transition: background-color 0.15s ease;
     
     &:hover {
-      background-color: #f3e8ff;
+      background-color: ${colors.primaryLight};
     }
   `,
   selectAllRow: css`
     display: flex;
     align-items: center;
-    margin-bottom: 12px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: ${colors.surface};
+    border-radius: 8px;
+    border: 1px solid ${colors.border};
   `,
   selectAllLabel: css`
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    color: #6b7280;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    color: ${colors.textSecondary};
     cursor: pointer;
     
     &:hover {
-      color: #374151;
+      color: ${colors.text};
     }
   `,
   selectAllCheckbox: css`
     width: 16px;
     height: 16px;
-    accent-color: #9333ea;
+    accent-color: ${colors.primary};
   `,
 }
 

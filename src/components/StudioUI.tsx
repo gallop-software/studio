@@ -16,25 +16,44 @@ interface StudioUIProps {
   onClose: () => void
 }
 
+// Stripe-inspired design tokens
+const colors = {
+  primary: '#635bff',
+  primaryHover: '#5851e5',
+  background: '#f6f9fc',
+  surface: '#ffffff',
+  surfaceHover: '#f6f9fc',
+  border: '#e3e8ee',
+  borderLight: '#eef1f6',
+  text: '#1a1f36',
+  textSecondary: '#697386',
+  textMuted: '#8792a2',
+}
+
 const styles = {
   container: css`
     display: flex;
     flex-direction: column;
     height: 100%;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Ubuntu, sans-serif;
+    background: ${colors.background};
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   `,
   header: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 16px 24px;
-    border-bottom: 1px solid #e5e7eb;
+    background: ${colors.surface};
+    border-bottom: 1px solid ${colors.border};
   `,
   title: css`
-    font-size: 20px;
+    font-size: 17px;
     font-weight: 600;
-    color: #111827;
+    color: ${colors.text};
     margin: 0;
+    letter-spacing: -0.02em;
   `,
   headerActions: css`
     display: flex;
@@ -45,18 +64,21 @@ const styles = {
     padding: 8px;
     background: none;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: background-color 0.15s;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     
     &:hover {
-      background-color: #f3f4f6;
+      background-color: ${colors.surfaceHover};
     }
   `,
   closeIcon: css`
-    width: 20px;
-    height: 20px;
-    color: #6b7280;
+    width: 18px;
+    height: 18px;
+    color: ${colors.textSecondary};
   `,
   content: css`
     flex: 1;
@@ -67,7 +89,7 @@ const styles = {
     flex: 1;
     min-width: 0;
     overflow: auto;
-    padding: 16px;
+    padding: 20px 24px;
   `,
 }
 

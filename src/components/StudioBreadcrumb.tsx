@@ -4,67 +4,86 @@
 import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
 
+// Stripe-inspired design tokens
+const colors = {
+  primary: '#635bff',
+  background: '#ffffff',
+  surface: '#ffffff',
+  surfaceHover: '#f6f9fc',
+  border: '#e3e8ee',
+  borderLight: '#eef1f6',
+  text: '#1a1f36',
+  textSecondary: '#697386',
+  textMuted: '#8792a2',
+}
+
 const styles = {
   container: css`
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 24px;
-    background-color: white;
-    border-bottom: 1px solid #f3f4f6;
+    padding: 10px 24px;
+    background-color: ${colors.surface};
+    border-bottom: 1px solid ${colors.borderLight};
   `,
   backBtn: css`
-    padding: 4px;
+    padding: 6px;
     background: none;
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: background-color 0.15s;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     
     &:hover {
-      background-color: #f3f4f6;
+      background-color: ${colors.surfaceHover};
     }
   `,
   backIcon: css`
     width: 16px;
     height: 16px;
-    color: #6b7280;
+    color: ${colors.textSecondary};
   `,
   nav: css`
     display: flex;
     align-items: center;
-    gap: 4px;
-    font-size: 14px;
+    gap: 2px;
+    font-size: 13px;
   `,
   item: css`
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
   `,
   separator: css`
-    color: #d1d5db;
+    color: ${colors.textMuted};
+    margin: 0 2px;
   `,
   btn: css`
-    padding: 2px 4px;
+    padding: 4px 8px;
     background: none;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.15s ease;
+    font-size: 13px;
+    letter-spacing: -0.01em;
     
     &:hover {
-      background-color: #f3f4f6;
+      background-color: ${colors.surfaceHover};
     }
   `,
   btnActive: css`
-    color: #111827;
-    font-weight: 500;
+    color: ${colors.text};
+    font-weight: 600;
   `,
   btnInactive: css`
-    color: #6b7280;
+    color: ${colors.textSecondary};
     
     &:hover {
-      color: #374151;
+      color: ${colors.text};
     }
   `,
 }

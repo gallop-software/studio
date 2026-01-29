@@ -6,6 +6,21 @@ import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal } from './StudioModal'
 
+// Stripe-inspired design tokens
+const colors = {
+  primary: '#635bff',
+  primaryHover: '#5851e5',
+  primaryLight: '#f0f0ff',
+  background: '#ffffff',
+  surface: '#ffffff',
+  surfaceHover: '#f6f9fc',
+  border: '#e3e8ee',
+  text: '#1a1f36',
+  textSecondary: '#697386',
+  danger: '#df1b41',
+  dangerLight: '#fff5f7',
+}
+
 const spin = keyframes`
   to { transform: rotate(360deg); }
 `
@@ -16,97 +31,131 @@ const styles = {
     align-items: center;
     justify-content: space-between;
     padding: 12px 24px;
-    background-color: #f9fafb;
-    border-bottom: 1px solid #e5e7eb;
+    background-color: ${colors.background};
+    border-bottom: 1px solid ${colors.border};
   `,
   left: css`
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
   `,
   right: css`
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
   `,
   btn: css`
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 14px;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
     font-weight: 500;
-    background: none;
-    border: none;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
     cursor: pointer;
-    transition: background-color 0.15s;
+    transition: all 0.15s ease;
+    color: ${colors.text};
+    letter-spacing: -0.01em;
+    
+    &:hover:not(:disabled) {
+      background-color: ${colors.surfaceHover};
+      border-color: #d0d5dd;
+    }
     
     &:disabled {
       cursor: not-allowed;
       opacity: 0.5;
     }
   `,
-  btnDefault: css`
-    color: #374151;
+  btnPrimary: css`
+    background: ${colors.primary};
+    border-color: ${colors.primary};
+    color: white;
     
     &:hover:not(:disabled) {
-      background-color: white;
+      background: ${colors.primaryHover};
+      border-color: ${colors.primaryHover};
     }
   `,
   btnDanger: css`
-    color: #dc2626;
+    color: ${colors.danger};
     
     &:hover:not(:disabled) {
-      background-color: #fef2f2;
+      background-color: ${colors.dangerLight};
+      border-color: ${colors.danger};
+    }
+  `,
+  btnGhost: css`
+    border-color: transparent;
+    background: transparent;
+    
+    &:hover:not(:disabled) {
+      background-color: ${colors.surfaceHover};
+      border-color: transparent;
     }
   `,
   icon: css`
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
   `,
   iconSpin: css`
     animation: ${spin} 1s linear infinite;
   `,
   selectionCount: css`
-    font-size: 14px;
-    color: #4b5563;
+    font-size: 13px;
+    color: ${colors.textSecondary};
+    display: flex;
+    align-items: center;
+    gap: 8px;
   `,
   clearBtn: css`
-    margin-left: 8px;
-    color: #9333ea;
+    color: ${colors.primary};
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 0;
     
     &:hover {
       text-decoration: underline;
     }
   `,
+  divider: css`
+    width: 1px;
+    height: 20px;
+    background: ${colors.border};
+    margin: 0 4px;
+  `,
   viewToggle: css`
     display: flex;
     align-items: center;
-    background-color: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    overflow: hidden;
+    background-color: ${colors.surfaceHover};
+    border-radius: 6px;
+    padding: 2px;
   `,
   viewBtn: css`
-    padding: 8px;
-    background: none;
+    padding: 6px 8px;
+    background: transparent;
     border: none;
+    border-radius: 4px;
     cursor: pointer;
-    color: #6b7280;
-    transition: all 0.15s;
+    color: ${colors.textSecondary};
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     
     &:hover {
-      background-color: #f9fafb;
+      color: ${colors.text};
     }
   `,
   viewBtnActive: css`
-    background-color: #f3e8ff;
-    color: #7c3aed;
+    background-color: ${colors.surface};
+    color: ${colors.text};
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   `,
 }
 
@@ -128,7 +177,6 @@ export function StudioToolbar() {
   const handleRefresh = useCallback(() => {
     setRefreshing(true)
     triggerRefresh()
-    // Stop spinning after a short delay (the actual refresh is instant)
     setTimeout(() => setRefreshing(false), 600)
   }, [triggerRefresh])
 
@@ -150,7 +198,6 @@ export function StudioToolbar() {
 
         if (!response.ok) {
           const error = await response.json()
-          // Only log server errors (500s), not validation messages (400s)
           if (response.status >= 500) {
             console.error('Upload error:', error)
             setAlertMessage({
@@ -158,7 +205,6 @@ export function StudioToolbar() {
               message: `Failed to upload ${file.name}: ${error.error || 'Unknown error'}`,
             })
           } else {
-            // Validation message - not an error, just guidance
             setAlertMessage({
               title: 'Cannot Upload Here',
               message: error.error || 'Upload not allowed in this location.',
@@ -251,154 +297,134 @@ export function StudioToolbar() {
       )}
 
       <div css={styles.toolbar}>
-        {/* Hidden file input for upload */}
         <input
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/*"
+          accept="image/*,video/*,audio/*,.pdf"
           onChange={handleFileChange}
           style={{ display: 'none' }}
         />
       
-      <div css={styles.left}>
-        <ToolbarButton 
-          onClick={handleUpload} 
-          icon="upload" 
-          label={uploading ? 'Uploading...' : 'Upload'} 
-          disabled={uploading || isInImagesFolder}
-        />
-        <ToolbarButton
-          onClick={handleReprocess}
-          icon="refresh"
-          label="Reprocess"
-          disabled={!hasSelection}
-        />
-        <ToolbarButton
-          onClick={handleDeleteClick}
-          icon="trash"
-          label="Delete"
-          disabled={!hasSelection}
-          variant="danger"
-        />
-        <ToolbarButton
-          onClick={handleSyncCdn}
-          icon="cloud"
-          label="Sync CDN"
-          disabled={!hasSelection}
-        />
-        <ToolbarButton onClick={handleScan} icon="scan" label="Scan" />
-      </div>
-
-      <div css={styles.right}>
-        {hasSelection && (
-          <span css={styles.selectionCount}>
-            {selectedItems.size} selected
-            <button css={styles.clearBtn} onClick={clearSelection}>
-              Clear
-            </button>
-          </span>
-        )}
-
-        <ToolbarButton
-          onClick={handleRefresh}
-          icon="reload"
-          label="Refresh"
-          spinning={refreshing}
-        />
-
-        <div css={styles.viewToggle}>
+        <div css={styles.left}>
           <button
-            css={[styles.viewBtn, viewMode === 'grid' && styles.viewBtnActive]}
-            onClick={() => setViewMode('grid')}
-            aria-label="Grid view"
+            css={[styles.btn, styles.btnPrimary]}
+            onClick={handleUpload}
+            disabled={uploading || isInImagesFolder}
           >
-            <GridIcon />
+            <UploadIcon />
+            {uploading ? 'Uploading...' : 'Upload'}
+          </button>
+          
+          <div css={styles.divider} />
+          
+          <button
+            css={[styles.btn, styles.btnGhost]}
+            onClick={handleReprocess}
+            disabled={!hasSelection}
+          >
+            <RefreshIcon />
+            Reprocess
           </button>
           <button
-            css={[styles.viewBtn, viewMode === 'list' && styles.viewBtnActive]}
-            onClick={() => setViewMode('list')}
-            aria-label="List view"
+            css={[styles.btn, styles.btnGhost, styles.btnDanger]}
+            onClick={handleDeleteClick}
+            disabled={!hasSelection}
           >
-            <ListIcon />
+            <TrashIcon />
+            Delete
+          </button>
+          <button
+            css={[styles.btn, styles.btnGhost]}
+            onClick={handleSyncCdn}
+            disabled={!hasSelection}
+          >
+            <CloudIcon />
+            Sync CDN
+          </button>
+          <button css={[styles.btn, styles.btnGhost]} onClick={handleScan}>
+            <ScanIcon />
+            Scan
           </button>
         </div>
+
+        <div css={styles.right}>
+          {hasSelection && (
+            <span css={styles.selectionCount}>
+              {selectedItems.size} selected
+              <button css={styles.clearBtn} onClick={clearSelection}>
+                Clear
+              </button>
+            </span>
+          )}
+
+          <button
+            css={[styles.btn, styles.btnGhost]}
+            onClick={handleRefresh}
+          >
+            <RefreshIcon spinning={refreshing} />
+          </button>
+
+          <div css={styles.viewToggle}>
+            <button
+              css={[styles.viewBtn, viewMode === 'grid' && styles.viewBtnActive]}
+              onClick={() => setViewMode('grid')}
+              aria-label="Grid view"
+            >
+              <GridIcon />
+            </button>
+            <button
+              css={[styles.viewBtn, viewMode === 'list' && styles.viewBtnActive]}
+              onClick={() => setViewMode('list')}
+              aria-label="List view"
+            >
+              <ListIcon />
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
     </>
   )
 }
 
-interface ToolbarButtonProps {
-  onClick: () => void
-  icon: 'upload' | 'refresh' | 'trash' | 'cloud' | 'scan' | 'reload'
-  label: string
-  disabled?: boolean
-  variant?: 'default' | 'danger'
-  spinning?: boolean
-}
-
-function ToolbarButton({
-  onClick,
-  icon,
-  label,
-  disabled,
-  variant = 'default',
-  spinning,
-}: ToolbarButtonProps) {
+function UploadIcon() {
   return (
-    <button
-      css={[styles.btn, variant === 'danger' ? styles.btnDanger : styles.btnDefault]}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      <IconComponent icon={icon} spinning={spinning} />
-      {label}
-    </button>
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+    </svg>
   )
 }
 
-function IconComponent({ icon, spinning }: { icon: string; spinning?: boolean }) {
-  switch (icon) {
-    case 'upload':
-      return (
-        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-        </svg>
-      )
-    case 'refresh':
-      return (
-        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-      )
-    case 'trash':
-      return (
-        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      )
-    case 'cloud':
-      return (
-        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-        </svg>
-      )
-    case 'scan':
-      return (
-        <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-      )
-    case 'reload':
-      return (
-        <svg css={[styles.icon, spinning && styles.iconSpin]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-      )
-    default:
-      return null
-  }
+function RefreshIcon({ spinning }: { spinning?: boolean }) {
+  return (
+    <svg css={[styles.icon, spinning && styles.iconSpin]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  )
+}
+
+function CloudIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+    </svg>
+  )
+}
+
+function ScanIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+  )
 }
 
 function GridIcon() {
