@@ -60,6 +60,7 @@ const styles = {
     cursor: pointer;
     transition: all 0.15s;
     background-color: #f9fafb;
+    user-select: none;
     
     &:hover {
       border-color: #e5e7eb;
@@ -278,7 +279,11 @@ function GridItem({ item, isSelected, onClick }: GridItemProps) {
           css={styles.checkbox}
           checked={isSelected}
           onChange={() => {}}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            // Trigger the same click handler as the container
+            onClick(e as unknown as React.MouseEvent)
+          }}
         />
       )}
 

@@ -64,6 +64,7 @@ const styles = {
   row: css`
     cursor: pointer;
     transition: background-color 0.15s;
+    user-select: none;
     
     &:hover {
       background-color: #f9fafb;
@@ -250,7 +251,11 @@ function ListRow({ item, isSelected, onClick }: ListRowProps) {
             css={styles.checkbox}
             checked={isSelected}
             onChange={() => {}}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              // Trigger the same click handler as the row
+              onClick(e as unknown as React.MouseEvent)
+            }}
           />
         )}
       </td>
