@@ -1,0 +1,93 @@
+{
+  "name": "@gallop.software/studio",
+  "version": "0.1.0",
+  "description": "Media manager for Gallop templates - upload, process, and sync images to CDN",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./api/list": {
+      "types": "./dist/api/list.d.ts",
+      "import": "./dist/api/list.mjs",
+      "require": "./dist/api/list.js"
+    },
+    "./api/upload": {
+      "types": "./dist/api/upload.d.ts",
+      "import": "./dist/api/upload.mjs",
+      "require": "./dist/api/upload.js"
+    },
+    "./api/delete": {
+      "types": "./dist/api/delete.d.ts",
+      "import": "./dist/api/delete.mjs",
+      "require": "./dist/api/delete.js"
+    },
+    "./api/scan": {
+      "types": "./dist/api/scan.d.ts",
+      "import": "./dist/api/scan.mjs",
+      "require": "./dist/api/scan.js"
+    },
+    "./api/sync": {
+      "types": "./dist/api/sync.d.ts",
+      "import": "./dist/api/sync.mjs",
+      "require": "./dist/api/sync.js"
+    },
+    "./api/reprocess": {
+      "types": "./dist/api/reprocess.d.ts",
+      "import": "./dist/api/reprocess.mjs",
+      "require": "./dist/api/reprocess.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "media-manager",
+    "image-processing",
+    "cloudflare-r2",
+    "nextjs",
+    "gallop",
+    "cdn"
+  ],
+  "author": "Gallop Software",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gallop-software/studio.git"
+  },
+  "homepage": "https://github.com/gallop-software/studio#readme",
+  "bugs": {
+    "url": "https://github.com/gallop-software/studio/issues"
+  },
+  "peerDependencies": {
+    "next": ">=14.0.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.705.0",
+    "blurhash": "^2.0.5",
+    "clsx": "^2.1.1",
+    "react-dropzone": "^14.3.5",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "eslint": "^9.17.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}
