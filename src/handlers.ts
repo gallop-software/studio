@@ -227,15 +227,21 @@ async function handleUpload(request: NextRequest) {
       meta.images = {}
     }
 
-    // Calculate relative path from public/ for the original
+    // Calculate relative path from public/
     // e.g., "public/photos" -> "photos", "public" -> ""
     let relativeDir = ''
-    if (targetPath.startsWith('public/')) {
+    if (targetPath === 'public') {
+      relativeDir = ''
+    } else if (targetPath.startsWith('public/')) {
       relativeDir = targetPath.replace('public/', '')
-      // Don't save originals into images/ folder
-      if (relativeDir.startsWith('images/') || relativeDir === 'images') {
-        relativeDir = relativeDir.replace(/^images\/?/, '')
-      }
+    }
+    
+    // Block uploads to public/images/ - that's for generated thumbnails only
+    if (relativeDir === 'images' || relativeDir.startsWith('images/')) {
+      return NextResponse.json(
+        { error: 'Cannot upload to images/ folder. Upload to public/ instead - thumbnails are generated automatically.' },
+        { status: 400 }
+      )
     }
     
     // Image key is the relative path from public/ to the file
@@ -248,10 +254,10 @@ async function handleUpload(request: NextRequest) {
       )
     }
 
-    // Save original to public/ (not public/originals/)
-    const originalDir = path.join(process.cwd(), 'public', relativeDir)
-    await fs.mkdir(originalDir, { recursive: true })
-    await fs.writeFile(path.join(originalDir, fileName), buffer)
+    // Save file to current location
+    const uploadDir = path.join(process.cwd(), 'public', relativeDir)
+    await fs.mkdir(uploadDir, { recursive: true })
+    await fs.writeFile(path.join(uploadDir, fileName), buffer)
 
     // Generate thumbnails in public/images/ with matching subpath
     const imagesPath = path.join(process.cwd(), 'public', 'images', relativeDir)
@@ -268,8 +274,11 @@ async function handleUpload(request: NextRequest) {
       small: { path: '', width: 0, height: 0 },
     }
 
+    // Original path is relative to public/
+    const originalPath = `/${relativeDir ? relativeDir + '/' : ''}${fileName}`
+
     if (isSvg) {
-      // SVG: just copy to images folder, no processing
+      // SVG: copy to images folder, no thumbnail processing
       const fullPath = path.join(imagesPath, fileName)
       await fs.writeFile(fullPath, buffer)
       sizes.full = { path: `/images/${relativeDir ? relativeDir + '/' : ''}${fileName}`, width: 0, height: 0 }
@@ -277,7 +286,7 @@ async function handleUpload(request: NextRequest) {
       sizes.medium = { ...sizes.full }
       sizes.small = { ...sizes.full }
     } else {
-      // Raster images: process with sharp
+      // Raster images: process with sharp and generate thumbnails
       const sharpInstance = sharp(buffer)
       const metadata = await sharpInstance.metadata()
       originalWidth = metadata.width || 0
@@ -333,9 +342,6 @@ async function handleUpload(request: NextRequest) {
       const { dominant } = await sharp(buffer).stats()
       dominantColor = `#${dominant.r.toString(16).padStart(2, '0')}${dominant.g.toString(16).padStart(2, '0')}${dominant.b.toString(16).padStart(2, '0')}`
     }
-
-    // Original path is relative to public/ (e.g., "/flower.jpg" or "/photos/wedding.jpg")
-    const originalPath = `/${relativeDir ? relativeDir + '/' : ''}${fileName}`
 
     const entry: ImageEntry = {
       original: {
