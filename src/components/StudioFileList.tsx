@@ -81,10 +81,15 @@ const styles = {
     padding: 8px 0;
     border-bottom: 1px solid #f3f4f6;
   `,
+  checkboxCell: css`
+    padding: 8px 12px;
+    cursor: pointer;
+  `,
   checkbox: css`
     width: 16px;
     height: 16px;
     accent-color: #9333ea;
+    cursor: pointer;
   `,
   nameCell: css`
     display: flex;
@@ -263,17 +268,19 @@ function ListRow({ item, isSelected, onClick, onCheckboxClick }: ListRowProps) {
 
   return (
     <tr css={[styles.row, isSelected && styles.rowSelected]} onClick={onClick}>
-      <td css={styles.td}>
+      <td
+        css={[styles.td, styles.checkboxCell]}
+        onClick={(e) => {
+          e.stopPropagation()
+          onCheckboxClick(e)
+        }}
+      >
         {/* Show checkbox for both files and folders */}
         <input
           type="checkbox"
           css={styles.checkbox}
           checked={isSelected}
           onChange={() => {}}
-          onClick={(e) => {
-            e.stopPropagation()
-            onCheckboxClick(e)
-          }}
         />
       </td>
       <td css={styles.td}>

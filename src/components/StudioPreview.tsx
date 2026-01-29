@@ -6,6 +6,19 @@ import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal } from './StudioModal'
 
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif']
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v']
+
+function isImageFile(filename: string): boolean {
+  const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'))
+  return IMAGE_EXTENSIONS.includes(ext)
+}
+
+function isVideoFile(filename: string): boolean {
+  const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'))
+  return VIDEO_EXTENSIONS.includes(ext)
+}
+
 const styles = {
   panel: css`
     width: 320px;
@@ -103,6 +116,27 @@ const styles = {
     font-size: 14px;
     color: #9ca3af;
     margin: 0;
+  `,
+  filePlaceholder: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 120px;
+  `,
+  fileIcon: css`
+    width: 64px;
+    height: 64px;
+    color: #9ca3af;
+  `,
+  folderIcon: css`
+    width: 64px;
+    height: 64px;
+    color: #facc15;
+  `,
+  video: css`
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
   `,
   actions: css`
     margin-top: 16px;
@@ -230,11 +264,59 @@ export function StudioPreview() {
   }
 
   const selectedPath = Array.from(selectedItems)[0]
+  const isFolder = !selectedPath.includes('.') || selectedPath.endsWith('/')
+  const filename = selectedPath.split('/').pop() || ''
+  const isImage = isImageFile(filename)
+  const isVideo = isVideoFile(filename)
+  
   const imageKey = selectedPath
     .replace(/^public\/images\//, '')
     .replace(/^public\/originals\//, '')
+    .replace(/^public\//, '')
 
   const imageData = meta?.images?.[imageKey]
+
+  const renderPreview = () => {
+    if (isFolder) {
+      return (
+        <div css={styles.filePlaceholder}>
+          <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
+            <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
+          </svg>
+        </div>
+      )
+    }
+    
+    if (isImage) {
+      return (
+        <img
+          css={styles.image}
+          src={selectedPath.replace('public', '')}
+          alt="Preview"
+        />
+      )
+    }
+    
+    if (isVideo) {
+      return (
+        <video
+          css={styles.video}
+          src={selectedPath.replace('public', '')}
+          controls
+          muted
+        />
+      )
+    }
+    
+    // Non-image/video file - show file icon
+    return (
+      <div css={styles.filePlaceholder}>
+        <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      </div>
+    )
+  }
 
   return (
     <>
@@ -243,11 +325,7 @@ export function StudioPreview() {
         <h3 css={styles.title}>Preview</h3>
 
         <div css={styles.imageContainer}>
-          <img
-            css={styles.image}
-            src={selectedPath.replace('public', '')}
-            alt="Preview"
-          />
+          {renderPreview()}
         </div>
 
       <div css={styles.info}>

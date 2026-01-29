@@ -74,14 +74,19 @@ const styles = {
       border-color: #a855f7;
     }
   `,
-  checkbox: css`
+  checkboxWrapper: css`
     position: absolute;
-    top: 8px;
-    left: 8px;
+    top: 0;
+    left: 0;
     z-index: 10;
+    padding: 8px;
+    cursor: pointer;
+  `,
+  checkbox: css`
     width: 16px;
     height: 16px;
     accent-color: #9333ea;
+    cursor: pointer;
   `,
   cdnBadge: css`
     position: absolute;
@@ -291,16 +296,20 @@ function GridItem({ item, isSelected, onClick, onCheckboxClick }: GridItemProps)
   return (
     <div css={[styles.item, isSelected && styles.itemSelected]} onClick={onClick}>
       {/* Show checkbox for both files and folders */}
-      <input
-        type="checkbox"
-        css={styles.checkbox}
-        checked={isSelected}
-        onChange={() => {}}
+      <div
+        css={styles.checkboxWrapper}
         onClick={(e) => {
           e.stopPropagation()
           onCheckboxClick(e)
         }}
-      />
+      >
+        <input
+          type="checkbox"
+          css={styles.checkbox}
+          checked={isSelected}
+          onChange={() => {}}
+        />
+      </div>
 
       {item.cdnSynced && <span css={styles.cdnBadge}>CDN</span>}
 
