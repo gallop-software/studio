@@ -505,7 +505,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
 
   const handleCopyPath = (e: React.MouseEvent) => {
     e.stopPropagation()
-    const pathToCopy = '/' + item.path
+    const pathToCopy = '/' + item.path.replace(/^public\//, '')
     navigator.clipboard.writeText(pathToCopy)
     setShowCopied(true)
     setTimeout(() => setShowCopied(false), 1500)

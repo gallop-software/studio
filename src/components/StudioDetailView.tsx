@@ -287,7 +287,7 @@ export function StudioDetailView() {
   }
 
   const handleCopyPath = () => {
-    const pathToCopy = '/' + focusedItem.path
+    const pathToCopy = '/' + focusedItem.path.replace(/^public\//, '')
     navigator.clipboard.writeText(pathToCopy)
     setShowCopied(true)
     setTimeout(() => setShowCopied(false), 1500)
