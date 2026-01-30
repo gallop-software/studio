@@ -12,6 +12,7 @@ import {
   downloadFromCdn,
   uploadToCdn,
   deleteLocalThumbnails,
+  deleteThumbnailsFromCdn,
   getOrAddCdnIndex,
   getFileEntries,
   getMetaEntry,
@@ -272,6 +273,126 @@ export async function handleReprocess(request: NextRequest) {
     console.error('Failed to reprocess:', error)
     return NextResponse.json({ error: 'Failed to reprocess images' }, { status: 500 })
   }
+}
+
+export async function handleUnprocessStream(request: NextRequest) {
+  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
+  const encoder = new TextEncoder()
+  
+  // Parse the request body before creating the stream
+  let imageKeys: string[]
+  try {
+    const body = await request.json() as { imageKeys: string[] }
+    imageKeys = body.imageKeys
+    
+    if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
+      return NextResponse.json({ error: 'No image keys provided' }, { status: 400 })
+    }
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+  
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendEvent = (data: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      try {
+        const meta = await loadMeta()
+        const cdnUrls = getCdnUrls(meta)
+        const unprocessed: string[] = []
+        const errors: string[] = []
+        const urlsToPurge: string[] = []
+
+        const total = imageKeys.length
+        sendEvent({ type: 'start', total })
+
+        for (let i = 0; i < imageKeys.length; i++) {
+          let imageKey = imageKeys[i]
+          
+          // Normalize key to have leading /
+          if (!imageKey.startsWith('/')) {
+            imageKey = `/${imageKey}`
+          }
+          
+          sendEvent({ 
+            type: 'progress', 
+            current: i + 1, 
+            total, 
+            percent: Math.round(((i + 1) / total) * 100),
+            message: `Removing thumbnails for ${imageKey.slice(1)}...`
+          })
+
+          try {
+            const entry = getMetaEntry(meta, imageKey)
+            if (!entry) {
+              errors.push(imageKey)
+              continue
+            }
+            
+            const existingCdnIndex = entry.c
+            const existingCdnUrl = existingCdnIndex !== undefined ? cdnUrls[existingCdnIndex] : undefined
+            const isInOurR2 = existingCdnUrl === publicUrl
+            
+            // Delete local thumbnails
+            await deleteLocalThumbnails(imageKey)
+            
+            // Delete cloud thumbnails if in our R2
+            if (isInOurR2) {
+              await deleteThumbnailsFromCdn(imageKey)
+              
+              // Collect URLs to purge from cache
+              for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+                urlsToPurge.push(`${publicUrl}${thumbPath}`)
+              }
+            }
+            
+            // Update meta - keep o, b, c but remove thumbnail dimensions
+            meta[imageKey] = {
+              o: entry.o,
+              b: entry.b,
+              ...(entry.c !== undefined ? { c: entry.c } : {}),
+            }
+            
+            unprocessed.push(imageKey)
+          } catch (error) {
+            console.error(`Failed to unprocess ${imageKey}:`, error)
+            errors.push(imageKey)
+          }
+        }
+
+        sendEvent({ type: 'cleanup', message: 'Saving metadata...' })
+        await saveMeta(meta)
+        
+        if (urlsToPurge.length > 0) {
+          sendEvent({ type: 'cleanup', message: 'Purging CDN cache...' })
+          await purgeCloudflareCache(urlsToPurge)
+        }
+
+        sendEvent({ 
+          type: 'complete', 
+          processed: unprocessed.length,
+          errors: errors.length,
+          message: `Removed thumbnails from ${unprocessed.length} image${unprocessed.length !== 1 ? 's' : ''}${errors.length > 0 ? `, ${errors.length} error${errors.length !== 1 ? 's' : ''}` : ''}`
+        })
+        
+        controller.close()
+      } catch (error) {
+        console.error('Unprocess stream error:', error)
+        sendEvent({ type: 'error', message: 'Failed to remove thumbnails' })
+        controller.close()
+      }
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  })
 }
 
 export async function handleReprocessStream(request: NextRequest) {

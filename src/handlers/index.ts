@@ -7,7 +7,7 @@ import { handleList, handleSearch, handleListFolders, handleCountImages, handleF
 import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleMove, handleMoveStream } from './files'
 
 // Image handlers
-import { handleSync, handleReprocess, handleReprocessStream, handleProcessAllStream } from './images'
+import { handleSync, handleReprocess, handleReprocessStream, handleUnprocessStream, handleProcessAllStream } from './images'
 
 // Scan handler
 import { handleScanStream, handleDeleteOrphans } from './scan'
@@ -93,6 +93,11 @@ export async function POST(request: NextRequest) {
   // Route: /api/studio/reprocess-stream (streaming)
   if (route === 'reprocess-stream') {
     return handleReprocessStream(request)
+  }
+
+  // Route: /api/studio/unprocess-stream (streaming) - remove thumbnails
+  if (route === 'unprocess-stream') {
+    return handleUnprocessStream(request)
   }
 
   // Route: /api/studio/process-all (streaming)

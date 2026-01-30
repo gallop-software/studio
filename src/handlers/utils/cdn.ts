@@ -180,3 +180,26 @@ export async function deleteFromCdn(imageKey: string, hasThumbnails: boolean): P
     }
   }
 }
+
+/**
+ * Delete only thumbnails from R2 CDN (keeps original)
+ */
+export async function deleteThumbnailsFromCdn(imageKey: string): Promise<void> {
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME
+  if (!bucketName) throw new Error('R2 bucket not configured')
+
+  const r2 = getR2Client()
+
+  for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+    try {
+      await r2.send(
+        new DeleteObjectCommand({
+          Bucket: bucketName,
+          Key: thumbPath.replace(/^\//, ''),
+        })
+      )
+    } catch {
+      // May not exist
+    }
+  }
+}

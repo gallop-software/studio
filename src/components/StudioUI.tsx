@@ -381,10 +381,12 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
     requestMove: actions.requestMove,
     requestSync: actions.requestSync,
     requestProcess: actions.requestProcess,
+    requestUnprocess: actions.requestUnprocess,
     confirmDelete: actions.confirmDelete,
     confirmMove: actions.confirmMove,
     confirmSync: actions.confirmSync,
     confirmProcess: actions.confirmProcess,
+    confirmUnprocess: actions.confirmUnprocess,
     cancelAction: actions.cancelAction,
     closeProgress: actions.closeProgress,
     stopProcessing: actions.stopProcessing,
@@ -471,6 +473,17 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
             message={`Generate thumbnails for ${actions.actionState.actionPaths.length} image${actions.actionState.actionPaths.length !== 1 ? 's' : ''}?`}
             confirmLabel="Process"
             onConfirm={actions.confirmProcess}
+            onCancel={actions.cancelAction}
+          />
+        )}
+
+        {actions.actionState.showUnprocessConfirm && (
+          <ConfirmModal
+            title="Remove Thumbnails"
+            message={`Remove generated thumbnails for ${actions.actionState.actionPaths.length} image${actions.actionState.actionPaths.length !== 1 ? 's' : ''}? Original images will be kept.`}
+            confirmLabel="Remove"
+            variant="danger"
+            onConfirm={actions.confirmUnprocess}
             onCancel={actions.cancelAction}
           />
         )}
