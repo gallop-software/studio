@@ -44,6 +44,11 @@ export async function GET(request: NextRequest) {
     return handleFolderImages(request)
   }
 
+  // Route: /api/studio/search
+  if (route === 'search') {
+    return handleSearch(request)
+  }
+
   return NextResponse.json({ error: 'Not found' }, { status: 404 })
 }
 
@@ -196,6 +201,96 @@ async function handleList(request: NextRequest) {
   } catch (error) {
     console.error('Failed to list directory:', error)
     return NextResponse.json({ error: 'Failed to list directory' }, { status: 500 })
+  }
+}
+
+async function handleSearch(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams
+  const query = searchParams.get('q')?.toLowerCase() || ''
+  
+  if (query.length < 2) {
+    return NextResponse.json({ items: [] })
+  }
+
+  try {
+    const items: FileItem[] = []
+    const publicDir = path.join(process.cwd(), 'public')
+
+    async function searchDir(dir: string, relativePath: string): Promise<void> {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+
+        for (const entry of entries) {
+          if (entry.name.startsWith('.')) continue
+
+          const fullPath = path.join(dir, entry.name)
+          const itemPath = relativePath ? `public/${relativePath}/${entry.name}` : `public/${entry.name}`
+          const itemRelPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+
+          if (entry.isDirectory()) {
+            // Skip public/images folder (generated thumbnails)
+            if (itemRelPath === 'images') continue
+            await searchDir(fullPath, itemRelPath)
+          } else if (isImageFile(entry.name)) {
+            // Check if path matches query
+            if (itemPath.toLowerCase().includes(query)) {
+              const stats = await fs.stat(fullPath)
+              
+              let thumbnail: string | undefined
+              let hasThumbnail = false
+              let dimensions: { width: number; height: number } | undefined
+
+              // Check for -sm thumbnail
+              const ext = path.extname(entry.name).toLowerCase()
+              const baseName = path.basename(entry.name, ext)
+              const thumbnailDir = relativePath ? `images/${relativePath}` : 'images'
+              const thumbnailName = `${baseName}-sm${ext === '.png' ? '.png' : '.jpg'}`
+              const thumbnailPath = path.join(process.cwd(), 'public', thumbnailDir, thumbnailName)
+
+              try {
+                await fs.access(thumbnailPath)
+                thumbnail = `/${thumbnailDir}/${thumbnailName}`
+                hasThumbnail = true
+              } catch {
+                thumbnail = `/${itemRelPath}`
+                hasThumbnail = false
+              }
+
+              // Get dimensions
+              if (!entry.name.toLowerCase().endsWith('.svg')) {
+                try {
+                  const metadata = await sharp(fullPath).metadata()
+                  if (metadata.width && metadata.height) {
+                    dimensions = { width: metadata.width, height: metadata.height }
+                  }
+                } catch {
+                  // Ignore dimension errors
+                }
+              }
+
+              items.push({
+                name: entry.name,
+                path: itemPath,
+                type: 'file',
+                size: stats.size,
+                thumbnail,
+                hasThumbnail,
+                dimensions,
+              })
+            }
+          }
+        }
+      } catch {
+        // Ignore directory access errors
+      }
+    }
+
+    await searchDir(publicDir, '')
+
+    return NextResponse.json({ items })
+  } catch (error) {
+    console.error('Failed to search:', error)
+    return NextResponse.json({ error: 'Failed to search' }, { status: 500 })
   }
 }
 

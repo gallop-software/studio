@@ -346,7 +346,11 @@ export function StudioFileGrid() {
       lastPath.current = currentPath
       
       try {
-        const response = await fetch(`/api/studio/list?path=${encodeURIComponent(currentPath)}`)
+        // Use search API when query has 2+ characters
+        const url = searchQuery && searchQuery.length >= 2
+          ? `/api/studio/search?q=${encodeURIComponent(searchQuery)}`
+          : `/api/studio/list?path=${encodeURIComponent(currentPath)}`
+        const response = await fetch(url)
         if (response.ok) {
           const data = await response.json()
           setItems(data.items || [])
@@ -358,7 +362,7 @@ export function StudioFileGrid() {
       isInitialLoad.current = false
     }
     loadItems()
-  }, [currentPath, refreshKey])
+  }, [currentPath, refreshKey, searchQuery])
 
   if (loading) {
     return (
@@ -383,16 +387,10 @@ export function StudioFileGrid() {
     )
   }
 
-  // Filter by search query (only images, requires 2+ characters)
-  const filteredItems = searchQuery && searchQuery.length >= 2
-    ? items.filter(item => {
-        if (item.type === 'folder') return false // Hide folders when searching
-        const query = searchQuery.toLowerCase()
-        return item.path.toLowerCase().includes(query)
-      })
-    : items
+  // When searching, items already come filtered from the API
+  const isSearching = searchQuery && searchQuery.length >= 2
 
-  const sortedItems = [...filteredItems].sort((a, b) => {
+  const sortedItems = [...items].sort((a, b) => {
     if (a.type === 'folder' && b.type !== 'folder') return -1
     if (a.type !== 'folder' && b.type === 'folder') return 1
     return a.name.localeCompare(b.name)
@@ -458,8 +456,8 @@ export function StudioFileGrid() {
         </div>
       )}
       <div css={styles.grid}>
-        {/* Parent folder navigation */}
-        {!isAtRoot && (
+        {/* Parent folder navigation - hide when searching */}
+        {!isAtRoot && !isSearching && (
           <div 
             css={[styles.item, styles.parentItem]}
             onClick={navigateUp}
