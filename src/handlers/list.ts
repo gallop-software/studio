@@ -85,6 +85,9 @@ export async function handleList(request: NextRequest) {
         const cdnBaseUrl = cdnIndex !== undefined ? cdnUrls[cdnIndex] : undefined
         // Build the full thumbnail URL (with CDN base if applicable)
         const thumbnailUrl = cdnBaseUrl ? `${cdnBaseUrl}${thumb.path}` : thumb.path
+        // Determine if it's pushed to CDN and if it's remote (not our R2)
+        const isPushedToCloud = cdnIndex !== undefined
+        const isRemote = isPushedToCloud && cdnBaseUrl !== r2PublicUrl
         
         // Check if this is directly in the current folder or in a subfolder
         if (imagesSubPath === '') {
@@ -100,6 +103,9 @@ export async function handleList(request: NextRequest) {
               thumbnail: thumbnailUrl,
               hasThumbnail: false,
               isProtected: true,
+              cdnPushed: isPushedToCloud,
+              cdnBaseUrl,
+              isRemote,
             })
           } else {
             // In a subfolder - add the folder
@@ -137,6 +143,9 @@ export async function handleList(request: NextRequest) {
               thumbnail: thumbnailUrl,
               hasThumbnail: false,
               isProtected: true,
+              cdnPushed: isPushedToCloud,
+              cdnBaseUrl,
+              isRemote,
             })
           } else {
             // Subfolder
