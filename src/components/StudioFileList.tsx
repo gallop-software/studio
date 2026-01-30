@@ -168,22 +168,41 @@ const styles = {
     align-items: center;
     gap: 12px;
   `,
-  folderIcon: css`
-    width: 20px;
-    height: 20px;
-    color: #f5a623;
+  thumbnailWrapper: css`
+    width: 48px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
   `,
-  imagesFolderWrapper: css`
-    position: relative;
+  folderIconWrapper: css`
+    width: 48px;
+    height: 36px;
     display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  `,
+  folderIcon: css`
+    width: 24px;
+    height: 24px;
+    color: #f5a623;
+  `,
+  imagesFolderWrapper: css`
+    width: 48px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
     align-items: center;
   `,
   imagesFolderIcon: css`
-    width: 20px;
-    height: 20px;
+    width: 24px;
+    height: 24px;
     color: ${colors.imagesFolder};
-    flex-shrink: 0;
   `,
   lockIcon: css`
     width: 10px;
@@ -205,13 +224,12 @@ const styles = {
     flex-shrink: 0;
   `,
   thumbnail: css`
-    max-width: 48px;
-    max-height: 36px;
+    max-width: 100%;
+    max-height: 100%;
     width: auto;
     height: auto;
     object-fit: contain;
     border-radius: 4px;
-    flex-shrink: 0;
     border: 1px solid ${colors.borderLight};
   `,
   noThumbnail: css`
@@ -500,26 +518,34 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Lis
                 </svg>
               </div>
             ) : (
-              <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
-                <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
-              </svg>
+              <div css={styles.folderIconWrapper}>
+                <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
+                </svg>
+              </div>
             )
           ) : isImage && item.hasThumbnail ? (
-            <img css={styles.thumbnail} src={item.thumbnail} alt={item.name} loading="lazy" />
+            <div css={styles.thumbnailWrapper}>
+              <img css={styles.thumbnail} src={item.thumbnail} alt={item.name} loading="lazy" />
+            </div>
           ) : isImage && !item.hasThumbnail ? (
-            <button 
-              css={styles.noThumbnail} 
-              onClick={(e) => { e.stopPropagation(); onGenerateThumbnail(); }}
-              title="Generate thumbnail"
-            >
-              <svg css={styles.noThumbnailIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </button>
+            <div css={styles.thumbnailWrapper}>
+              <button 
+                css={styles.noThumbnail} 
+                onClick={(e) => { e.stopPropagation(); onGenerateThumbnail(); }}
+                title="Generate thumbnail"
+              >
+                <svg css={styles.noThumbnailIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
           ) : (
-            <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
+            <div css={styles.thumbnailWrapper}>
+              <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+            </div>
           )}
           <span css={styles.name} title={item.name}>{truncateMiddle(item.name)}</span>
           <button

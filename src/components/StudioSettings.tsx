@@ -325,12 +325,6 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
           </section>
 
           <section>
-            <h3 css={styles.sectionTitle}>Custom CDN URL</h3>
-            <p css={styles.description}>Override the default R2 URL with a custom domain:</p>
-            <input css={styles.input} type="text" placeholder="https://cdn.yourdomain.com" />
-          </section>
-
-          <section>
             <h3 css={styles.sectionTitle}>Thumbnail Sizes</h3>
             <div css={styles.grid}>
               <div>
