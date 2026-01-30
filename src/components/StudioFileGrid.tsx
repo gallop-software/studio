@@ -614,7 +614,7 @@ function getParentPath(path: string): string {
   return parts.join('/') + '/'
 }
 
-function truncateMiddle(str: string, maxLength: number = 24): string {
+function truncateMiddle(str: string, maxLength: number = 36): string {
   if (str.length <= maxLength) return str
   
   // Find the extension
