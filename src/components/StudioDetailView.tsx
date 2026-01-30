@@ -227,6 +227,19 @@ const styles = {
     word-break: break-all;
     white-space: normal;
   `,
+  infoLink: css`
+    color: ${colors.primary};
+    font-weight: 500;
+    text-align: right;
+    max-width: 160px;
+    word-break: break-all;
+    white-space: normal;
+    text-decoration: none;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  `,
   actions: css`
     display: flex;
     flex-direction: column;
@@ -283,16 +296,18 @@ export function StudioDetailView() {
 
   const isImage = isImageFile(focusedItem.name)
   const isVideo = isVideoFile(focusedItem.name)
-  const imageSrc = focusedItem.path.replace('public', '')
   const relativePath = '/' + focusedItem.path.replace(/^public\//, '')
   
-  // Compute full URL - use CDN URL if pushed, otherwise use production URL env var
-  const productionUrl = process.env.NEXT_PUBLIC_PRODUCTION_URL || ''
+  // For preview: use CDN URL if pushed, otherwise use local path
+  const imageSrc = focusedItem.cdnPushed && focusedItem.cdnBaseUrl
+    ? `${focusedItem.cdnBaseUrl}${relativePath}`
+    : relativePath
+  
+  // For display URL: use CDN URL if pushed, otherwise use current origin
+  const localOrigin = typeof window !== 'undefined' ? window.location.origin : ''
   const fullUrl = focusedItem.cdnPushed && focusedItem.cdnBaseUrl 
     ? `${focusedItem.cdnBaseUrl}${relativePath}`
-    : productionUrl 
-      ? `${productionUrl}${relativePath}`
-      : relativePath
+    : `${localOrigin}${relativePath}`
 
   const handleClose = () => {
     setFocusedItem(null)
@@ -600,7 +615,15 @@ export function StudioDetailView() {
               </div>
               <div css={styles.infoRow}>
                 <span css={styles.infoLabel}>URL</span>
-                <span css={styles.infoValueWrap} title={fullUrl}>{fullUrl}</span>
+                <a 
+                  href={fullUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  css={styles.infoLink}
+                  title={fullUrl}
+                >
+                  {fullUrl}
+                </a>
               </div>
             </div>
 
