@@ -738,6 +738,7 @@ export function StudioToolbar() {
 
     let synced = 0
     let errors = 0
+    const errorMessages: string[] = []
 
     try {
       // Sync images one by one for progress tracking
@@ -769,13 +770,19 @@ export function StudioToolbar() {
               return
             }
             errors++
+            errorMessages.push(data.error || `Failed: ${imageKey}`)
           } else if (data.synced?.length > 0) {
             synced++
           } else if (data.errors?.length > 0) {
             errors++
+            // data.errors contains the actual error messages from the handler
+            for (const errMsg of data.errors) {
+              errorMessages.push(errMsg)
+            }
           }
-        } catch {
+        } catch (err) {
           errors++
+          errorMessages.push(`Network error: ${imageKey}`)
         }
       }
 
@@ -786,6 +793,7 @@ export function StudioToolbar() {
         status: 'complete',
         processed: synced,
         errors: errors,
+        errorMessages: errorMessages.length > 0 ? errorMessages : undefined,
       })
       
       clearSelection()

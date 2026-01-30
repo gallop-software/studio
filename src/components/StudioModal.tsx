@@ -311,6 +311,23 @@ const progressStyles = {
     overflow: hidden;
     text-overflow: ellipsis;
   `,
+  errorList: css`
+    margin-top: 12px;
+    padding: 12px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+  `,
+  errorItem: css`
+    font-size: ${fontSize.xs};
+    color: #991b1b;
+    margin: 0 0 4px;
+    &:last-child {
+      margin-bottom: 0;
+    }
+  `,
 }
 
 export interface ProgressState {
@@ -323,6 +340,7 @@ export interface ProgressState {
   processed?: number
   orphansRemoved?: number
   errors?: number
+  errorMessages?: string[]
 }
 
 interface ProgressModalProps {
@@ -358,15 +376,27 @@ export function ProgressModal({
               Processing stopped. Processed {progress.processed ?? progress.current} image{(progress.processed ?? progress.current) !== 1 ? 's' : ''} before stopping.
             </p>
           ) : isComplete ? (
-            <p css={styles.message}>
-              Processed {progress.processed} image{progress.processed !== 1 ? 's' : ''}.
-              {progress.orphansRemoved !== undefined && progress.orphansRemoved > 0 ? (
-                <> Removed {progress.orphansRemoved} orphaned thumbnail{progress.orphansRemoved !== 1 ? 's' : ''}.</>
-              ) : null}
-              {progress.errors !== undefined && progress.errors > 0 ? (
-                <> {progress.errors} error{progress.errors !== 1 ? 's' : ''} occurred.</>
-              ) : null}
-            </p>
+            <>
+              <p css={styles.message}>
+                Processed {progress.processed} image{progress.processed !== 1 ? 's' : ''}.
+                {progress.orphansRemoved !== undefined && progress.orphansRemoved > 0 ? (
+                  <> Removed {progress.orphansRemoved} orphaned thumbnail{progress.orphansRemoved !== 1 ? 's' : ''}.</>
+                ) : null}
+                {progress.errors !== undefined && progress.errors > 0 ? (
+                  <> {progress.errors} error{progress.errors !== 1 ? 's' : ''} occurred.</>
+                ) : null}
+              </p>
+              {progress.errorMessages && progress.errorMessages.length > 0 && (
+                <div css={progressStyles.errorList}>
+                  {progress.errorMessages.slice(0, 10).map((msg, i) => (
+                    <p key={i} css={progressStyles.errorItem}>{msg}</p>
+                  ))}
+                  {progress.errorMessages.length > 10 && (
+                    <p css={progressStyles.errorItem}>...and {progress.errorMessages.length - 10} more</p>
+                  )}
+                </div>
+              )}
+            </>
           ) : (
             <>
               <p css={styles.message}>
