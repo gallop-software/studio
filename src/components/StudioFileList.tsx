@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { colors, fontSize } from './tokens'
@@ -191,10 +191,18 @@ export function StudioFileList() {
   const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem } = useStudio()
   const [items, setItems] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
+  const isInitialLoad = useRef(true)
+  const lastPath = useRef(currentPath)
 
   useEffect(() => {
     async function loadItems() {
-      setLoading(true)
+      // Only show loading spinner on initial load or path change, not on refresh
+      const isPathChange = lastPath.current !== currentPath
+      if (isInitialLoad.current || isPathChange) {
+        setLoading(true)
+      }
+      lastPath.current = currentPath
+      
       try {
         const response = await fetch(`/api/studio/list?path=${encodeURIComponent(currentPath)}`)
         if (response.ok) {
@@ -205,6 +213,7 @@ export function StudioFileList() {
         console.error('Failed to load items:', error)
       }
       setLoading(false)
+      isInitialLoad.current = false
     }
     loadItems()
   }, [currentPath, refreshKey])
