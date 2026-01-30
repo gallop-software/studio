@@ -218,6 +218,7 @@ export async function handleReprocess(request: NextRequest) {
         }
 
         const updatedEntry = await processImage(buffer, imageKey)
+        updatedEntry.p = 1  // Mark as processed
         
         if (isInOurR2) {
           // Re-upload thumbnails to R2 and clean up local files
