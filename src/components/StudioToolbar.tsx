@@ -221,6 +221,8 @@ export function StudioToolbar() {
   const [processing, setProcessing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showProcessConfirm, setShowProcessConfirm] = useState(false)
+  const [showSyncConfirm, setShowSyncConfirm] = useState(false)
+  const [syncImageCount, setSyncImageCount] = useState(0)
   const [showProgress, setShowProgress] = useState(false)
   const [progressState, setProgressState] = useState<ProgressState>({
     current: 0,
@@ -644,7 +646,7 @@ export function StudioToolbar() {
     }
   }, [selectedItems, clearSelection, triggerRefresh])
 
-  const handleSyncCdn = useCallback(async () => {
+  const handleSyncClick = useCallback(async () => {
     if (selectedItems.size === 0) return
 
     const selectedPaths = Array.from(selectedItems)
@@ -676,16 +678,53 @@ export function StudioToolbar() {
       }
     }
 
-    // Convert to image keys
-    const imageKeys = selectedImagePaths.map(p => '/' + p.replace(/^public\//, ''))
-
-    if (imageKeys.length === 0) {
+    if (selectedImagePaths.length === 0) {
       setAlertMessage({
         title: 'No Images Found',
         message: 'No images found in the selected items.',
       })
       return
     }
+
+    // Store count and show confirm modal
+    setSyncImageCount(selectedImagePaths.length)
+    setShowSyncConfirm(true)
+  }, [selectedItems])
+
+  const handleSyncConfirm = useCallback(async () => {
+    setShowSyncConfirm(false)
+    
+    const selectedPaths = Array.from(selectedItems)
+    
+    // Separate folders and image files
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif']
+    const selectedImagePaths = selectedPaths.filter(p => {
+      const ext = p.split('.').pop()?.toLowerCase() || ''
+      return imageExtensions.includes(ext)
+    })
+    const selectedFolders = selectedPaths.filter(p => !p.includes('.') || p.endsWith('/'))
+
+    // If folders are selected, fetch all images from them
+    if (selectedFolders.length > 0) {
+      try {
+        const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
+        const data = await response.json()
+        
+        if (data.images) {
+          for (const img of data.images) {
+            const fullPath = `public/${img}`
+            if (!selectedImagePaths.includes(fullPath)) {
+              selectedImagePaths.push(fullPath)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to get folder images:', error)
+      }
+    }
+
+    // Convert to image keys
+    const imageKeys = selectedImagePaths.map(p => '/' + p.replace(/^public\//, ''))
 
     // Show progress modal
     setProgressState({
@@ -888,6 +927,16 @@ export function StudioToolbar() {
         />
       )}
 
+      {showSyncConfirm && (
+        <ConfirmModal
+          title="Sync to CDN"
+          message={`Sync ${syncImageCount} image${syncImageCount !== 1 ? 's' : ''} to Cloudflare R2? Images must be processed first. After syncing, local thumbnails will be deleted.`}
+          confirmLabel="Sync"
+          onConfirm={handleSyncConfirm}
+          onCancel={() => setShowSyncConfirm(false)}
+        />
+      )}
+
       {showProcessConfirm && (
         <ConfirmModal
           title="Process Images"
@@ -1024,7 +1073,7 @@ export function StudioToolbar() {
           </button>
           <button
             css={styles.btn}
-            onClick={handleSyncCdn}
+            onClick={handleSyncClick}
             disabled={!hasSelection}
           >
             <CloudIcon />
