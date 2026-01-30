@@ -7,7 +7,7 @@ import { getThumbnailPath } from '../types'
 
 /**
  * List files and folders from meta
- * Folders are derived from file paths in meta
+ * Folders are derived from file paths in meta AND filesystem
  */
 export async function handleList(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
@@ -19,11 +19,6 @@ export async function handleList(request: NextRequest) {
     const cdnUrls = getCdnUrls(meta)
     const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '') || ''
     
-    // If meta is empty, return empty with a flag
-    if (fileEntries.length === 0) {
-      return NextResponse.json({ items: [], isEmpty: true })
-    }
-
     // Normalize the requested path to match meta keys
     // requestedPath is like "public" or "public/photos"
     // meta keys are like "/photos/image.jpg"
@@ -33,6 +28,40 @@ export async function handleList(request: NextRequest) {
     const items: FileItem[] = []
     const seenFolders = new Set<string>()
     const metaKeys = fileEntries.map(([key]) => key)
+    
+    // Also check filesystem for folders (including empty ones)
+    const absoluteDir = path.join(process.cwd(), requestedPath)
+    try {
+      const dirEntries = await fs.readdir(absoluteDir, { withFileTypes: true })
+      for (const entry of dirEntries) {
+        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'images') {
+          if (!seenFolders.has(entry.name)) {
+            seenFolders.add(entry.name)
+            
+            // Count files in this folder from meta
+            const folderPrefix = pathPrefix === '/' ? `/${entry.name}/` : `${pathPrefix}${entry.name}/`
+            let fileCount = 0
+            for (const k of metaKeys) {
+              if (k.startsWith(folderPrefix)) fileCount++
+            }
+            
+            items.push({
+              name: entry.name,
+              path: relativePath ? `public/${relativePath}/${entry.name}` : `public/${entry.name}`,
+              type: 'folder',
+              fileCount,
+            })
+          }
+        }
+      }
+    } catch {
+      // Directory might not exist (all files in cloud)
+    }
+    
+    // If meta is empty and no folders found, return empty with a flag
+    if (fileEntries.length === 0 && items.length === 0) {
+      return NextResponse.json({ items: [], isEmpty: true })
+    }
 
     for (const [key, entry] of fileEntries) {
       // Check if this file is under the current path
