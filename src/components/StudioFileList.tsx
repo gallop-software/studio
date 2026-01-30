@@ -303,7 +303,7 @@ export function StudioFileList() {
                   <svg css={styles.parentIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
                   </svg>
-                  <span css={styles.name}>..</span>
+                  <span css={styles.name} title={getParentPath(currentPath)}>{truncateMiddle(getParentPath(currentPath), 28)}</span>
                 </div>
               </td>
               <td css={[styles.td, styles.meta]}>--</td>
@@ -410,6 +410,12 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function getParentPath(path: string): string {
+  const parts = path.split('/')
+  parts.pop() // Remove current folder
+  return parts.join('/') + '/'
 }
 
 function truncateMiddle(str: string, maxLength: number = 32): string {

@@ -342,7 +342,7 @@ export function StudioFileGrid() {
               </svg>
             </div>
             <div css={styles.label}>
-              <p css={styles.name}>..</p>
+              <p css={styles.name} title={getParentPath(currentPath)}>{truncateMiddle(getParentPath(currentPath), 20)}</p>
               <p css={styles.size}>Parent folder</p>
             </div>
           </div>
@@ -443,6 +443,12 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function getParentPath(path: string): string {
+  const parts = path.split('/')
+  parts.pop() // Remove current folder
+  return parts.join('/') + '/'
 }
 
 function truncateMiddle(str: string, maxLength: number = 24): string {

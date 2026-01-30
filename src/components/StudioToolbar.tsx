@@ -17,19 +17,27 @@ const spin = keyframes`
 const styles = {
   toolbar: css`
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 24px;
+    gap: 8px;
+    padding: 12px 16px;
     background-color: ${colors.surface};
     border-bottom: 1px solid ${colors.border};
+    
+    @media (min-width: 768px) {
+      padding: 12px 24px;
+    }
   `,
   left: css`
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
   `,
   right: css`
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
   `,
@@ -604,7 +612,8 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleProcessImages}
-            disabled={processing}
+            disabled={processing || isInImagesFolder}
+            title={isInImagesFolder ? 'Cannot process images from within the images folder' : undefined}
           >
             <ImageStackIcon />
             {processing ? 'Processing...' : 'Process Images'}
