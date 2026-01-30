@@ -195,7 +195,7 @@ const styles = {
   folderIcon: css`
     width: 24px;
     height: 24px;
-    color: #635bff;
+    color: #f9935e;
   `,
   imagesFolderWrapper: css`
     width: 48px;
