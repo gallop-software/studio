@@ -168,8 +168,8 @@ export async function handleSync(request: NextRequest) {
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (error) {
-    console.error('Failed to sync:', error)
-    return NextResponse.json({ error: 'Failed to sync to CDN' }, { status: 500 })
+    console.error('Failed to push:', error)
+    return NextResponse.json({ error: 'Failed to push to CDN' }, { status: 500 })
   }
 }
 

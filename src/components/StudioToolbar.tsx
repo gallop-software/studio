@@ -1089,8 +1089,8 @@ export function StudioToolbar() {
       {showSyncConfirm && (
         <ConfirmModal
           title="Push to CDN"
-          message={`Push ${syncImageCount} image${syncImageCount !== 1 ? 's' : ''} to Cloudflare R2? Images must be processed first. After pushing, local files will be deleted.`}
-          confirmLabel="Sync"
+          message={`Push ${syncImageCount} image${syncImageCount !== 1 ? 's' : ''} to Cloudflare R2? Local images must be processed first. Remote images will be downloaded first. After pushing, local files will be deleted.`}
+          confirmLabel="Push"
           onConfirm={handleSyncConfirm}
           onCancel={() => setShowSyncConfirm(false)}
         />

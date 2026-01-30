@@ -495,16 +495,16 @@ export function StudioDetailView() {
           setShowR2SetupModal(true)
         } else {
           setAlertMessage({
-            title: 'Sync Failed',
-            message: data.error || 'Failed to sync to CDN.',
+            title: 'Push Failed',
+            message: data.error || 'Failed to push to CDN.',
           })
         }
       }
     } catch (error) {
-      console.error('Sync error:', error)
+      console.error('Push error:', error)
       setAlertMessage({
-        title: 'Sync Failed',
-        message: 'Failed to sync to CDN. Check console for details.',
+        title: 'Push Failed',
+        message: 'Failed to push to CDN. Check console for details.',
       })
     } finally {
       setPushing(false)
