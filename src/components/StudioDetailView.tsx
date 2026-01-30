@@ -323,6 +323,10 @@ export function StudioDetailView() {
                 <span css={styles.infoLabel}>Name</span>
                 <span css={styles.infoValueWrap}>{focusedItem.name}</span>
               </div>
+              <div css={styles.infoRow}>
+                <span css={styles.infoLabel}>Path</span>
+                <span css={styles.infoValueWrap}>{focusedItem.path.replace(/^public\//, '')}</span>
+              </div>
               {focusedItem.size !== undefined && (
                 <div css={styles.infoRow}>
                   <span css={styles.infoLabel}>Size</span>

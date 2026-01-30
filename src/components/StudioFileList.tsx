@@ -132,12 +132,37 @@ const styles = {
     flex-shrink: 0;
   `,
   thumbnail: css`
-    width: 36px;
-    height: 36px;
-    object-fit: cover;
-    border-radius: 6px;
+    max-width: 48px;
+    max-height: 36px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 4px;
     flex-shrink: 0;
     border: 1px solid ${colors.borderLight};
+  `,
+  noThumbnail: css`
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: ${colors.background};
+    border: 1px dashed ${colors.border};
+    border-radius: 4px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    
+    &:hover {
+      border-color: ${colors.primary};
+      background: ${colors.surfaceHover};
+    }
+  `,
+  noThumbnailIcon: css`
+    width: 16px;
+    height: 16px;
+    color: ${colors.textMuted};
   `,
   name: css`
     font-size: ${fontSize.base};
@@ -188,7 +213,7 @@ const styles = {
 }
 
 export function StudioFileList() {
-  const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem } = useStudio()
+  const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem, triggerRefresh } = useStudio()
   const [items, setItems] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
   const isInitialLoad = useRef(true)
@@ -258,6 +283,20 @@ export function StudioFileList() {
     }
   }
 
+  const handleGenerateThumbnail = async (item: FileItem) => {
+    try {
+      const imageKey = item.path.replace(/^public\//, '')
+      await fetch('/api/studio/reprocess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageKeys: [imageKey] }),
+      })
+      triggerRefresh()
+    } catch (error) {
+      console.error('Failed to generate thumbnail:', error)
+    }
+  }
+
   const allItemsSelected = sortedItems.length > 0 && sortedItems.every(item => selectedItems.has(item.path))
   const someItemsSelected = sortedItems.some(item => selectedItems.has(item.path))
 
@@ -303,7 +342,7 @@ export function StudioFileList() {
                   <svg css={styles.parentIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
                   </svg>
-                  <span css={styles.name}>{getParentPath(currentPath)}</span>
+                  <span css={styles.name}>..</span>
                 </div>
               </td>
               <td css={[styles.td, styles.meta]}>--</td>
@@ -319,6 +358,7 @@ export function StudioFileList() {
               isSelected={selectedItems.has(item.path)}
               onClick={(e) => handleItemClick(item, e)}
               onOpen={() => handleOpen(item)}
+              onGenerateThumbnail={() => handleGenerateThumbnail(item)}
             />
           ))}
         </tbody>
@@ -332,10 +372,12 @@ interface ListRowProps {
   isSelected: boolean
   onClick: (e: React.MouseEvent) => void
   onOpen: () => void
+  onGenerateThumbnail: () => void
 }
 
-function ListRow({ item, isSelected, onClick, onOpen }: ListRowProps) {
+function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: ListRowProps) {
   const isFolder = item.type === 'folder'
+  const isImage = !isFolder && item.thumbnail !== undefined
 
   return (
     <tr 
@@ -359,8 +401,18 @@ function ListRow({ item, isSelected, onClick, onOpen }: ListRowProps) {
             <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
               <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
             </svg>
-          ) : item.thumbnail ? (
+          ) : isImage && item.hasThumbnail ? (
             <img css={styles.thumbnail} src={item.thumbnail} alt={item.name} loading="lazy" />
+          ) : isImage && !item.hasThumbnail ? (
+            <button 
+              css={styles.noThumbnail} 
+              onClick={(e) => { e.stopPropagation(); onGenerateThumbnail(); }}
+              title="Generate thumbnail"
+            >
+              <svg css={styles.noThumbnailIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
           ) : (
             <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />

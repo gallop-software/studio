@@ -134,19 +134,42 @@ async function handleList(request: NextRequest) {
       } else if (isMediaFile(entry.name)) {
         const filePath = path.join(absolutePath, entry.name)
         const stats = await fs.stat(filePath)
-        // For images, provide thumbnail path and dimensions
         const isImage = isImageFile(entry.name)
-        const thumbnail = isImage ? itemPath.replace('public', '') : undefined
         
+        let thumbnail: string | undefined
+        let hasThumbnail = false
         let dimensions: { width: number; height: number } | undefined
-        if (isImage && !entry.name.toLowerCase().endsWith('.svg')) {
+        
+        if (isImage) {
+          // Check for -sm thumbnail in images folder
+          const ext = path.extname(entry.name).toLowerCase()
+          const baseName = path.basename(entry.name, ext)
+          const relativePath = safePath.replace(/^public\/?/, '')
+          const thumbnailDir = relativePath ? `images/${relativePath}` : 'images'
+          const thumbnailName = `${baseName}-sm${ext === '.png' ? '.png' : '.jpg'}`
+          const thumbnailPath = path.join(process.cwd(), 'public', thumbnailDir, thumbnailName)
+          
           try {
-            const metadata = await sharp(filePath).metadata()
-            if (metadata.width && metadata.height) {
-              dimensions = { width: metadata.width, height: metadata.height }
-            }
+            await fs.access(thumbnailPath)
+            // Thumbnail exists
+            thumbnail = `/${thumbnailDir}/${thumbnailName}`
+            hasThumbnail = true
           } catch {
-            // Ignore dimension errors
+            // No thumbnail, fall back to original
+            thumbnail = itemPath.replace('public', '')
+            hasThumbnail = false
+          }
+          
+          // Get dimensions
+          if (!entry.name.toLowerCase().endsWith('.svg')) {
+            try {
+              const metadata = await sharp(filePath).metadata()
+              if (metadata.width && metadata.height) {
+                dimensions = { width: metadata.width, height: metadata.height }
+              }
+            } catch {
+              // Ignore dimension errors
+            }
           }
         }
         
@@ -156,6 +179,7 @@ async function handleList(request: NextRequest) {
           type: 'file',
           size: stats.size,
           thumbnail,
+          hasThumbnail,
           dimensions,
         })
       }

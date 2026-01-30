@@ -60,8 +60,10 @@ export interface FileItem {
   // Folder-specific properties
   fileCount?: number
   totalSize?: number
-  // For showing thumbnails in list view
+  // For showing thumbnails - path to -sm version if exists
   thumbnail?: string
+  // Whether a processed thumbnail exists
+  hasThumbnail?: boolean
 }
 
 /**

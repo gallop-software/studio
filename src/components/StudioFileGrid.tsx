@@ -145,6 +145,36 @@ const styles = {
     object-fit: contain;
     border-radius: 4px;
   `,
+  noThumbnail: css`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    background: ${colors.background};
+    border: 2px dashed ${colors.border};
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    width: 80%;
+    height: 60%;
+    
+    &:hover {
+      border-color: ${colors.primary};
+      background: ${colors.surfaceHover};
+    }
+  `,
+  noThumbnailIcon: css`
+    width: 32px;
+    height: 32px;
+    color: ${colors.textMuted};
+  `,
+  noThumbnailText: css`
+    font-size: ${fontSize.xs};
+    color: ${colors.textMuted};
+    text-align: center;
+  `,
   label: css`
     padding: 10px 12px;
     background-color: ${colors.surface};
@@ -225,7 +255,7 @@ const styles = {
 }
 
 export function StudioFileGrid() {
-  const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem } = useStudio()
+  const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem, triggerRefresh } = useStudio()
   const [items, setItems] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
   const isInitialLoad = useRef(true)
@@ -300,6 +330,20 @@ export function StudioFileGrid() {
     }
   }
 
+  const handleGenerateThumbnail = async (item: FileItem) => {
+    try {
+      const imageKey = item.path.replace(/^public\//, '')
+      await fetch('/api/studio/reprocess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageKeys: [imageKey] }),
+      })
+      triggerRefresh()
+    } catch (error) {
+      console.error('Failed to generate thumbnail:', error)
+    }
+  }
+
   const allItemsSelected = sortedItems.length > 0 && sortedItems.every(item => selectedItems.has(item.path))
   const someItemsSelected = sortedItems.some(item => selectedItems.has(item.path))
 
@@ -342,7 +386,7 @@ export function StudioFileGrid() {
               </svg>
             </div>
             <div css={styles.label}>
-              <p css={styles.name}>{getParentPath(currentPath)}</p>
+              <p css={styles.name}>..</p>
               <p css={styles.size}>Parent folder</p>
             </div>
           </div>
@@ -355,6 +399,7 @@ export function StudioFileGrid() {
             isSelected={selectedItems.has(item.path)}
             onClick={(e) => handleItemClick(item, e)}
             onOpen={() => handleOpen(item)}
+            onGenerateThumbnail={() => handleGenerateThumbnail(item)}
           />
         ))}
       </div>
@@ -367,10 +412,12 @@ interface GridItemProps {
   isSelected: boolean
   onClick: (e: React.MouseEvent) => void
   onOpen: () => void
+  onGenerateThumbnail: () => void
 }
 
-function GridItem({ item, isSelected, onClick, onOpen }: GridItemProps) {
+function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: GridItemProps) {
   const isFolder = item.type === 'folder'
+  const isImage = !isFolder && item.thumbnail !== undefined
 
   return (
     <div 
@@ -396,13 +443,24 @@ function GridItem({ item, isSelected, onClick, onOpen }: GridItemProps) {
           <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
             <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
           </svg>
-        ) : item.thumbnail ? (
+        ) : isImage && item.hasThumbnail ? (
           <img
             css={styles.image}
             src={item.thumbnail}
             alt={item.name}
             loading="lazy"
           />
+        ) : isImage && !item.hasThumbnail ? (
+          <button 
+            css={styles.noThumbnail}
+            onClick={(e) => { e.stopPropagation(); onGenerateThumbnail(); }}
+            title="Generate thumbnail"
+          >
+            <svg css={styles.noThumbnailIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span css={styles.noThumbnailText}>Generate</span>
+          </button>
         ) : (
           <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
