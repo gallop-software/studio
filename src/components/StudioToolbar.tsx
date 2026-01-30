@@ -214,15 +214,13 @@ const styles = {
 }
 
 export function StudioToolbar() {
-  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest, fileItems } = useStudio()
+  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest, fileItems, requestProcess, actionState } = useStudio()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [showAddNewModal, setShowAddNewModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [scanning, setScanning] = useState(false)
-  const [processing, setProcessing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [showProcessConfirm, setShowProcessConfirm] = useState(false)
   const [showSyncConfirm, setShowSyncConfirm] = useState(false)
   const [syncImageCount, setSyncImageCount] = useState(0)
   const [syncHasRemote, setSyncHasRemote] = useState(false)
@@ -235,9 +233,6 @@ export function StudioToolbar() {
     percent: 0,
     status: 'processing',
   })
-  const [processCount, setProcessCount] = useState(0)
-  const [processMode, setProcessMode] = useState<'all' | 'selected'>('all')
-  const [imagesToProcess, setImagesToProcess] = useState<string[]>([])
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showNewFolderModal, setShowNewFolderModal] = useState(false)
   const [showRenameFolderModal, setShowRenameFolderModal] = useState(false)
@@ -506,17 +501,15 @@ export function StudioToolbar() {
         return
       }
       
-      setProcessCount(selectedImagePaths.length)
-      setImagesToProcess(selectedImagePaths)
-      setProcessMode('selected')
-      setShowProcessConfirm(true)
+      // Use shared process modal
+      requestProcess(selectedImagePaths)
     } else {
-      // Count ALL images for "process all"
+      // Get ALL image paths for "process all"
       try {
         const response = await fetch('/api/studio/count-images')
         const data = await response.json()
         
-        if (data.count === 0) {
+        if (!data.images || data.images.length === 0) {
           setAlertMessage({
             title: 'No Images Found',
             message: 'No images found in the public folder to process.',
@@ -524,244 +517,18 @@ export function StudioToolbar() {
           return
         }
         
-        setProcessCount(data.count)
-        setProcessMode('all')
-        setShowProcessConfirm(true)
+        // Convert to full paths and use shared process modal
+        const allImagePaths = data.images.map((img: string) => `public/${img}`)
+        requestProcess(allImagePaths)
       } catch (error) {
-        console.error('Failed to count images:', error)
+        console.error('Failed to get images:', error)
         setAlertMessage({
           title: 'Error',
-          message: 'Failed to count images.',
+          message: 'Failed to get images.',
         })
       }
     }
-  }, [selectedItems])
-
-  const handleProcessConfirm = useCallback(async () => {
-    setShowProcessConfirm(false)
-    setProcessing(true)
-
-    // Create new AbortController for this request
-    abortControllerRef.current = new AbortController()
-    const signal = abortControllerRef.current.signal
-
-    try {
-      if (processMode === 'all') {
-        // Process all images with streaming progress
-        setProgressTitle('Processing Images')
-        setShowProgress(true)
-        setProgressState({
-          current: 0,
-          total: processCount,
-          percent: 0,
-          status: 'processing',
-        })
-
-        const response = await fetch('/api/studio/process-all', {
-          method: 'POST',
-          signal,
-        })
-
-        if (!response.body) {
-          throw new Error('No response body')
-        }
-
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-
-            // Check if aborted
-            if (signal.aborted) {
-              reader.cancel()
-              break
-            }
-
-            const text = decoder.decode(value)
-            const lines = text.split('\n\n').filter(line => line.startsWith('data: '))
-
-            for (const line of lines) {
-              try {
-                const data = JSON.parse(line.replace('data: ', ''))
-                
-                if (data.type === 'start') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    total: data.total,
-                  }))
-                } else if (data.type === 'progress') {
-                  setProgressState({
-                    current: data.current,
-                    total: data.total,
-                    percent: data.percent,
-                    currentFile: data.currentFile,
-                    status: 'processing',
-                  })
-                } else if (data.type === 'cleanup') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    status: 'cleanup',
-                    currentFile: undefined,
-                  }))
-                } else if (data.type === 'complete') {
-                  setProgressState({
-                    current: data.processed,
-                    total: data.processed,
-                    percent: 100,
-                    status: 'complete',
-                    processed: data.processed,
-                    alreadyProcessed: data.alreadyProcessed,
-                    orphansRemoved: data.orphansRemoved,
-                    errors: data.errors,
-                  })
-                  triggerRefresh()
-                } else if (data.type === 'error') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    status: 'error',
-                    message: data.message,
-                  }))
-                }
-              } catch {
-                // Ignore parse errors
-              }
-            }
-          }
-        } catch (err) {
-          if (signal.aborted) {
-            // User stopped - update state to show stopped status
-            setProgressState(prev => ({
-              ...prev,
-              status: 'stopped',
-              processed: prev.current,
-            }))
-            triggerRefresh()
-          } else {
-            throw err
-          }
-        }
-      } else {
-        // Process selected images with streaming
-        setShowProgress(true)
-        setProgressState({
-          current: 0,
-          total: processCount,
-          percent: 0,
-          status: 'processing',
-        })
-
-        // Use stored imagesToProcess instead of selectedItems
-        const selectedImageKeys = imagesToProcess.map(p => {
-          const key = p.replace(/^public\//, '')
-          return key.startsWith('/') ? key : `/${key}`
-        })
-        
-        const response = await fetch('/api/studio/reprocess-stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageKeys: selectedImageKeys }),
-          signal,
-        })
-        
-        if (!response.ok) {
-          const error = await response.json()
-          setProgressState({
-            current: 0,
-            total: 0,
-            percent: 0,
-            status: 'error',
-            message: error.error || 'Unknown error',
-          })
-        } else {
-          const reader = response.body?.getReader()
-          const decoder = new TextDecoder()
-
-          if (reader) {
-            let buffer = ''
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-
-              buffer += decoder.decode(value, { stream: true })
-              const lines = buffer.split('\n')
-              buffer = lines.pop() || ''
-
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  try {
-                    const data = JSON.parse(line.slice(6))
-                    
-                    if (data.type === 'start') {
-                      setProgressState(prev => ({
-                        ...prev,
-                        total: data.total,
-                      }))
-                    } else if (data.type === 'progress') {
-                      setProgressState({
-                        current: data.current,
-                        total: data.total,
-                        percent: data.percent,
-                        status: 'processing',
-                        message: data.message,
-                      })
-                    } else if (data.type === 'cleanup') {
-                      setProgressState(prev => ({
-                        ...prev,
-                        status: 'cleanup',
-                        message: data.message,
-                      }))
-                    } else if (data.type === 'complete') {
-                      setProgressState({
-                        current: data.processed,
-                        total: data.processed,
-                        percent: 100,
-                        status: data.errors > 0 ? 'error' : 'complete',
-                        processed: data.processed,
-                        message: data.message,
-                      })
-                      clearSelection()
-                      triggerRefresh()
-                    } else if (data.type === 'error') {
-                      setProgressState(prev => ({
-                        ...prev,
-                        status: 'error',
-                        message: data.message,
-                      }))
-                    }
-                  } catch { /* ignore parse errors */ }
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      if (signal.aborted) {
-        // User stopped
-        setProgressState(prev => ({
-          ...prev,
-          status: 'stopped',
-          processed: prev.current,
-        }))
-        triggerRefresh()
-      } else {
-        console.error('Processing error:', error)
-        setProgressState({
-          current: 0,
-          total: 0,
-          percent: 0,
-          status: 'error',
-          message: 'Processing failed. Check console for details.',
-        })
-      }
-    } finally {
-      setProcessing(false)
-      abortControllerRef.current = null
-    }
-  }, [processMode, processCount, imagesToProcess, clearSelection, triggerRefresh])
+  }, [selectedItems, requestProcess])
 
   const handleStopProcessing = useCallback(() => {
     if (abortControllerRef.current) {
@@ -1213,19 +980,6 @@ export function StudioToolbar() {
         />
       )}
 
-      {showProcessConfirm && (
-        <ConfirmModal
-          title="Process Images"
-          message={processMode === 'all' 
-            ? `Found ${processCount} image${processCount !== 1 ? 's' : ''} in the public folder. This will regenerate all thumbnails and remove any orphaned files from the images folder.`
-            : `Process ${processCount} selected image${processCount !== 1 ? 's' : ''}? This will regenerate thumbnails for these files.`
-          }
-          confirmLabel={processing ? 'Processing...' : 'Process'}
-          onConfirm={handleProcessConfirm}
-          onCancel={() => setShowProcessConfirm(false)}
-        />
-      )}
-
       {showProgress && (
         <ProgressModal
           title={progressTitle}
@@ -1337,11 +1091,11 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleProcessImages}
-            disabled={processing || isInImagesFolder}
+            disabled={actionState.showProgress || isInImagesFolder}
             title={isInImagesFolder ? 'Cannot process images folder' : undefined}
           >
             <ImageStackIcon />
-            {processing ? 'Processing...' : 'Process Images'}
+            Process Images
           </button>
           <button
             css={[styles.btn, styles.btnDanger]}
