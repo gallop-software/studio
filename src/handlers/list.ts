@@ -89,6 +89,10 @@ export async function handleList(request: NextRequest) {
         const isPushedToCloud = cdnIndex !== undefined
         const isRemote = isPushedToCloud && cdnBaseUrl !== r2PublicUrl
         
+        // Get dimensions for this thumbnail size
+        const thumbDims = originalEntry?.[thumb.size]
+        const dimensions = thumbDims ? { width: thumbDims.w, height: thumbDims.h } : undefined
+        
         // Check if this is directly in the current folder or in a subfolder
         if (imagesSubPath === '') {
           // We're at /images root
@@ -106,6 +110,7 @@ export async function handleList(request: NextRequest) {
               cdnPushed: isPushedToCloud,
               cdnBaseUrl,
               isRemote,
+              dimensions,
             })
           } else {
             // In a subfolder - add the folder
@@ -146,6 +151,7 @@ export async function handleList(request: NextRequest) {
               cdnPushed: isPushedToCloud,
               cdnBaseUrl,
               isRemote,
+              dimensions,
             })
           } else {
             // Subfolder
