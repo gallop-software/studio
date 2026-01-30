@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs'
 import path from 'path'
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getAllThumbnailPaths } from '../../types'
 import { getContentType } from './files'
 
@@ -73,6 +73,77 @@ export async function deleteLocalThumbnails(imageKey: string): Promise<void> {
       await fs.unlink(localPath)
     } catch {
       // File might not exist
+    }
+  }
+}
+
+/**
+ * Download image from a remote URL (not R2)
+ */
+export async function downloadFromRemoteUrl(url: string): Promise<Buffer> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Failed to download from ${url}: ${response.status}`)
+  }
+  const arrayBuffer = await response.arrayBuffer()
+  return Buffer.from(arrayBuffer)
+}
+
+/**
+ * Upload original image to R2 CDN
+ */
+export async function uploadOriginalToCdn(imageKey: string): Promise<void> {
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME
+  if (!bucketName) throw new Error('R2 bucket not configured')
+
+  const r2 = getR2Client()
+  const localPath = path.join(process.cwd(), 'public', imageKey)
+  const fileBuffer = await fs.readFile(localPath)
+  
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: bucketName,
+      Key: imageKey.replace(/^\//, ''),
+      Body: fileBuffer,
+      ContentType: getContentType(imageKey),
+    })
+  )
+}
+
+/**
+ * Delete original and thumbnails from R2 CDN
+ */
+export async function deleteFromCdn(imageKey: string, hasThumbnails: boolean): Promise<void> {
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME
+  if (!bucketName) throw new Error('R2 bucket not configured')
+
+  const r2 = getR2Client()
+
+  // Delete original
+  try {
+    await r2.send(
+      new DeleteObjectCommand({
+        Bucket: bucketName,
+        Key: imageKey.replace(/^\//, ''),
+      })
+    )
+  } catch {
+    // May not exist
+  }
+
+  // Delete thumbnails if they exist
+  if (hasThumbnails) {
+    for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+      try {
+        await r2.send(
+          new DeleteObjectCommand({
+            Bucket: bucketName,
+            Key: thumbPath.replace(/^\//, ''),
+          })
+        )
+      } catch {
+        // May not exist
+      }
     }
   }
 }

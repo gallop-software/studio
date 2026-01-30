@@ -4,7 +4,20 @@ import path from 'path'
 import sharp from 'sharp'
 import type { MetaEntry } from '../types'
 import { getAllThumbnailPaths } from '../types'
-import { loadMeta, saveMeta, isImageFile, isMediaFile } from './utils'
+import { 
+  loadMeta, 
+  saveMeta, 
+  isImageFile, 
+  isMediaFile,
+  getCdnUrls,
+  downloadFromCdn,
+  downloadFromRemoteUrl,
+  uploadOriginalToCdn,
+  uploadToCdn,
+  deleteFromCdn,
+  deleteLocalThumbnails,
+  processImage,
+} from './utils'
 
 export async function handleUpload(request: NextRequest) {
   try {
@@ -348,59 +361,147 @@ export async function handleMove(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid destination' }, { status: 400 })
     }
 
-    try {
-      const destStats = await fs.stat(absoluteDestination)
-      if (!destStats.isDirectory()) {
-        return NextResponse.json({ error: 'Destination is not a folder' }, { status: 400 })
-      }
-    } catch {
-      return NextResponse.json({ error: 'Destination folder not found' }, { status: 404 })
-    }
+    // Ensure destination folder exists (create if needed)
+    await fs.mkdir(absoluteDestination, { recursive: true })
 
     const moved: string[] = []
     const errors: string[] = []
     const meta = await loadMeta()
+    const cdnUrls = getCdnUrls(meta)
+    const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '') || ''
     let metaChanged = false
 
     for (const itemPath of paths) {
       const safePath = itemPath.replace(/\.\./g, '')
-      const absolutePath = path.join(process.cwd(), safePath)
       const itemName = path.basename(safePath)
       const newAbsolutePath = path.join(absoluteDestination, itemName)
 
-      if (absoluteDestination.startsWith(absolutePath + path.sep)) {
-        errors.push(`Cannot move ${itemName} into itself`)
-        continue
-      }
+      // Build meta keys
+      const oldRelativePath = safePath.replace(/^public\//, '')
+      const newRelativePath = path.join(safeDestination.replace(/^public\//, ''), itemName)
+      const oldKey = '/' + oldRelativePath
+      const newKey = '/' + newRelativePath
 
-      try {
-        await fs.access(absolutePath)
-      } catch {
-        errors.push(`${itemName} not found`)
-        continue
-      }
-
-      try {
-        await fs.access(newAbsolutePath)
+      // Check if destination already exists in meta
+      if (meta[newKey]) {
         errors.push(`${itemName} already exists in destination`)
         continue
-      } catch {
-        // Good - doesn't exist
       }
 
+      const entry = meta[oldKey] as MetaEntry | undefined
+      const isImage = isImageFile(itemName)
+
+      // Determine if cloud or remote
+      const isInCloud = entry?.c !== undefined
+      const fileCdnUrl = isInCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
+      const isRemote = isInCloud && (!r2PublicUrl || fileCdnUrl !== r2PublicUrl)
+      const isPushedToR2 = isInCloud && r2PublicUrl && fileCdnUrl === r2PublicUrl
+      const hasProcessedThumbnails = entry?.p === 1
+
       try {
-        await fs.rename(absolutePath, newAbsolutePath)
+        if (isRemote && isImage) {
+          // ===== REMOTE IMAGE: Download from external URL, save locally, remove c =====
+          const remoteUrl = `${fileCdnUrl}${oldKey}`
+          const buffer = await downloadFromRemoteUrl(remoteUrl)
+          
+          // Save to new local location
+          await fs.mkdir(path.dirname(newAbsolutePath), { recursive: true })
+          await fs.writeFile(newAbsolutePath, buffer)
+          
+          // Update meta: remove c (now local), keep other properties
+          const newEntry: MetaEntry = {
+            w: entry?.w,
+            h: entry?.h,
+            b: entry?.b,
+            // Don't copy p since remote images don't have local thumbnails
+            // Don't copy c since it's now local
+          }
+          delete meta[oldKey]
+          meta[newKey] = newEntry
+          metaChanged = true
+          moved.push(itemPath)
 
-        const stats = await fs.stat(newAbsolutePath)
-        if (stats.isFile() && isImageFile(itemName)) {
-          const oldRelativePath = safePath.replace(/^public\//, '')
-          const newRelativePath = path.join(safeDestination.replace(/^public\//, ''), itemName)
-          const oldKey = '/' + oldRelativePath
-          const newKey = '/' + newRelativePath
+        } else if (isPushedToR2 && isImage) {
+          // ===== CLOUD IMAGE (R2): Download, move, re-upload, delete old =====
+          
+          // Download original from R2
+          const buffer = await downloadFromCdn(oldKey)
+          
+          // Save to new local location
+          await fs.mkdir(path.dirname(newAbsolutePath), { recursive: true })
+          await fs.writeFile(newAbsolutePath, buffer)
+          
+          // Create new meta entry
+          const newEntry: MetaEntry = {
+            w: entry?.w,
+            h: entry?.h,
+            b: entry?.b,
+          }
+          
+          // If processed, regenerate thumbnails
+          if (hasProcessedThumbnails) {
+            const processedEntry = await processImage(buffer, newKey)
+            newEntry.w = processedEntry.w
+            newEntry.h = processedEntry.h
+            newEntry.b = processedEntry.b
+            newEntry.p = 1
+          }
+          
+          // Upload original to new R2 location
+          await uploadOriginalToCdn(newKey)
+          
+          // If processed, upload thumbnails to R2
+          if (hasProcessedThumbnails) {
+            await uploadToCdn(newKey)
+          }
+          
+          // Delete old files from R2
+          await deleteFromCdn(oldKey, hasProcessedThumbnails)
+          
+          // Delete local files (keep cloud-only state)
+          try { await fs.unlink(newAbsolutePath) } catch { /* ignore */ }
+          if (hasProcessedThumbnails) {
+            await deleteLocalThumbnails(newKey)
+          }
+          
+          // Set c to same CDN index
+          newEntry.c = entry?.c
+          
+          // Update meta
+          delete meta[oldKey]
+          meta[newKey] = newEntry
+          metaChanged = true
+          moved.push(itemPath)
 
-          if (meta[oldKey]) {
-            const entry = meta[oldKey]
+        } else {
+          // ===== LOCAL FILE: Use standard fs.rename =====
+          const absolutePath = path.join(process.cwd(), safePath)
 
+          if (absoluteDestination.startsWith(absolutePath + path.sep)) {
+            errors.push(`Cannot move ${itemName} into itself`)
+            continue
+          }
+
+          try {
+            await fs.access(absolutePath)
+          } catch {
+            errors.push(`${itemName} not found`)
+            continue
+          }
+
+          try {
+            await fs.access(newAbsolutePath)
+            errors.push(`${itemName} already exists in destination`)
+            continue
+          } catch {
+            // Good - doesn't exist
+          }
+
+          await fs.rename(absolutePath, newAbsolutePath)
+
+          const stats = await fs.stat(newAbsolutePath)
+          if (stats.isFile() && isImage && entry) {
+            // Move local thumbnails
             const oldThumbPaths = getAllThumbnailPaths(oldKey)
             const newThumbPaths = getAllThumbnailPaths(newKey)
 
@@ -420,11 +521,25 @@ export async function handleMove(request: NextRequest) {
             delete meta[oldKey]
             meta[newKey] = entry
             metaChanged = true
+          } else if (stats.isDirectory()) {
+            // Move folder: update all meta entries under this folder
+            const oldPrefix = oldKey + '/'
+            const newPrefix = newKey + '/'
+            
+            for (const key of Object.keys(meta)) {
+              if (key.startsWith(oldPrefix)) {
+                const newMetaKey = newPrefix + key.slice(oldPrefix.length)
+                meta[newMetaKey] = meta[key]
+                delete meta[key]
+                metaChanged = true
+              }
+            }
           }
-        }
 
-        moved.push(itemPath)
-      } catch {
+          moved.push(itemPath)
+        }
+      } catch (err) {
+        console.error(`Failed to move ${itemName}:`, err)
         errors.push(`Failed to move ${itemName}`)
       }
     }

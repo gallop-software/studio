@@ -987,8 +987,8 @@ export function StudioToolbar() {
 
   const hasSelection = selectedItems.size > 0
   
-  // Check if any selected items are cloud-only (can't be moved)
-  const hasCloudOnlySelection = hasSelection && Array.from(selectedItems).some(path => {
+  // Check if any selected items are already in the cloud (for Push CDN disabling)
+  const hasCloudSelection = hasSelection && Array.from(selectedItems).some(path => {
     const item = fileItems.find(f => f.path === path)
     return item && item.cdnPushed
   })
@@ -1185,8 +1185,7 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleMoveClick}
-            disabled={!hasSelection || hasCloudOnlySelection}
-            title={hasCloudOnlySelection ? 'Cannot move files that are in the cloud' : undefined}
+            disabled={!hasSelection}
           >
             <MoveIcon />
             Move
@@ -1194,8 +1193,8 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleSyncClick}
-            disabled={!hasSelection || hasCloudOnlySelection}
-            title={hasCloudOnlySelection ? 'Selected files are already in the cloud' : undefined}
+            disabled={!hasSelection || hasCloudSelection}
+            title={hasCloudSelection ? 'Selected files are already in the cloud' : undefined}
           >
             <CloudIcon />
             Push CDN
