@@ -78,8 +78,8 @@ export async function handleList(request: NextRequest) {
         let hasThumbnail = false
         let fileSize: number | undefined
         
-        if (isImage && (entry.w || entry.b)) {
-          // Has been processed - use thumbnail
+        if (isImage && entry.p === 1) {
+          // Has been processed (p: 1) - use thumbnail
           const thumbPath = getThumbnailPath(key, 'sm')
           
           if (isPushedToCloud && entry.c !== undefined) {
@@ -103,8 +103,13 @@ export async function handleList(request: NextRequest) {
             }
           }
         } else if (isImage) {
-          // Not processed yet - use original
-          thumbnail = key
+          // Not processed yet - use original (from CDN if available)
+          if (isPushedToCloud && entry.c !== undefined) {
+            const cdnUrl = cdnUrls[entry.c]
+            thumbnail = cdnUrl ? `${cdnUrl}${key}` : key
+          } else {
+            thumbnail = key
+          }
           hasThumbnail = false
         }
         
@@ -166,7 +171,8 @@ export async function handleSearch(request: NextRequest) {
       let thumbnail: string | undefined
       let hasThumbnail = false
       
-      if (isImage && (entry.w || entry.b)) {
+      if (isImage && entry.p === 1) {
+        // Has been processed (p: 1) - use thumbnail
         const thumbPath = getThumbnailPath(key, 'sm')
         
         if (isPushedToCloud && entry.c !== undefined) {
@@ -187,7 +193,13 @@ export async function handleSearch(request: NextRequest) {
           }
         }
       } else if (isImage) {
-        thumbnail = key
+        // Not processed yet - use original (from CDN if available)
+        if (isPushedToCloud && entry.c !== undefined) {
+          const cdnUrl = cdnUrls[entry.c]
+          thumbnail = cdnUrl ? `${cdnUrl}${key}` : key
+        } else {
+          thumbnail = key
+        }
         hasThumbnail = false
       }
       
