@@ -179,11 +179,12 @@ const styles = {
 
 interface StudioFolderPickerProps {
   selectedItems: Set<string>
+  currentPath: string
   onMove: (destination: string) => void
   onCancel: () => void
 }
 
-export function StudioFolderPicker({ selectedItems, onMove, onCancel }: StudioFolderPickerProps) {
+export function StudioFolderPicker({ selectedItems, currentPath, onMove, onCancel }: StudioFolderPickerProps) {
   const [folders, setFolders] = useState<Folder[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
@@ -209,8 +210,12 @@ export function StudioFolderPicker({ selectedItems, onMove, onCancel }: StudioFo
   }, [])
 
   // Filter out folders that are being moved (can't move to themselves or their children)
+  // Also filter out the current folder (can't move to the same location)
   const selectedPaths = Array.from(selectedItems)
   const availableFolders = folders.filter(folder => {
+    // Can't move to current location
+    if (folder.path === currentPath) return false
+    // Can't move a folder into itself or its children
     return !selectedPaths.some(selected => 
       folder.path === selected || 
       folder.path.startsWith(selected + '/')

@@ -733,6 +733,7 @@ export function StudioToolbar() {
       {showMoveModal && (
         <StudioFolderPicker
           selectedItems={selectedItems}
+          currentPath={currentPath}
           onMove={(destination) => {
             setShowMoveModal(false)
             handleMoveConfirm(destination)
