@@ -244,8 +244,6 @@ async function handleSearch(request: NextRequest) {
           const itemRelPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
 
           if (entry.isDirectory()) {
-            // Skip public/images folder (generated thumbnails)
-            if (itemRelPath === 'images') continue
             await searchDir(fullPath, itemRelPath)
           } else if (isImageFile(entry.name)) {
             // Check if path matches query
@@ -1361,11 +1359,6 @@ async function handleMove(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid destination' }, { status: 400 })
     }
 
-    // Cannot move to protected images folder
-    if (safeDestination === 'public/images' || safeDestination.startsWith('public/images/')) {
-      return NextResponse.json({ error: 'Cannot move items to the protected images folder' }, { status: 400 })
-    }
-
     // Check destination exists and is a directory
     try {
       const destStats = await fs.stat(absoluteDestination)
@@ -1482,8 +1475,6 @@ async function handleListFolders() {
         for (const entry of entries) {
           if (!entry.isDirectory()) continue
           if (entry.name.startsWith('.')) continue
-          // Skip protected images folder
-          if (relativePath === '' && entry.name === 'images') continue
 
           const folderRelativePath = relativePath ? `${relativePath}/${entry.name}` : entry.name
           folders.push({
