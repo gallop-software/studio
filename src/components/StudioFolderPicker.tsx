@@ -194,7 +194,10 @@ export function StudioFolderPicker({ selectedItems, onMove, onCancel }: StudioFo
         const response = await fetch('/api/studio/list-folders')
         if (response.ok) {
           const data = await response.json()
+          console.log('Loaded folders:', data)
           setFolders(data.folders || [])
+        } else {
+          console.error('Failed to load folders:', response.status, await response.text())
         }
       } catch (error) {
         console.error('Failed to load folders:', error)
@@ -234,6 +237,10 @@ export function StudioFolderPicker({ selectedItems, onMove, onCancel }: StudioFo
           {loading ? (
             <div css={styles.loading}>
               <div css={styles.spinner} />
+            </div>
+          ) : availableFolders.length === 0 ? (
+            <div css={styles.loading}>
+              No available folders to move to.
             </div>
           ) : (
             <div css={styles.folderList}>
