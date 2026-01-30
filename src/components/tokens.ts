@@ -50,10 +50,10 @@ export const colors = {
 export const fontSize = {
   xs: '13px',
   sm: '14px',
-  base: '15px',
-  md: '16px',
-  lg: '18px',
-  xl: '20px',
+  base: '16px',
+  md: '17px',
+  lg: '19px',
+  xl: '22px',
 }
 
 // Base reset styles for Studio container - isolates from parent template

@@ -17,13 +17,15 @@ const spin = keyframes`
 const styles = {
   toolbar: css`
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
     padding: 12px 16px;
     background-color: ${colors.surface};
     border-bottom: 1px solid ${colors.border};
+    overflow-x: auto;
+    min-width: 0;
     
     @media (min-width: 768px) {
       padding: 12px 24px;
@@ -31,13 +33,15 @@ const styles = {
   `,
   left: css`
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
     align-items: center;
     gap: 8px;
   `,
   right: css`
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
     align-items: center;
     gap: 8px;
   `,
@@ -171,8 +175,13 @@ const styles = {
     }
   `,
   viewBtnActive: css`
-    background-color: ${colors.background};
-    color: ${colors.text};
+    background-color: ${colors.primaryLight};
+    color: ${colors.primary};
+    
+    &:hover {
+      background-color: ${colors.primaryLight};
+      color: ${colors.primary};
+    }
   `,
 }
 
@@ -553,6 +562,11 @@ export function StudioToolbar() {
   }, [setSearchQuery])
 
   const hasSelection = selectedItems.size > 0
+  
+  // Check if any selected items are in the images folder (protected)
+  const hasImagesSelected = Array.from(selectedItems).some(path => 
+    path === 'public/images' || path.startsWith('public/images/')
+  )
 
   // Hide toolbar actions when viewing detail
   if (focusedItem) {
@@ -635,8 +649,8 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleProcessImages}
-            disabled={processing || isInImagesFolder}
-            title={isInImagesFolder ? 'Cannot process images from within the images folder' : undefined}
+            disabled={processing || isInImagesFolder || hasImagesSelected}
+            title={isInImagesFolder || hasImagesSelected ? 'Cannot process protected images folder' : undefined}
           >
             <ImageStackIcon />
             {processing ? 'Processing...' : 'Process Images'}
@@ -644,7 +658,8 @@ export function StudioToolbar() {
           <button
             css={[styles.btn, styles.btnDanger]}
             onClick={handleDeleteClick}
-            disabled={!hasSelection}
+            disabled={!hasSelection || hasImagesSelected}
+            title={hasImagesSelected ? 'Cannot delete protected images folder items' : undefined}
           >
             <TrashIcon />
             Delete

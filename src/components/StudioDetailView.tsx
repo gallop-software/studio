@@ -52,10 +52,16 @@ const styles = {
     background: ${colors.background};
     overflow: auto;
   `,
-  mainCloseBtn: css`
+  headerButtons: css`
     position: absolute;
     top: 16px;
     right: 16px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+  `,
+  copyBtn: css`
+    position: relative;
     padding: 8px;
     background: ${colors.surface};
     border: 1px solid ${colors.border};
@@ -65,7 +71,6 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
     
     &:hover {
@@ -73,10 +78,57 @@ const styles = {
       border-color: ${colors.borderHover};
     }
   `,
-  mainCloseIcon: css`
+  copyIcon: css`
     width: 20px;
     height: 20px;
     color: ${colors.textSecondary};
+  `,
+  tooltip: css`
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1f36;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    margin-bottom: 6px;
+    pointer-events: none;
+    z-index: 100;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 4px solid transparent;
+      border-top-color: #1a1f36;
+    }
+  `,
+  mainCloseBtn: css`
+    padding: 8px;
+    background: ${colors.danger};
+    border: 1px solid ${colors.danger};
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    
+    &:hover {
+      background-color: ${colors.dangerHover};
+      border-color: ${colors.dangerHover};
+    }
+  `,
+  mainCloseIcon: css`
+    width: 20px;
+    height: 20px;
+    color: white;
   `,
   mediaWrapper: css`
     max-width: 100%;
@@ -219,6 +271,7 @@ export function StudioDetailView() {
   const { focusedItem, setFocusedItem, triggerRefresh, clearSelection } = useStudio()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
+  const [showCopied, setShowCopied] = useState(false)
 
   if (!focusedItem) return null
 
@@ -228,6 +281,13 @@ export function StudioDetailView() {
 
   const handleClose = () => {
     setFocusedItem(null)
+  }
+
+  const handleCopyPath = () => {
+    const pathToCopy = '/' + focusedItem.path
+    navigator.clipboard.writeText(pathToCopy)
+    setShowCopied(true)
+    setTimeout(() => setShowCopied(false), 1500)
   }
 
   const handleRename = () => {
@@ -318,11 +378,19 @@ export function StudioDetailView() {
       <div css={styles.overlay} onClick={handleClose}>
         <div css={styles.container} onClick={(e) => e.stopPropagation()}>
           <div css={styles.main}>
-            <button css={styles.mainCloseBtn} onClick={handleClose} aria-label="Close">
-              <svg css={styles.mainCloseIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div css={styles.headerButtons}>
+              <button css={styles.copyBtn} onClick={handleCopyPath} title="Copy file path">
+                {showCopied && <span css={styles.tooltip}>Copied!</span>}
+                <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+              <button css={styles.mainCloseBtn} onClick={handleClose} aria-label="Close">
+                <svg css={styles.mainCloseIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
             <div css={styles.mediaWrapper}>
               {renderMedia()}
             </div>

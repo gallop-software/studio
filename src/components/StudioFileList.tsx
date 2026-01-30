@@ -102,12 +102,66 @@ const styles = {
   checkboxCell: css`
     padding: 12px 16px;
     cursor: pointer;
+    vertical-align: middle;
   `,
   checkbox: css`
     width: 16px;
     height: 16px;
     accent-color: ${colors.primary};
     cursor: pointer;
+    display: block;
+  `,
+  copyBtn: css`
+    position: relative;
+    flex-shrink: 0;
+    height: 28px;
+    width: 28px;
+    font-size: ${fontSize.xs};
+    color: ${colors.textSecondary};
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    padding: 0;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    
+    &:hover {
+      background: ${colors.surfaceHover};
+      border-color: ${colors.borderHover};
+      color: ${colors.text};
+    }
+  `,
+  copyIcon: css`
+    width: 14px;
+    height: 14px;
+  `,
+  tooltip: css`
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1f36;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    margin-bottom: 6px;
+    pointer-events: none;
+    z-index: 100;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 4px solid transparent;
+      border-top-color: #1a1f36;
+    }
   `,
   nameCell: css`
     display: flex;
@@ -404,9 +458,18 @@ interface ListRowProps {
 }
 
 function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: ListRowProps) {
+  const [showCopied, setShowCopied] = useState(false)
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
   const isImagesFolder = isFolder && (item.name === 'images' || item.path.includes('/images/'))
+
+  const handleCopyPath = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const pathToCopy = '/' + item.path
+    navigator.clipboard.writeText(pathToCopy)
+    setShowCopied(true)
+    setTimeout(() => setShowCopied(false), 1500)
+  }
 
   return (
     <tr 
@@ -459,6 +522,16 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Lis
             </svg>
           )}
           <span css={styles.name} title={item.name}>{truncateMiddle(item.name)}</span>
+          <button
+            css={styles.copyBtn}
+            onClick={handleCopyPath}
+            title="Copy file path"
+          >
+            {showCopied && <span css={styles.tooltip}>Copied!</span>}
+            <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
           <button
             css={styles.openBtn}
             onClick={(e) => {
