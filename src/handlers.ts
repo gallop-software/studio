@@ -1197,13 +1197,8 @@ async function loadMeta(): Promise<StudioMeta> {
 async function saveMeta(meta: StudioMeta): Promise<void> {
   const dataDir = path.join(process.cwd(), '_data')
   await fs.mkdir(dataDir, { recursive: true })
-  meta.generatedAt = new Date().toISOString()
   
-  // Write verbose format (existing)
-  const metaPath = path.join(dataDir, '_meta.json')
-  await fs.writeFile(metaPath, JSON.stringify(meta, null, 2))
-  
-  // Write lean format (new)
+  // Convert to lean format and write to _meta.json
   const lean: LeanMeta = {}
   for (const [key, entry] of Object.entries(meta.images)) {
     const imagePath = entry.original?.path || `/${key}`
@@ -1216,8 +1211,8 @@ async function saveMeta(meta: StudioMeta): Promise<void> {
       lean[imagePath].s = 1
     }
   }
-  const leanPath = path.join(dataDir, '_meta.lean.json')
-  await fs.writeFile(leanPath, JSON.stringify(lean, null, 2))
+  const metaPath = path.join(dataDir, '_meta.json')
+  await fs.writeFile(metaPath, JSON.stringify(lean, null, 2))
 }
 
 function isImageFile(filename: string): boolean {
