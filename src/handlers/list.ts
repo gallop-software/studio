@@ -37,7 +37,9 @@ export async function handleList(request: NextRequest) {
     try {
       const dirEntries = await fs.readdir(absoluteDir, { withFileTypes: true })
       for (const entry of dirEntries) {
-        if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        if (entry.name.startsWith('.')) continue
+        
+        if (entry.isDirectory()) {
           if (!seenFolders.has(entry.name)) {
             seenFolders.add(entry.name)
             
@@ -45,11 +47,21 @@ export async function handleList(request: NextRequest) {
             const isImagesFolder = entry.name === 'images' && !relativePath
             const folderPath = relativePath ? `public/${relativePath}/${entry.name}` : `public/${entry.name}`
             
-            // Count files in this folder from meta
-            const folderPrefix = pathPrefix === '/' ? `/${entry.name}/` : `${pathPrefix}${entry.name}/`
+            // Count files in this folder - from filesystem if inside images, from meta otherwise
             let fileCount = 0
-            for (const k of metaKeys) {
-              if (k.startsWith(folderPrefix)) fileCount++
+            if (isInsideImagesFolder || isImagesFolder) {
+              // Count files from filesystem for images folder
+              const subDir = path.join(absoluteDir, entry.name)
+              try {
+                const subEntries = await fs.readdir(subDir)
+                fileCount = subEntries.filter(f => !f.startsWith('.')).length
+              } catch { /* ignore */ }
+            } else {
+              // Count files from meta for regular folders
+              const folderPrefix = pathPrefix === '/' ? `/${entry.name}/` : `${pathPrefix}${entry.name}/`
+              for (const k of metaKeys) {
+                if (k.startsWith(folderPrefix)) fileCount++
+              }
             }
             
             items.push({
@@ -60,6 +72,28 @@ export async function handleList(request: NextRequest) {
               isProtected: isImagesFolder || isInsideImagesFolder,
             })
           }
+        } else if (isInsideImagesFolder) {
+          // List files inside images folder from filesystem (not from meta)
+          const filePath = relativePath ? `public/${relativePath}/${entry.name}` : `public/${entry.name}`
+          const fullPath = path.join(absoluteDir, entry.name)
+          
+          let fileSize: number | undefined
+          try {
+            const stats = await fs.stat(fullPath)
+            fileSize = stats.size
+          } catch { /* ignore */ }
+          
+          const isImage = isImageFile(entry.name)
+          
+          items.push({
+            name: entry.name,
+            path: filePath,
+            type: 'file',
+            size: fileSize,
+            thumbnail: isImage ? `/${relativePath}/${entry.name}` : undefined,
+            hasThumbnail: false,
+            isProtected: true,
+          })
         }
       }
     } catch {
