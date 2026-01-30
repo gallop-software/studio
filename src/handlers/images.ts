@@ -57,7 +57,12 @@ export async function handleSync(request: NextRequest) {
     const errors: string[] = []
     const urlsToPurge: string[] = []
 
-    for (const imageKey of imageKeys) {
+    for (let imageKey of imageKeys) {
+      // Normalize key to have leading /
+      if (!imageKey.startsWith('/')) {
+        imageKey = `/${imageKey}`
+      }
+      
       const entry = getMetaEntry(meta, imageKey)
       if (!entry) {
         errors.push(`Image not found in meta: ${imageKey}. Run Scan first.`)
@@ -183,7 +188,12 @@ export async function handleReprocess(request: NextRequest) {
     const errors: string[] = []
     const urlsToPurge: string[] = []
 
-    for (const imageKey of imageKeys) {
+    for (let imageKey of imageKeys) {
+      // Normalize key to have leading /
+      if (!imageKey.startsWith('/')) {
+        imageKey = `/${imageKey}`
+      }
+      
       try {
         let buffer: Buffer
         const entry = getMetaEntry(meta, imageKey)
