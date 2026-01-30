@@ -384,7 +384,9 @@ export function ProgressModal({
           ) : isComplete ? (
             <>
               <p css={styles.message}>
-                {progress.isMove ? (
+                {progress.message ? (
+                  progress.message
+                ) : progress.isMove ? (
                   <>
                     Moved {progress.processed} file{progress.processed !== 1 ? 's' : ''}.
                     {progress.errors !== undefined && progress.errors > 0 ? (

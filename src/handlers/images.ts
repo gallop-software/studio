@@ -384,7 +384,7 @@ export async function handleUnprocessStream(request: NextRequest) {
           message += ` ${skipped.length} image${skipped.length !== 1 ? 's' : ''} had no thumbnails.`
         }
         if (errors.length > 0) {
-          message += ` ${errors.length} error${errors.length !== 1 ? 's' : ''}.`
+          message += ` ${errors.length} image${errors.length !== 1 ? 's' : ''} failed.`
         }
 
         sendEvent({ 
@@ -551,7 +551,7 @@ export async function handleReprocessStream(request: NextRequest) {
         // Build completion message
         let message = `Generated thumbnails for ${processed.length} image${processed.length !== 1 ? 's' : ''}.`
         if (errors.length > 0) {
-          message += ` ${errors.length} error${errors.length !== 1 ? 's' : ''}.`
+          message += ` ${errors.length} image${errors.length !== 1 ? 's' : ''} failed.`
         }
 
         sendEvent({ 
