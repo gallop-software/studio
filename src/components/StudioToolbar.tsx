@@ -224,6 +224,7 @@ export function StudioToolbar() {
   const [showSyncConfirm, setShowSyncConfirm] = useState(false)
   const [syncImageCount, setSyncImageCount] = useState(0)
   const [showProgress, setShowProgress] = useState(false)
+  const [progressTitle, setProgressTitle] = useState('Processing Images')
   const [progressState, setProgressState] = useState<ProgressState>({
     current: 0,
     total: 0,
@@ -249,6 +250,7 @@ export function StudioToolbar() {
 
   const handleScan = useCallback(async () => {
     setScanning(true)
+    setProgressTitle('Scanning Files')
     setShowProgress(true)
     setProgressState({
       current: 0,
@@ -301,8 +303,10 @@ export function StudioToolbar() {
               percent: 100,
               status: 'complete',
               processed: data.added,
+              alreadyProcessed: data.existingCount,
               errors: data.errors,
               message: data.renamed > 0 ? `${data.renamed} file(s) renamed due to conflicts` : undefined,
+              isScan: true,
             })
             triggerRefresh()
           } else if (data.type === 'error') {
@@ -530,6 +534,7 @@ export function StudioToolbar() {
     try {
       if (processMode === 'all') {
         // Process all images with streaming progress
+        setProgressTitle('Processing Images')
         setShowProgress(true)
         setProgressState({
           current: 0,
@@ -813,6 +818,7 @@ export function StudioToolbar() {
     const imageKeys = selectedImagePaths.map(p => '/' + p.replace(/^public\//, ''))
 
     // Show progress modal
+    setProgressTitle('Pushing to CDN')
     setProgressState({
       current: 0,
       total: imageKeys.length,
@@ -1046,7 +1052,7 @@ export function StudioToolbar() {
 
       {showProgress && (
         <ProgressModal
-          title="Processing Images"
+          title={progressTitle}
           progress={progressState}
           onStop={handleStopProcessing}
           onClose={() => {

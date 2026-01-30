@@ -342,6 +342,7 @@ export interface ProgressState {
   orphansRemoved?: number
   errors?: number
   errorMessages?: string[]
+  isScan?: boolean
 }
 
 interface ProgressModalProps {
@@ -379,10 +380,21 @@ export function ProgressModal({
           ) : isComplete ? (
             <>
               <p css={styles.message}>
-                Processed {progress.processed} new image{progress.processed !== 1 ? 's' : ''}.
-                {progress.alreadyProcessed !== undefined && progress.alreadyProcessed > 0 ? (
-                  <> {progress.alreadyProcessed} already processed.</>
-                ) : null}
+                {progress.isScan ? (
+                  <>
+                    {progress.alreadyProcessed !== undefined && progress.alreadyProcessed > 0 ? (
+                      <>{progress.alreadyProcessed} image{progress.alreadyProcessed !== 1 ? 's' : ''} already exist. </>
+                    ) : null}
+                    Scanned {progress.processed} new image{progress.processed !== 1 ? 's' : ''}.
+                  </>
+                ) : (
+                  <>
+                    Processed {progress.processed} new image{progress.processed !== 1 ? 's' : ''}.
+                    {progress.alreadyProcessed !== undefined && progress.alreadyProcessed > 0 ? (
+                      <> {progress.alreadyProcessed} already processed.</>
+                    ) : null}
+                  </>
+                )}
                 {progress.orphansRemoved !== undefined && progress.orphansRemoved > 0 ? (
                   <> Removed {progress.orphansRemoved} orphaned thumbnail{progress.orphansRemoved !== 1 ? 's' : ''}.</>
                 ) : null}

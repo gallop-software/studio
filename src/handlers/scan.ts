@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 import sharp from 'sharp'
+import { encode } from 'blurhash'
 import { loadMeta, saveMeta, isMediaFile, isImageFile } from './utils'
 
 /**
@@ -19,6 +20,7 @@ export async function handleScanStream() {
 
       try {
         const meta = await loadMeta()
+        const existingCount = Object.keys(meta).length
         const existingKeys = new Set(Object.keys(meta))
         const added: string[] = []
         const renamed: Array<{ from: string; to: string }> = []
@@ -109,18 +111,30 @@ export async function handleScanStream() {
             const isImage = isImageFile(relativePath)
             
             if (isImage) {
-              // Read dimensions for images
+              // Read dimensions and generate blurhash for images
               const ext = path.extname(relativePath).toLowerCase()
               
               if (ext === '.svg') {
                 // SVGs don't have pixel dimensions in the same way
-                meta[imageKey] = { w: 0, h: 0 }
+                meta[imageKey] = { w: 0, h: 0, b: '' }
               } else {
                 try {
-                  const metadata = await sharp(fullPath).metadata()
+                  const buffer = await fs.readFile(fullPath)
+                  const metadata = await sharp(buffer).metadata()
+                  
+                  // Generate blurhash
+                  const { data, info } = await sharp(buffer)
+                    .resize(32, 32, { fit: 'inside' })
+                    .ensureAlpha()
+                    .raw()
+                    .toBuffer({ resolveWithObject: true })
+                  
+                  const blurhash = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
+                  
                   meta[imageKey] = {
                     w: metadata.width || 0,
                     h: metadata.height || 0,
+                    b: blurhash,
                   }
                 } catch {
                   // Couldn't read dimensions
@@ -144,6 +158,7 @@ export async function handleScanStream() {
 
         sendEvent({ 
           type: 'complete', 
+          existingCount,
           added: added.length, 
           renamed: renamed.length,
           errors: errors.length,
