@@ -79,20 +79,52 @@ const styles = {
   folderList: css`
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 0;
   `,
   folderItem: css`
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 12px;
+    padding: 8px 12px;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
     border: 1px solid transparent;
+    position: relative;
     
     &:hover {
       background-color: ${colors.surfaceHover};
+    }
+  `,
+  treeIndent: css`
+    display: flex;
+    align-items: center;
+    height: 100%;
+  `,
+  treeLine: css`
+    width: 16px;
+    height: 100%;
+    position: relative;
+    flex-shrink: 0;
+    
+    &::before {
+      content: '';
+      position: absolute;
+      left: 8px;
+      top: 0;
+      bottom: 50%;
+      width: 0;
+      border-left: 1px dashed ${colors.border};
+    }
+    
+    &::after {
+      content: '';
+      position: absolute;
+      left: 8px;
+      top: 50%;
+      width: 8px;
+      height: 0;
+      border-top: 1px dashed ${colors.border};
     }
   `,
   folderItemSelected: css`
@@ -268,9 +300,17 @@ export function StudioFolderPicker({ selectedItems, currentPath, onMove, onCance
                       selectedFolder === folder.path && styles.folderItemSelected,
                       disabled && styles.folderItemDisabled
                     ]}
-                    style={{ paddingLeft: 12 + (folder.depth * 16) }}
+                    style={{ paddingLeft: 12 }}
                     onClick={() => !disabled && setSelectedFolder(folder.path)}
                   >
+                    {/* Render tree indent lines */}
+                    {folder.depth > 0 && (
+                      <div css={styles.treeIndent}>
+                        {Array.from({ length: folder.depth }).map((_, i) => (
+                          <div key={i} css={styles.treeLine} />
+                        ))}
+                      </div>
+                    )}
                     <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
                       <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
                     </svg>
