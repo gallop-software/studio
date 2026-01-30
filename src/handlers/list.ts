@@ -282,6 +282,26 @@ export async function handleListFolders() {
       }
     }
     
+    // Also scan filesystem recursively for folders (including empty ones)
+    async function scanDir(dir: string, relativePath: string): Promise<void> {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'images') {
+            const folderRelPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+            folderSet.add(folderRelPath)
+            // Recurse into subdirectory
+            await scanDir(path.join(dir, entry.name), folderRelPath)
+          }
+        }
+      } catch {
+        // Directory might not exist
+      }
+    }
+    
+    const publicDir = path.join(process.cwd(), 'public')
+    await scanDir(publicDir, '')
+    
     const folders: { path: string; name: string; depth: number }[] = []
     folders.push({ path: 'public', name: 'public', depth: 0 })
     
