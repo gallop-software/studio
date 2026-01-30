@@ -43,6 +43,44 @@ const styles = {
     margin: 0;
     letter-spacing: -0.02em;
   `,
+  headerLeft: css`
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
+  `,
+  breadcrumbs: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: ${fontSize.base};
+    color: ${colors.textSecondary};
+    min-width: 0;
+    overflow: hidden;
+  `,
+  breadcrumbSeparator: css`
+    color: ${colors.border};
+    flex-shrink: 0;
+  `,
+  breadcrumbItem: css`
+    color: ${colors.textSecondary};
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.15s ease;
+    white-space: nowrap;
+    
+    &:hover {
+      color: ${colors.primary};
+    }
+  `,
+  breadcrumbCurrent: css`
+    color: ${colors.text};
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  `,
   headerActions: css`
     display: flex;
     align-items: center;
@@ -289,7 +327,10 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
     <StudioContext.Provider value={contextValue}>
       <div css={styles.container}>
         <div css={styles.header}>
-          <h1 css={styles.title}>Studio</h1>
+          <div css={styles.headerLeft}>
+            <h1 css={styles.title}>Studio</h1>
+            <Breadcrumbs currentPath={currentPath} onNavigate={setCurrentPath} />
+          </div>
           <div css={styles.headerActions}>
             <StudioSettings />
             <button
@@ -329,6 +370,36 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
         {focusedItem && <StudioDetailView />}
       </div>
     </StudioContext.Provider>
+  )
+}
+
+function Breadcrumbs({ currentPath, onNavigate }: { currentPath: string; onNavigate: (path: string) => void }) {
+  const parts = currentPath.split('/').filter(Boolean)
+  
+  // Build paths for each breadcrumb
+  const breadcrumbs = parts.map((part, index) => ({
+    name: part,
+    path: parts.slice(0, index + 1).join('/')
+  }))
+
+  return (
+    <div css={styles.breadcrumbs}>
+      {breadcrumbs.map((crumb, index) => (
+        <span key={crumb.path} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {index > 0 && <span css={styles.breadcrumbSeparator}>/</span>}
+          {index === breadcrumbs.length - 1 ? (
+            <span css={styles.breadcrumbCurrent}>{crumb.name}</span>
+          ) : (
+            <span
+              css={styles.breadcrumbItem}
+              onClick={() => onNavigate(crumb.path)}
+            >
+              {crumb.name}
+            </span>
+          )}
+        </span>
+      ))}
+    </div>
   )
 }
 
