@@ -35,11 +35,6 @@ export async function GET(request: NextRequest) {
     return handleList(request)
   }
 
-  // Route: /api/studio/scan
-  if (route === 'scan') {
-    return handleScan()
-  }
-
   // Route: /api/studio/count-images
   if (route === 'count-images') {
     return handleCountImages()
@@ -338,79 +333,6 @@ async function getFolderStats(folderPath: string): Promise<{ fileCount: number; 
 
   await scanFolder(folderPath)
   return { fileCount, totalSize }
-}
-
-async function handleScan() {
-  try {
-    const meta = await loadMeta()
-
-    const untrackedFiles: string[] = []
-    const missingFiles: string[] = []
-    const validFiles: string[] = []
-
-    const imagesDir = path.join(process.cwd(), 'public', 'images')
-    
-    // Build set of tracked thumbnail paths from meta keys
-    const trackedPaths = new Set<string>()
-    for (const imageKey of Object.keys(meta)) {
-      for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-        trackedPaths.add(thumbPath)
-      }
-    }
-
-    async function scanDir(dir: string, relativePath: string = ''): Promise<void> {
-      try {
-        const entries = await fs.readdir(dir, { withFileTypes: true })
-        
-        for (const entry of entries) {
-          if (entry.name.startsWith('.')) continue
-
-          const fullPath = path.join(dir, entry.name)
-          const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
-
-          if (entry.isDirectory()) {
-            await scanDir(fullPath, relPath)
-          } else if (isImageFile(entry.name)) {
-            const publicPath = `/images/${relPath}`
-            if (!trackedPaths.has(publicPath)) {
-              untrackedFiles.push(publicPath)
-            } else {
-              validFiles.push(publicPath)
-            }
-          }
-        }
-      } catch {
-        // Directory might not exist
-      }
-    }
-
-    await scanDir(imagesDir)
-
-    // Check for missing files
-    for (const [imageKey, entry] of Object.entries(meta)) {
-      if (entry.s) continue // Skip synced images (they're on CDN)
-      
-      for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-        const filePath = path.join(process.cwd(), 'public', thumbPath)
-        try {
-          await fs.access(filePath)
-        } catch {
-          missingFiles.push(`${imageKey}: ${thumbPath}`)
-          break // Only report once per image
-        }
-      }
-    }
-
-    return NextResponse.json({
-      totalInMeta: Object.keys(meta).length,
-      validFiles: validFiles.length,
-      untrackedFiles,
-      missingFiles,
-    })
-  } catch (error) {
-    console.error('Failed to scan:', error)
-    return NextResponse.json({ error: 'Failed to scan' }, { status: 500 })
-  }
 }
 
 async function handleUpload(request: NextRequest) {
