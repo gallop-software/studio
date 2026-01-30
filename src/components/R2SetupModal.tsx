@@ -9,7 +9,8 @@ const ENV_TEMPLATE = `CLOUDFLARE_R2_ACCOUNT_ID=your_account_id
 CLOUDFLARE_R2_ACCESS_KEY_ID=your_access_key
 CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_key
 CLOUDFLARE_R2_BUCKET_NAME=your_bucket_name
-CLOUDFLARE_R2_PUBLIC_URL=https://pub-xxx.r2.dev`
+CLOUDFLARE_R2_PUBLIC_URL=https://pub-xxx.r2.dev
+NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL=https://pub-xxx.r2.dev`
 
 interface R2SetupModalProps {
   isOpen: boolean
@@ -363,6 +364,9 @@ export function R2SetupModal({ isOpen, onClose }: R2SetupModalProps) {
               </span>
               <span css={styles.envVar}>
                 <span css={styles.envKey}>CLOUDFLARE_R2_PUBLIC_URL</span>=<span css={styles.envValue}>https://pub-xxx.r2.dev</span>
+              </span>
+              <span css={styles.envVar}>
+                <span css={styles.envKey}>NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL</span>=<span css={styles.envValue}>https://pub-xxx.r2.dev</span>
               </span>
             </div>
             <button css={styles.copyBtn} onClick={handleCopy} title="Copy to clipboard">
