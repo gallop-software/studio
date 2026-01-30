@@ -1037,10 +1037,11 @@ export function StudioToolbar() {
 
   const hasSelection = selectedItems.size > 0
   
-  // Check if any selected items are already in the cloud (for Push CDN disabling)
-  const hasCloudSelection = hasSelection && Array.from(selectedItems).some(path => {
+  // Check if any selected items are already in our R2 (for Push CDN disabling)
+  // Remote images (from other CDNs) can still be pushed to our R2
+  const hasR2Selection = hasSelection && Array.from(selectedItems).some(path => {
     const item = fileItems.find(f => f.path === path)
-    return item && item.cdnPushed
+    return item && item.cdnPushed && !item.isRemote
   })
   
   // Check if exactly one folder is selected (for rename)
@@ -1243,8 +1244,8 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleSyncClick}
-            disabled={!hasSelection || hasCloudSelection}
-            title={hasCloudSelection ? 'Selected files are already in the cloud' : undefined}
+            disabled={!hasSelection || hasR2Selection}
+            title={hasR2Selection ? 'Selected files are already in R2' : undefined}
           >
             <CloudIcon />
             Push CDN

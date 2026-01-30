@@ -15,6 +15,9 @@ import {
   getOrAddCdnIndex,
   getFileEntries,
   getMetaEntry,
+  getCdnUrls,
+  downloadFromRemoteUrl,
+  purgeCloudflareCache,
 } from './utils'
 
 export async function handleSync(request: NextRequest) {
@@ -22,7 +25,7 @@ export async function handleSync(request: NextRequest) {
   const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
   const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
   const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME
-  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL
+  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
 
   if (!accountId || !accessKeyId || !secretAccessKey || !bucketName || !publicUrl) {
     return NextResponse.json(
@@ -39,6 +42,7 @@ export async function handleSync(request: NextRequest) {
     }
 
     const meta = await loadMeta()
+    const cdnUrls = getCdnUrls(meta)
     
     // Get or add CDN URL to the _cdns array
     const cdnIndex = getOrAddCdnIndex(meta, publicUrl)
@@ -51,6 +55,7 @@ export async function handleSync(request: NextRequest) {
 
     const pushed: string[] = []
     const errors: string[] = []
+    const urlsToPurge: string[] = []
 
     for (const imageKey of imageKeys) {
       const entry = getMetaEntry(meta, imageKey)
@@ -59,62 +64,89 @@ export async function handleSync(request: NextRequest) {
         continue
       }
 
-      if (entry.c !== undefined) {
+      // Check if already pushed to our R2
+      const existingCdnUrl = entry.c !== undefined ? cdnUrls[entry.c] : undefined
+      const isAlreadyInOurR2 = existingCdnUrl === publicUrl
+      
+      if (isAlreadyInOurR2) {
         pushed.push(imageKey)
         continue
       }
 
-      if (!entry.p) {
+      // Check if this is a remote image (in another CDN)
+      const isRemote = entry.c !== undefined && existingCdnUrl !== publicUrl
+      
+      // For local images, must be processed first
+      if (!isRemote && !entry.p) {
         errors.push(`Image not processed: ${imageKey}. Run Process Images first.`)
         continue
       }
 
       try {
-        // Upload original file first
-        const originalLocalPath = path.join(process.cwd(), 'public', imageKey)
-        try {
-          const originalBuffer = await fs.readFile(originalLocalPath)
-          await r2.send(
-            new PutObjectCommand({
-              Bucket: bucketName,
-              Key: imageKey.replace(/^\//, ''),
-              Body: originalBuffer,
-              ContentType: getContentType(imageKey),
-            })
-          )
-        } catch (err) {
-          errors.push(`Original file not found: ${imageKey}`)
-          continue
+        let originalBuffer: Buffer
+
+        if (isRemote) {
+          // Download from remote URL
+          const remoteUrl = `${existingCdnUrl}${imageKey}`
+          originalBuffer = await downloadFromRemoteUrl(remoteUrl)
+        } else {
+          // Read from local file
+          const originalLocalPath = path.join(process.cwd(), 'public', imageKey)
+          try {
+            originalBuffer = await fs.readFile(originalLocalPath)
+          } catch {
+            errors.push(`Original file not found: ${imageKey}`)
+            continue
+          }
         }
 
-        // Upload thumbnails
-        for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-          const localPath = path.join(process.cwd(), 'public', thumbPath)
-          try {
-            const fileBuffer = await fs.readFile(localPath)
-            await r2.send(
-              new PutObjectCommand({
-                Bucket: bucketName,
-                Key: thumbPath.replace(/^\//, ''),
-                Body: fileBuffer,
-                ContentType: getContentType(thumbPath),
-              })
-            )
-          } catch {
-            // Thumbnail might not exist (not processed yet)
+        // Upload original to R2
+        await r2.send(
+          new PutObjectCommand({
+            Bucket: bucketName,
+            Key: imageKey.replace(/^\//, ''),
+            Body: originalBuffer,
+            ContentType: getContentType(imageKey),
+          })
+        )
+        urlsToPurge.push(`${publicUrl}${imageKey}`)
+
+        // Upload thumbnails (only if processed locally, not for remote imports)
+        if (!isRemote && entry.p) {
+          for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+            const localPath = path.join(process.cwd(), 'public', thumbPath)
+            try {
+              const fileBuffer = await fs.readFile(localPath)
+              await r2.send(
+                new PutObjectCommand({
+                  Bucket: bucketName,
+                  Key: thumbPath.replace(/^\//, ''),
+                  Body: fileBuffer,
+                  ContentType: getContentType(thumbPath),
+                })
+              )
+              urlsToPurge.push(`${publicUrl}${thumbPath}`)
+            } catch {
+              // Thumbnail might not exist
+            }
           }
         }
 
         entry.c = cdnIndex
 
-        // Delete local thumbnails
-        for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-          const localPath = path.join(process.cwd(), 'public', thumbPath)
-          try { await fs.unlink(localPath) } catch { /* ignore */ }
-        }
+        // Delete local files (only for non-remote, local images being pushed)
+        if (!isRemote) {
+          const originalLocalPath = path.join(process.cwd(), 'public', imageKey)
+          
+          // Delete local thumbnails
+          for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+            const localPath = path.join(process.cwd(), 'public', thumbPath)
+            try { await fs.unlink(localPath) } catch { /* ignore */ }
+          }
 
-        // Delete local original
-        try { await fs.unlink(originalLocalPath) } catch { /* ignore */ }
+          // Delete local original
+          try { await fs.unlink(originalLocalPath) } catch { /* ignore */ }
+        }
 
         pushed.push(imageKey)
       } catch (error) {
@@ -124,6 +156,11 @@ export async function handleSync(request: NextRequest) {
     }
 
     await saveMeta(meta)
+    
+    // Purge Cloudflare cache for uploaded files
+    if (urlsToPurge.length > 0) {
+      await purgeCloudflareCache(urlsToPurge)
+    }
 
     return NextResponse.json({
       success: true,
@@ -137,6 +174,8 @@ export async function handleSync(request: NextRequest) {
 }
 
 export async function handleReprocess(request: NextRequest) {
+  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
+  
   try {
     const { imageKeys } = await request.json() as { imageKeys: string[] }
 
@@ -145,25 +184,37 @@ export async function handleReprocess(request: NextRequest) {
     }
 
     const meta = await loadMeta()
+    const cdnUrls = getCdnUrls(meta)
     const processed: string[] = []
     const errors: string[] = []
+    const urlsToPurge: string[] = []
 
     for (const imageKey of imageKeys) {
       try {
         let buffer: Buffer
         const entry = getMetaEntry(meta, imageKey)
-        const isPushedToCloud = entry?.c !== undefined
         const existingCdnIndex = entry?.c
+        const existingCdnUrl = existingCdnIndex !== undefined ? cdnUrls[existingCdnIndex] : undefined
+        
+        // Determine if this is our R2 or a remote CDN
+        const isInOurR2 = existingCdnUrl === publicUrl
+        const isRemote = existingCdnIndex !== undefined && !isInOurR2
         
         const originalPath = path.join(process.cwd(), 'public', imageKey)
         
         try {
           buffer = await fs.readFile(originalPath)
         } catch {
-          if (isPushedToCloud) {
-            // Download original from CDN to local path
+          if (isInOurR2) {
+            // Download original from our R2
             buffer = await downloadFromCdn(imageKey)
-            // Save to local path for processing
+            const dir = path.dirname(originalPath)
+            await fs.mkdir(dir, { recursive: true })
+            await fs.writeFile(originalPath, buffer)
+          } else if (isRemote && existingCdnUrl) {
+            // Download from remote URL
+            const remoteUrl = `${existingCdnUrl}${imageKey}`
+            buffer = await downloadFromRemoteUrl(remoteUrl)
             const dir = path.dirname(originalPath)
             await fs.mkdir(dir, { recursive: true })
             await fs.writeFile(originalPath, buffer)
@@ -174,13 +225,22 @@ export async function handleReprocess(request: NextRequest) {
 
         const updatedEntry = await processImage(buffer, imageKey)
         
-        if (isPushedToCloud) {
-          // Re-upload to CDN and clean up local files
+        if (isInOurR2) {
+          // Re-upload thumbnails to R2 and clean up local files
           updatedEntry.c = existingCdnIndex
           await uploadToCdn(imageKey)
+          
+          // Collect URLs to purge
+          for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+            urlsToPurge.push(`${publicUrl}${thumbPath}`)
+          }
+          
           await deleteLocalThumbnails(imageKey)
           // Delete local original
           try { await fs.unlink(originalPath) } catch { /* ignore */ }
+        } else if (isRemote) {
+          // Remote image processed locally - remove c flag, now it's local
+          // Keep the original and thumbnails locally
         }
         
         meta[imageKey] = updatedEntry
@@ -192,6 +252,11 @@ export async function handleReprocess(request: NextRequest) {
     }
 
     await saveMeta(meta)
+    
+    // Purge Cloudflare cache for re-uploaded thumbnails
+    if (urlsToPurge.length > 0) {
+      await purgeCloudflareCache(urlsToPurge)
+    }
 
     return NextResponse.json({
       success: true,
@@ -205,6 +270,7 @@ export async function handleReprocess(request: NextRequest) {
 }
 
 export async function handleProcessAllStream() {
+  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
   const encoder = new TextEncoder()
   
   const stream = new ReadableStream({
@@ -215,9 +281,11 @@ export async function handleProcessAllStream() {
 
       try {
         const meta = await loadMeta()
+        const cdnUrls = getCdnUrls(meta)
         const processed: string[] = []
         const errors: string[] = []
         const orphansRemoved: string[] = []
+        const urlsToPurge: string[] = []
 
         // Count images in different states
         let alreadyProcessed = 0
@@ -243,8 +311,12 @@ export async function handleProcessAllStream() {
         for (let i = 0; i < imagesToProcess.length; i++) {
           const { key, entry } = imagesToProcess[i]
           const fullPath = path.join(process.cwd(), 'public', key)
-          const isInCloud = entry.c !== undefined
           const existingCdnIndex = entry.c
+          const existingCdnUrl = existingCdnIndex !== undefined ? cdnUrls[existingCdnIndex] : undefined
+          
+          // Determine if this is our R2 or a remote CDN
+          const isInOurR2 = existingCdnUrl === publicUrl
+          const isRemote = existingCdnIndex !== undefined && !isInOurR2
           
           sendEvent({ 
             type: 'progress', 
@@ -257,10 +329,15 @@ export async function handleProcessAllStream() {
           try {
             let buffer: Buffer
             
-            // If image is in cloud, download it first
-            if (isInCloud) {
+            // Download from appropriate source
+            if (isInOurR2) {
               buffer = await downloadFromCdn(key)
-              // Save to local path temporarily for processing
+              const dir = path.dirname(fullPath)
+              await fs.mkdir(dir, { recursive: true })
+              await fs.writeFile(fullPath, buffer)
+            } else if (isRemote && existingCdnUrl) {
+              const remoteUrl = `${existingCdnUrl}${key}`
+              buffer = await downloadFromRemoteUrl(remoteUrl)
               const dir = path.dirname(fullPath)
               await fs.mkdir(dir, { recursive: true })
               await fs.writeFile(fullPath, buffer)
@@ -287,22 +364,35 @@ export async function handleProcessAllStream() {
                 b: '',
                 p: 1,
               }
+              
+              // Remote images become local after processing
+              if (isRemote) {
+                delete (meta[key] as import('../types').MetaEntry).c
+              }
             } else {
               const processedEntry = await processImage(buffer, key)
               meta[key] = {
                 ...processedEntry,
                 p: 1,
-                ...(isInCloud ? { c: existingCdnIndex } : {}),
+                ...(isInOurR2 ? { c: existingCdnIndex } : {}),
               }
+              // Remote images become local after processing (no c)
             }
 
-            // If image was in cloud, upload new thumbnails and clean up local files
-            if (isInCloud) {
+            // If image was in our R2, upload new thumbnails and clean up local files
+            if (isInOurR2) {
               await uploadToCdn(key)
+              
+              // Collect URLs to purge
+              for (const thumbPath of getAllThumbnailPaths(key)) {
+                urlsToPurge.push(`${publicUrl}${thumbPath}`)
+              }
+              
               await deleteLocalThumbnails(key)
               // Delete local original
               try { await fs.unlink(fullPath) } catch { /* ignore */ }
             }
+            // Remote images stay local after processing (original + thumbnails)
 
             processed.push(key.slice(1))
           } catch (error) {
@@ -328,19 +418,19 @@ export async function handleProcessAllStream() {
           try {
             const entries = await fs.readdir(dir, { withFileTypes: true })
             
-            for (const entry of entries) {
-              if (entry.name.startsWith('.')) continue
+            for (const fsEntry of entries) {
+              if (fsEntry.name.startsWith('.')) continue
 
-              const fullPath = path.join(dir, entry.name)
-              const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+              const entryFullPath = path.join(dir, fsEntry.name)
+              const relPath = relativePath ? `${relativePath}/${fsEntry.name}` : fsEntry.name
 
-              if (entry.isDirectory()) {
-                await findOrphans(fullPath, relPath)
-              } else if (isImageFile(entry.name)) {
+              if (fsEntry.isDirectory()) {
+                await findOrphans(entryFullPath, relPath)
+              } else if (isImageFile(fsEntry.name)) {
                 const publicPath = `/images/${relPath}`
                 if (!trackedPaths.has(publicPath)) {
                   try {
-                    await fs.unlink(fullPath)
+                    await fs.unlink(entryFullPath)
                     orphansRemoved.push(publicPath)
                   } catch (err) {
                     console.error(`Failed to remove orphan ${publicPath}:`, err)
@@ -365,9 +455,9 @@ export async function handleProcessAllStream() {
             const entries = await fs.readdir(dir, { withFileTypes: true })
             let isEmpty = true
 
-            for (const entry of entries) {
-              if (entry.isDirectory()) {
-                const subDirEmpty = await removeEmptyDirs(path.join(dir, entry.name))
+            for (const fsEntry of entries) {
+              if (fsEntry.isDirectory()) {
+                const subDirEmpty = await removeEmptyDirs(path.join(dir, fsEntry.name))
                 if (!subDirEmpty) isEmpty = false
               } else {
                 isEmpty = false
@@ -391,6 +481,11 @@ export async function handleProcessAllStream() {
         }
         
         await saveMeta(meta)
+        
+        // Purge Cloudflare cache for re-uploaded thumbnails
+        if (urlsToPurge.length > 0) {
+          await purgeCloudflareCache(urlsToPurge)
+        }
 
         sendEvent({ 
           type: 'complete', 
