@@ -1,8 +1,15 @@
 /** @jsxImportSource @emotion/react */
 'use client'
 
+import { useState } from 'react'
 import { css } from '@emotion/react'
 import { colors, fontSize } from './tokens'
+
+const ENV_TEMPLATE = `CLOUDFLARE_R2_ACCOUNT_ID=your_account_id
+CLOUDFLARE_R2_ACCESS_KEY_ID=your_access_key
+CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_key
+CLOUDFLARE_R2_BUCKET_NAME=your_bucket_name
+CLOUDFLARE_R2_PUBLIC_URL=https://pub-xxx.r2.dev`
 
 interface R2SetupModalProps {
   isOpen: boolean
@@ -125,12 +132,16 @@ const styles = {
       text-decoration: underline;
     }
   `,
+  envVarsWrapper: css`
+    position: relative;
+    margin-top: 20px;
+  `,
   envVars: css`
     background: ${colors.background};
     border: 1px solid ${colors.border};
     border-radius: 8px;
     padding: 16px;
-    margin-top: 20px;
+    padding-right: 48px;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
     font-size: 13px;
     line-height: 1.8;
@@ -145,6 +156,57 @@ const styles = {
   `,
   envValue: css`
     color: ${colors.textSecondary};
+  `,
+  copyBtn: css`
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
+    cursor: pointer;
+    color: ${colors.textMuted};
+    transition: all 0.15s ease;
+    
+    &:hover {
+      background: ${colors.surfaceHover};
+      color: ${colors.text};
+      border-color: #d0d5dd;
+    }
+  `,
+  copyIcon: css`
+    width: 16px;
+    height: 16px;
+  `,
+  copiedTooltip: css`
+    position: absolute;
+    top: 50%;
+    right: 100%;
+    transform: translateY(-50%);
+    background: #1a1f36;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    margin-right: 6px;
+    pointer-events: none;
+    
+    &::before {
+      content: '';
+      position: absolute;
+      right: -4px;
+      top: 50%;
+      transform: translateY(-50%);
+      border-left: 4px solid #1a1f36;
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+    }
   `,
   footer: css`
     padding: 16px 24px;
@@ -195,6 +257,18 @@ const styles = {
 }
 
 export function R2SetupModal({ isOpen, onClose }: R2SetupModalProps) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(ENV_TEMPLATE)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy:', error)
+    }
+  }
+
   if (!isOpen) return null
 
   return (
@@ -273,22 +347,30 @@ export function R2SetupModal({ isOpen, onClose }: R2SetupModalProps) {
             </li>
           </ol>
 
-          <div css={styles.envVars}>
-            <span css={styles.envVar}>
-              <span css={styles.envKey}>CLOUDFLARE_R2_ACCOUNT_ID</span>=<span css={styles.envValue}>your_account_id</span>
-            </span>
-            <span css={styles.envVar}>
-              <span css={styles.envKey}>CLOUDFLARE_R2_ACCESS_KEY_ID</span>=<span css={styles.envValue}>your_access_key</span>
-            </span>
-            <span css={styles.envVar}>
-              <span css={styles.envKey}>CLOUDFLARE_R2_SECRET_ACCESS_KEY</span>=<span css={styles.envValue}>your_secret_key</span>
-            </span>
-            <span css={styles.envVar}>
-              <span css={styles.envKey}>CLOUDFLARE_R2_BUCKET_NAME</span>=<span css={styles.envValue}>your_bucket_name</span>
-            </span>
-            <span css={styles.envVar}>
-              <span css={styles.envKey}>CLOUDFLARE_R2_PUBLIC_URL</span>=<span css={styles.envValue}>https://pub-xxx.r2.dev</span>
-            </span>
+          <div css={styles.envVarsWrapper}>
+            <div css={styles.envVars}>
+              <span css={styles.envVar}>
+                <span css={styles.envKey}>CLOUDFLARE_R2_ACCOUNT_ID</span>=<span css={styles.envValue}>your_account_id</span>
+              </span>
+              <span css={styles.envVar}>
+                <span css={styles.envKey}>CLOUDFLARE_R2_ACCESS_KEY_ID</span>=<span css={styles.envValue}>your_access_key</span>
+              </span>
+              <span css={styles.envVar}>
+                <span css={styles.envKey}>CLOUDFLARE_R2_SECRET_ACCESS_KEY</span>=<span css={styles.envValue}>your_secret_key</span>
+              </span>
+              <span css={styles.envVar}>
+                <span css={styles.envKey}>CLOUDFLARE_R2_BUCKET_NAME</span>=<span css={styles.envValue}>your_bucket_name</span>
+              </span>
+              <span css={styles.envVar}>
+                <span css={styles.envKey}>CLOUDFLARE_R2_PUBLIC_URL</span>=<span css={styles.envValue}>https://pub-xxx.r2.dev</span>
+              </span>
+            </div>
+            <button css={styles.copyBtn} onClick={handleCopy} title="Copy to clipboard">
+              {copied && <span css={styles.copiedTooltip}>Copied!</span>}
+              <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
           </div>
         </div>
 
