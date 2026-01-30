@@ -6,6 +6,7 @@ import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal, InputModal, ProgressModal, type ProgressState } from './StudioModal'
 import { R2SetupModal } from './R2SetupModal'
+import { StudioFolderPicker } from './StudioFolderPicker'
 import { colors, fontSize } from './tokens'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif']
@@ -305,12 +306,14 @@ export function StudioDetailView() {
   const { focusedItem, setFocusedItem, triggerRefresh, clearSelection } = useStudio()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showRenameModal, setShowRenameModal] = useState(false)
+  const [showMoveModal, setShowMoveModal] = useState(false)
   const [showProcessConfirm, setShowProcessConfirm] = useState(false)
   const [showR2SetupModal, setShowR2SetupModal] = useState(false)
   const [processProgress, setProcessProgress] = useState<ProgressState | null>(null)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showCopied, setShowCopied] = useState(false)
   const [pushing, setPushing] = useState(false)
+  const [moving, setMoving] = useState(false)
 
   if (!focusedItem) return null
 
@@ -398,6 +401,71 @@ export function StudioDetailView() {
         title: 'Delete Failed',
         message: 'Delete failed. Check console for details.',
       })
+    }
+  }
+
+  const handleMove = async (destination: string) => {
+    setShowMoveModal(false)
+    setMoving(true)
+    
+    try {
+      const response = await fetch('/api/studio/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: [focusedItem.path], destination }),
+      })
+
+      if (!response.body) {
+        throw new Error('No response body')
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const data = JSON.parse(line.slice(6))
+
+            if (data.type === 'complete') {
+              if (data.errors > 0 && data.errorMessages?.length > 0) {
+                setAlertMessage({
+                  title: 'Move Failed',
+                  message: data.errorMessages.join('\n'),
+                })
+              } else {
+                clearSelection()
+                triggerRefresh()
+                setFocusedItem(null)
+              }
+            } else if (data.type === 'error') {
+              setAlertMessage({
+                title: 'Move Failed',
+                message: data.message || 'Unknown error',
+              })
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Move error:', error)
+      setAlertMessage({
+        title: 'Move Failed',
+        message: 'Failed to move file. Check console for details.',
+      })
+    } finally {
+      setMoving(false)
     }
   }
 
@@ -563,6 +631,15 @@ export function StudioDetailView() {
         />
       )}
 
+      {showMoveModal && (
+        <StudioFolderPicker
+          selectedItems={new Set([focusedItem.path])}
+          currentPath={focusedItem.path.split('/').slice(0, -1).join('/')}
+          onMove={handleMove}
+          onCancel={() => setShowMoveModal(false)}
+        />
+      )}
+
       {showProcessConfirm && (
         <ConfirmModal
           title="Process Image"
@@ -672,6 +749,16 @@ export function StudioDetailView() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
                 Rename
+              </button>
+              <button 
+                css={styles.actionBtn} 
+                onClick={() => setShowMoveModal(true)}
+                disabled={moving}
+              >
+                <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                {moving ? 'Moving...' : 'Move'}
               </button>
               <button 
                 css={styles.actionBtn} 

@@ -329,6 +329,8 @@ const styles = {
     text-overflow: ellipsis;
     margin: 0;
     letter-spacing: -0.01em;
+    direction: rtl;
+    text-align: left;
   `,
   size: css`
     font-size: ${fontSize.xs};
@@ -585,7 +587,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
       <div css={styles.label}>
         <div css={styles.labelRow}>
           <div css={styles.labelText}>
-            <p css={styles.name} title={item.name}>{truncateMiddle(item.name)}</p>
+            <p css={styles.name} title={item.name}>{item.name}</p>
             {isFolder ? (
               <p css={styles.size}>
                 {item.fileCount !== undefined ? `${item.fileCount} files` : ''}
@@ -614,23 +616,3 @@ function getParentPath(path: string): string {
   return parts.join('/') + '/'
 }
 
-function truncateMiddle(str: string, maxLength: number = 36): string {
-  if (str.length <= maxLength) return str
-  
-  // Find the extension
-  const lastDot = str.lastIndexOf('.')
-  const ext = lastDot > 0 ? str.substring(lastDot) : ''
-  const name = lastDot > 0 ? str.substring(0, lastDot) : str
-  
-  // Calculate how much we can show of the name
-  const availableLength = maxLength - ext.length - 3 // 3 for "..."
-  if (availableLength < 6) {
-    // Too short, just truncate from end
-    return str.substring(0, maxLength - 3) + '...'
-  }
-  
-  const startLength = Math.ceil(availableLength / 2)
-  const endLength = Math.floor(availableLength / 2)
-  
-  return name.substring(0, startLength) + '...' + name.substring(name.length - endLength) + ext
-}

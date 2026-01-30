@@ -17,7 +17,20 @@ export async function saveMeta(meta: FullMeta): Promise<void> {
   const dataDir = path.join(process.cwd(), '_data')
   await fs.mkdir(dataDir, { recursive: true })
   const metaPath = path.join(dataDir, '_meta.json')
-  await fs.writeFile(metaPath, JSON.stringify(meta, null, 2))
+  
+  // Ensure _cdns is at the top by creating ordered object
+  const ordered: FullMeta = {}
+  if (meta._cdns) {
+    ordered._cdns = meta._cdns
+  }
+  // Add all other entries
+  for (const [key, value] of Object.entries(meta)) {
+    if (key !== '_cdns') {
+      ordered[key] = value
+    }
+  }
+  
+  await fs.writeFile(metaPath, JSON.stringify(ordered, null, 2))
 }
 
 /**
