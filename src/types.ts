@@ -1,51 +1,18 @@
 /**
- * Image size variants
+ * Lean meta entry - minimal data per image
  */
-export type ImageSize = 'small' | 'medium' | 'large' | 'full'
-
-/**
- * Size entry with path and dimensions
- */
-export interface SizeEntry {
-  path: string
-  width: number
-  height: number
+export interface LeanImageEntry {
+  w: number      // original width
+  h: number      // original height
+  blur: string   // blurhash
+  s?: 1          // synced to CDN (omit if not synced)
 }
 
 /**
- * CDN sync status
+ * Lean meta schema - keyed by path from public folder
+ * Example: { "/portfolio/photo.jpg": { w: 2400, h: 1600, blur: "..." } }
  */
-export interface CdnStatus {
-  synced: boolean
-  baseUrl: string
-  syncedAt: string
-}
-
-/**
- * Image entry in meta
- */
-export interface ImageEntry {
-  original: {
-    path: string
-    width: number
-    height: number
-    fileSize: number
-  }
-  sizes: Record<ImageSize, SizeEntry>
-  blurhash: string
-  dominantColor: string
-  cdn: CdnStatus | null
-}
-
-/**
- * Studio meta schema
- */
-export interface StudioMeta {
-  $schema: string
-  version: number
-  generatedAt: string
-  images: Record<string, ImageEntry>
-}
+export type LeanMeta = Record<string, LeanImageEntry>
 
 /**
  * File/folder item for browser
@@ -83,17 +50,29 @@ export interface StudioConfig {
 }
 
 /**
- * Lean meta entry - minimal data per image
+ * Get thumbnail path from original image path
  */
-export interface LeanImageEntry {
-  w: number      // original width
-  h: number      // original height
-  blur: string   // blurhash
-  s?: 1          // synced to CDN (omit if not synced)
+export function getThumbnailPath(originalPath: string, size: 'sm' | 'md' | 'lg' | 'full'): string {
+  if (size === 'full') {
+    const ext = originalPath.match(/\.\w+$/)?.[0] || '.jpg'
+    const base = originalPath.replace(/\.\w+$/, '')
+    const outputExt = ext.toLowerCase() === '.png' ? '.png' : '.jpg'
+    return `/images${base}${outputExt}`
+  }
+  const ext = originalPath.match(/\.\w+$/)?.[0] || '.jpg'
+  const base = originalPath.replace(/\.\w+$/, '')
+  const outputExt = ext.toLowerCase() === '.png' ? '.png' : '.jpg'
+  return `/images${base}-${size}${outputExt}`
 }
 
 /**
- * Lean meta schema - keyed by path from public folder
- * Example: { "/portfolio/photo.jpg": { w: 2400, h: 1600, blur: "..." } }
+ * Get all thumbnail paths for an image
  */
-export type LeanMeta = Record<string, LeanImageEntry>
+export function getAllThumbnailPaths(originalPath: string): string[] {
+  return [
+    getThumbnailPath(originalPath, 'full'),
+    getThumbnailPath(originalPath, 'lg'),
+    getThumbnailPath(originalPath, 'md'),
+    getThumbnailPath(originalPath, 'sm'),
+  ]
+}

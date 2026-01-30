@@ -33,14 +33,11 @@ export { StudioButton } from './components/StudioButton'
 
 // Types
 export type {
-  ImageSize,
-  SizeEntry,
-  CdnStatus,
-  ImageEntry,
-  StudioMeta,
+  LeanImageEntry,
+  LeanMeta,
   FileItem,
   StudioConfig,
 } from './types'
 
-// Meta utilities
-export { meta, getImageUrl, getStudioMeta, initializeMeta, getImageSize } from './lib/meta'
+// Utilities
+export { getThumbnailPath, getAllThumbnailPaths } from './types'

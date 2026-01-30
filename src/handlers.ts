@@ -4,7 +4,8 @@ import path from 'path'
 import sharp from 'sharp'
 import { encode } from 'blurhash'
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
-import type { StudioMeta, ImageEntry, ImageSize, FileItem, LeanMeta, LeanImageEntry } from './types'
+import type { LeanMeta, LeanImageEntry, FileItem } from './types'
+import { getThumbnailPath, getAllThumbnailPaths } from './types'
 
 // Default thumbnail sizes with their suffixes
 const DEFAULT_SIZES: Record<string, { width: number; suffix: string }> = {
@@ -348,11 +349,12 @@ async function handleScan() {
     const validFiles: string[] = []
 
     const imagesDir = path.join(process.cwd(), 'public', 'images')
+    
+    // Build set of tracked thumbnail paths from meta keys
     const trackedPaths = new Set<string>()
-
-    for (const entry of Object.values(meta.images)) {
-      for (const sizeData of Object.values(entry.sizes)) {
-        trackedPaths.add(sizeData.path)
+    for (const imageKey of Object.keys(meta)) {
+      for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+        trackedPaths.add(thumbPath)
       }
     }
 
@@ -384,21 +386,23 @@ async function handleScan() {
 
     await scanDir(imagesDir)
 
-    for (const [key, entry] of Object.entries(meta.images)) {
-      for (const [size, sizeData] of Object.entries(entry.sizes)) {
-        const filePath = path.join(process.cwd(), 'public', sizeData.path)
+    // Check for missing files
+    for (const [imageKey, entry] of Object.entries(meta)) {
+      if (entry.s) continue // Skip synced images (they're on CDN)
+      
+      for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+        const filePath = path.join(process.cwd(), 'public', thumbPath)
         try {
           await fs.access(filePath)
         } catch {
-          if (!entry.cdn?.synced) {
-            missingFiles.push(`${key} (${size}): ${sizeData.path}`)
-          }
+          missingFiles.push(`${imageKey}: ${thumbPath}`)
+          break // Only report once per image
         }
       }
     }
 
     return NextResponse.json({
-      totalInMeta: Object.keys(meta.images).length,
+      totalInMeta: Object.keys(meta).length,
       validFiles: validFiles.length,
       untrackedFiles,
       missingFiles,
@@ -432,11 +436,6 @@ async function handleUpload(request: NextRequest) {
     const isProcessableImage = isImage && !isSvg
 
     const meta = await loadMeta()
-    
-    // Ensure images object exists
-    if (!meta.images) {
-      meta.images = {}
-    }
 
     // Calculate relative path from public/
     // e.g., "public/photos" -> "photos", "public" -> ""
@@ -470,11 +469,12 @@ async function handleUpload(request: NextRequest) {
     }
     
     // For images, generate thumbnails and update meta
-    const fullImageKey = relativeDir ? `${relativeDir}/${fileName}` : fileName
+    // Meta key has leading slash
+    const imageKey = '/' + (relativeDir ? `${relativeDir}/${fileName}` : fileName)
 
-    if (meta.images[fullImageKey]) {
+    if (meta[imageKey]) {
       return NextResponse.json(
-        { error: `File '${fullImageKey}' already exists in meta` },
+        { error: `File '${imageKey}' already exists in meta` },
         { status: 409 }
       )
     }
@@ -486,25 +486,14 @@ async function handleUpload(request: NextRequest) {
     let originalWidth = 0
     let originalHeight = 0
     let blurhash = ''
-    let dominantColor = '#888888'
-    const sizes: Record<ImageSize, { path: string; width: number; height: number }> = {
-      full: { path: '', width: 0, height: 0 },
-      large: { path: '', width: 0, height: 0 },
-      medium: { path: '', width: 0, height: 0 },
-      small: { path: '', width: 0, height: 0 },
-    }
 
-    // Original path is relative to public/
+    // Original path is relative to public/ (this is the meta key)
     const originalPath = `/${relativeDir ? relativeDir + '/' : ''}${fileName}`
 
     if (isSvg) {
       // SVG: copy to images folder, no thumbnail processing
       const fullPath = path.join(imagesPath, fileName)
       await fs.writeFile(fullPath, buffer)
-      sizes.full = { path: `/images/${relativeDir ? relativeDir + '/' : ''}${fileName}`, width: 0, height: 0 }
-      sizes.large = { ...sizes.full }
-      sizes.medium = { ...sizes.full }
-      sizes.small = { ...sizes.full }
     } else if (isProcessableImage) {
       // Raster images: process with sharp and generate thumbnails
       const sharpInstance = sharp(buffer)
@@ -522,13 +511,11 @@ async function handleUpload(request: NextRequest) {
       } else {
         await sharp(buffer).jpeg({ quality: 85 }).toFile(fullPath)
       }
-      sizes.full = { path: `/images/${relativeDir ? relativeDir + '/' : ''}${fullFileName}`, width: originalWidth, height: originalHeight }
 
       // Generate each thumbnail size
-      for (const [sizeName, sizeConfig] of Object.entries(DEFAULT_SIZES)) {
+      for (const [, sizeConfig] of Object.entries(DEFAULT_SIZES)) {
         const { width: maxWidth, suffix } = sizeConfig
         if (originalWidth <= maxWidth) {
-          sizes[sizeName as ImageSize] = { ...sizes.full }
           continue
         }
 
@@ -542,12 +529,6 @@ async function handleUpload(request: NextRequest) {
         } else {
           await sharp(buffer).resize(maxWidth, newHeight).jpeg({ quality: 80 }).toFile(sizePath)
         }
-
-        sizes[sizeName as ImageSize] = {
-          path: `/images/${relativeDir ? relativeDir + '/' : ''}${sizeFileName}`,
-          width: maxWidth,
-          height: newHeight,
-        }
       }
 
       // Blurhash
@@ -558,29 +539,18 @@ async function handleUpload(request: NextRequest) {
         .toBuffer({ resolveWithObject: true })
 
       blurhash = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
-
-      // Dominant color
-      const { dominant } = await sharp(buffer).stats()
-      dominantColor = `#${dominant.r.toString(16).padStart(2, '0')}${dominant.g.toString(16).padStart(2, '0')}${dominant.b.toString(16).padStart(2, '0')}`
     }
 
-    const entry: ImageEntry = {
-      original: {
-        path: originalPath,
-        width: originalWidth,
-        height: originalHeight,
-        fileSize: buffer.length,
-      },
-      sizes,
-      blurhash,
-      dominantColor,
-      cdn: null,
+    const entry: LeanImageEntry = {
+      w: originalWidth,
+      h: originalHeight,
+      blur: blurhash,
     }
 
-    meta.images[fullImageKey] = entry
+    meta[originalPath] = entry
     await saveMeta(meta)
 
-    return NextResponse.json({ success: true, imageKey: fullImageKey, entry })
+    return NextResponse.json({ success: true, imageKey: originalPath, entry })
   } catch (error) {
     console.error('Failed to upload:', error)
     const message = error instanceof Error ? error.message : 'Unknown error'
@@ -614,13 +584,13 @@ async function handleDelete(request: NextRequest) {
           await fs.rm(absolutePath, { recursive: true })
           
           // Remove prefix to get image key pattern
-          const prefix = itemPath
+          const prefix = '/' + itemPath
             .replace(/^public\/images\/?/, '')
             .replace(/^public\/?/, '')
           
-          for (const key of Object.keys(meta.images)) {
+          for (const key of Object.keys(meta)) {
             if (key.startsWith(prefix)) {
-              delete meta.images[key]
+              delete meta[key]
             }
           }
         } else {
@@ -631,15 +601,14 @@ async function handleDelete(request: NextRequest) {
           
           if (!isInImagesFolder) {
             // Deleting an original from public/ - also delete its thumbnails
-            const imageKey = itemPath.replace(/^public\//, '')
-            const entry = meta.images[imageKey]
-            if (entry) {
-              // Delete all generated thumbnails
-              for (const sizeData of Object.values(entry.sizes)) {
-                const sizePath = path.join(process.cwd(), 'public', sizeData.path)
-                try { await fs.unlink(sizePath) } catch { /* ignore */ }
+            const imageKey = '/' + itemPath.replace(/^public\//, '')
+            if (meta[imageKey]) {
+              // Delete all generated thumbnails using derived paths
+              for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+                const absoluteThumbPath = path.join(process.cwd(), 'public', thumbPath)
+                try { await fs.unlink(absoluteThumbPath) } catch { /* ignore */ }
               }
-              delete meta.images[imageKey]
+              delete meta[imageKey]
             }
           }
           // If deleting from images/, just delete the file (already done above)
@@ -698,40 +667,42 @@ async function handleSync(request: NextRequest) {
     const errors: string[] = []
 
     for (const imageKey of imageKeys) {
-      const entry = meta.images[imageKey]
+      const entry = meta[imageKey]
       if (!entry) {
         errors.push(`Image not found in meta: ${imageKey}`)
         continue
       }
 
-      if (entry.cdn?.synced) {
+      if (entry.s) {
         synced.push(imageKey)
         continue
       }
 
       try {
-        for (const sizeData of Object.values(entry.sizes)) {
-          const localPath = path.join(process.cwd(), 'public', sizeData.path)
-          const fileBuffer = await fs.readFile(localPath)
-
-          await r2.send(
-            new PutObjectCommand({
-              Bucket: bucketName,
-              Key: sizeData.path.replace(/^\//, ''),
-              Body: fileBuffer,
-              ContentType: getContentType(sizeData.path),
-            })
-          )
+        // Upload all thumbnail sizes derived from imageKey
+        for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+          const localPath = path.join(process.cwd(), 'public', thumbPath)
+          try {
+            const fileBuffer = await fs.readFile(localPath)
+            await r2.send(
+              new PutObjectCommand({
+                Bucket: bucketName,
+                Key: thumbPath.replace(/^\//, ''),
+                Body: fileBuffer,
+                ContentType: getContentType(thumbPath),
+              })
+            )
+          } catch {
+            // File might not exist (e.g., if image is smaller than thumbnail size)
+          }
         }
 
-        entry.cdn = {
-          synced: true,
-          baseUrl: publicUrl,
-          syncedAt: new Date().toISOString(),
-        }
+        // Mark as synced
+        entry.s = 1
 
-        for (const sizeData of Object.values(entry.sizes)) {
-          const localPath = path.join(process.cwd(), 'public', sizeData.path)
+        // Delete local thumbnail files
+        for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+          const localPath = path.join(process.cwd(), 'public', thumbPath)
           try { await fs.unlink(localPath) } catch { /* ignore */ }
         }
 
@@ -770,7 +741,7 @@ async function handleReprocess(request: NextRequest) {
     for (const imageKey of imageKeys) {
       try {
         let buffer: Buffer
-        let entry = meta.images[imageKey]
+        const entry = meta[imageKey]
         
         // Try to read the original file from public folder
         const originalPath = path.join(process.cwd(), 'public', imageKey)
@@ -778,56 +749,25 @@ async function handleReprocess(request: NextRequest) {
         try {
           buffer = await fs.readFile(originalPath)
         } catch {
-          // File not in public folder, try from entry's original path or CDN
-          if (entry) {
-            const entryOriginalPath = path.join(process.cwd(), 'public', entry.original.path)
-            try {
-              buffer = await fs.readFile(entryOriginalPath)
-            } catch {
-              if (entry.cdn?.synced) {
-                buffer = await downloadFromCdn(entry.original.path)
-              } else {
-                throw new Error('Original not found locally and not on CDN')
-              }
-            }
+          // File not in public folder, try from CDN if synced
+          if (entry?.s) {
+            buffer = await downloadFromCdn(imageKey)
           } else {
             throw new Error(`File not found: ${imageKey}`)
           }
         }
 
-        // If no existing entry, create a minimal one for new images
-        if (!entry) {
-          const sharpInstance = sharp(buffer)
-          const metadata = await sharpInstance.metadata()
-          const stats = await fs.stat(originalPath)
-          
-          entry = {
-            original: {
-              path: imageKey,
-              width: metadata.width || 0,
-              height: metadata.height || 0,
-              fileSize: stats.size,
-            },
-            sizes: {
-              full: { path: '', width: 0, height: 0 },
-              large: { path: '', width: 0, height: 0 },
-              medium: { path: '', width: 0, height: 0 },
-              small: { path: '', width: 0, height: 0 },
-            },
-            blurhash: '',
-            dominantColor: '#000000',
-            cdn: null,
-          }
+        // Process the image and update meta
+        const updatedEntry = await processImage(buffer, imageKey)
+        
+        // Preserve sync status if already synced
+        if (entry?.s) {
+          updatedEntry.s = 1
+          await uploadToCdn(imageKey)
+          await deleteLocalThumbnails(imageKey)
         }
-
-        const updatedEntry = await processImage(buffer, entry, imageKey)
-        meta.images[imageKey] = updatedEntry
-
-        if (entry.cdn?.synced) {
-          await uploadToCdn(updatedEntry)
-          await deleteLocalFiles(updatedEntry)
-        }
-
+        
+        meta[imageKey] = updatedEntry
         processed.push(imageKey)
       } catch (error) {
         console.error(`Failed to reprocess ${imageKey}:`, error)
@@ -995,6 +935,7 @@ async function handleProcessAllStream() {
         // Step 2: Process each image (reprocess all, not just unprocessed)
         for (let i = 0; i < allImages.length; i++) {
           const { key, fullPath } = allImages[i]
+          const imageKey = '/' + key
           
           sendEvent({ 
             type: 'progress', 
@@ -1019,47 +960,22 @@ async function handleProcessAllStream() {
               const destPath = path.join(imagesPath, fileName)
               await fs.writeFile(destPath, buffer)
 
-              const sizePath = `/images/${imageDir === '.' ? '' : imageDir + '/'}${fileName}`
-              meta.images[key] = {
-                original: {
-                  path: `/${key}`,
-                  width: 0,
-                  height: 0,
-                  fileSize: buffer.length,
-                },
-                sizes: {
-                  full: { path: sizePath, width: 0, height: 0 },
-                  large: { path: sizePath, width: 0, height: 0 },
-                  medium: { path: sizePath, width: 0, height: 0 },
-                  small: { path: sizePath, width: 0, height: 0 },
-                },
-                blurhash: '',
-                dominantColor: '#888888',
-                cdn: null,
+              meta[imageKey] = {
+                w: 0,
+                h: 0,
+                blur: '',
               }
             } else {
               // Raster image: full processing
-              const existingEntry = meta.images[key]
-              const baseEntry: ImageEntry = existingEntry || {
-                original: {
-                  path: `/${key}`,
-                  width: 0,
-                  height: 0,
-                  fileSize: buffer.length,
-                },
-                sizes: {
-                  full: { path: '', width: 0, height: 0 },
-                  large: { path: '', width: 0, height: 0 },
-                  medium: { path: '', width: 0, height: 0 },
-                  small: { path: '', width: 0, height: 0 },
-                },
-                blurhash: '',
-                dominantColor: '#888888',
-                cdn: null,
+              const existingEntry = meta[imageKey]
+              const processedEntry = await processImage(buffer, imageKey)
+              
+              // Preserve sync status if already synced
+              if (existingEntry?.s) {
+                processedEntry.s = 1
               }
-
-              const processedEntry = await processImage(buffer, baseEntry, key)
-              meta.images[key] = processedEntry
+              
+              meta[imageKey] = processedEntry
             }
 
             processed.push(key)
@@ -1072,10 +988,11 @@ async function handleProcessAllStream() {
         // Step 3: Remove orphaned thumbnails
         sendEvent({ type: 'cleanup', message: 'Removing orphaned thumbnails...' })
         
+        // Build set of tracked thumbnail paths from meta keys
         const trackedPaths = new Set<string>()
-        for (const entry of Object.values(meta.images)) {
-          for (const sizeData of Object.values(entry.sizes)) {
-            trackedPaths.add(sizeData.path)
+        for (const imageKey of Object.keys(meta)) {
+          for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+            trackedPaths.add(thumbPath)
           }
         }
 
@@ -1167,68 +1084,22 @@ async function handleProcessAllStream() {
 // Helper functions
 // ============================================================================
 
-async function loadMeta(): Promise<StudioMeta> {
+async function loadMeta(): Promise<LeanMeta> {
   const metaPath = path.join(process.cwd(), '_data', '_meta.json')
-  const emptyMeta: StudioMeta = {
-    $schema: 'https://gallop.software/schemas/studio-meta.json',
-    version: 1,
-    generatedAt: new Date().toISOString(),
-    images: {},
-  }
   
   try {
     const content = await fs.readFile(metaPath, 'utf-8')
-    const parsed = JSON.parse(content)
-    
-    // Check if it's the old verbose format
-    if (parsed.images && typeof parsed.images === 'object') {
-      return parsed
-    }
-    
-    // Convert lean format to internal verbose format
-    const meta: StudioMeta = { ...emptyMeta, images: {} }
-    for (const [imagePath, entry] of Object.entries(parsed)) {
-      const leanEntry = entry as LeanImageEntry
-      // Use the path as the key (without leading slash)
-      const key = imagePath.startsWith('/') ? imagePath.slice(1) : imagePath
-      meta.images[key] = {
-        original: {
-          path: imagePath,
-          width: leanEntry.w,
-          height: leanEntry.h,
-          fileSize: 0,
-        },
-        sizes: {} as Record<ImageSize, { path: string; width: number; height: number }>,
-        blurhash: leanEntry.blur,
-        dominantColor: '',
-        cdn: leanEntry.s ? { synced: true, baseUrl: '', syncedAt: '' } : null,
-      }
-    }
-    return meta
+    return JSON.parse(content) as LeanMeta
   } catch {
-    return emptyMeta
+    return {}
   }
 }
 
-async function saveMeta(meta: StudioMeta): Promise<void> {
+async function saveMeta(meta: LeanMeta): Promise<void> {
   const dataDir = path.join(process.cwd(), '_data')
   await fs.mkdir(dataDir, { recursive: true })
-  
-  // Convert to lean format and write to _meta.json
-  const lean: LeanMeta = {}
-  for (const [key, entry] of Object.entries(meta.images)) {
-    const imagePath = entry.original?.path || `/${key}`
-    lean[imagePath] = {
-      w: entry.original?.width || 0,
-      h: entry.original?.height || 0,
-      blur: entry.blurhash || '',
-    }
-    if (entry.cdn?.synced) {
-      lean[imagePath].s = 1
-    }
-  }
   const metaPath = path.join(dataDir, '_meta.json')
-  await fs.writeFile(metaPath, JSON.stringify(lean, null, 2))
+  await fs.writeFile(metaPath, JSON.stringify(meta, null, 2))
 }
 
 function isImageFile(filename: string): boolean {
@@ -1270,30 +1141,26 @@ function getContentType(filePath: string): string {
 
 async function processImage(
   buffer: Buffer,
-  entry: ImageEntry,
   imageKey: string
-): Promise<ImageEntry> {
+): Promise<LeanImageEntry> {
   const sharpInstance = sharp(buffer)
   const metadata = await sharpInstance.metadata()
   const originalWidth = metadata.width || 0
   const originalHeight = metadata.height || 0
 
-  const baseName = path.basename(imageKey, path.extname(imageKey))
-  const ext = path.extname(imageKey).toLowerCase()
-  const imageDir = path.dirname(imageKey)
+  // Remove leading slash for path operations
+  const keyWithoutSlash = imageKey.startsWith('/') ? imageKey.slice(1) : imageKey
+  const baseName = path.basename(keyWithoutSlash, path.extname(keyWithoutSlash))
+  const ext = path.extname(keyWithoutSlash).toLowerCase()
+  const imageDir = path.dirname(keyWithoutSlash)
 
   const imagesPath = path.join(process.cwd(), 'public', 'images', imageDir === '.' ? '' : imageDir)
   await fs.mkdir(imagesPath, { recursive: true })
 
-  const sizes: Record<ImageSize, { path: string; width: number; height: number }> = {
-    full: { path: '', width: originalWidth, height: originalHeight },
-    large: { path: '', width: 0, height: 0 },
-    medium: { path: '', width: 0, height: 0 },
-    small: { path: '', width: 0, height: 0 },
-  }
-
   const isPng = ext === '.png'
   const outputExt = isPng ? '.png' : '.jpg'
+  
+  // Generate full size
   const fullFileName = imageDir === '.' ? `${baseName}${outputExt}` : `${imageDir}/${baseName}${outputExt}`
   const fullPath = path.join(process.cwd(), 'public', 'images', fullFileName)
   
@@ -1302,13 +1169,12 @@ async function processImage(
   } else {
     await sharp(buffer).jpeg({ quality: 85 }).toFile(fullPath)
   }
-  sizes.full.path = `/images/${fullFileName}`
 
-  for (const [sizeName, sizeConfig] of Object.entries(DEFAULT_SIZES)) {
+  // Generate thumbnail sizes
+  for (const [, sizeConfig] of Object.entries(DEFAULT_SIZES)) {
     const { width: maxWidth, suffix } = sizeConfig
     if (originalWidth <= maxWidth) {
-      sizes[sizeName as ImageSize] = { ...sizes.full }
-      continue
+      continue // Skip if original is smaller than this size
     }
 
     const ratio = originalHeight / originalWidth
@@ -1322,14 +1188,9 @@ async function processImage(
     } else {
       await sharp(buffer).resize(maxWidth, newHeight).jpeg({ quality: 80 }).toFile(sizePath)
     }
-
-    sizes[sizeName as ImageSize] = {
-      path: `/images/${sizeFilePath}`,
-      width: maxWidth,
-      height: newHeight,
-    }
   }
 
+  // Generate blurhash
   const { data, info } = await sharp(buffer)
     .resize(32, 32, { fit: 'inside' })
     .ensureAlpha()
@@ -1338,20 +1199,10 @@ async function processImage(
 
   const blurhash = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
 
-  const { dominant } = await sharp(buffer).stats()
-  const dominantColor = `#${dominant.r.toString(16).padStart(2, '0')}${dominant.g.toString(16).padStart(2, '0')}${dominant.b.toString(16).padStart(2, '0')}`
-
   return {
-    ...entry,
-    original: {
-      ...entry.original,
-      width: originalWidth,
-      height: originalHeight,
-      fileSize: buffer.length,
-    },
-    sizes,
-    blurhash,
-    dominantColor,
+    w: originalWidth,
+    h: originalHeight,
+    blur: blurhash,
   }
 }
 
@@ -1386,7 +1237,7 @@ async function downloadFromCdn(originalPath: string): Promise<Buffer> {
   return Buffer.concat(chunks)
 }
 
-async function uploadToCdn(entry: ImageEntry): Promise<void> {
+async function uploadToCdn(imageKey: string): Promise<void> {
   const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
   const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
   const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
@@ -1402,24 +1253,28 @@ async function uploadToCdn(entry: ImageEntry): Promise<void> {
     credentials: { accessKeyId, secretAccessKey },
   })
 
-  for (const sizeData of Object.values(entry.sizes)) {
-    const localPath = path.join(process.cwd(), 'public', sizeData.path)
-    const fileBuffer = await fs.readFile(localPath)
-
-    await r2.send(
-      new PutObjectCommand({
-        Bucket: bucketName,
-        Key: sizeData.path.replace(/^\//, ''),
-        Body: fileBuffer,
-        ContentType: getContentType(sizeData.path),
-      })
-    )
+  // Upload all thumbnail sizes derived from imageKey
+  for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+    const localPath = path.join(process.cwd(), 'public', thumbPath)
+    try {
+      const fileBuffer = await fs.readFile(localPath)
+      await r2.send(
+        new PutObjectCommand({
+          Bucket: bucketName,
+          Key: thumbPath.replace(/^\//, ''),
+          Body: fileBuffer,
+          ContentType: getContentType(thumbPath),
+        })
+      )
+    } catch {
+      // File might not exist (e.g., if image is smaller than thumbnail size)
+    }
   }
 }
 
-async function deleteLocalFiles(entry: ImageEntry): Promise<void> {
-  for (const sizeData of Object.values(entry.sizes)) {
-    const localPath = path.join(process.cwd(), 'public', sizeData.path)
+async function deleteLocalThumbnails(imageKey: string): Promise<void> {
+  for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+    const localPath = path.join(process.cwd(), 'public', thumbPath)
     try {
       await fs.unlink(localPath)
     } catch {
@@ -1523,42 +1378,34 @@ async function handleRename(request: NextRequest) {
       const meta = await loadMeta()
       const oldRelativePath = safePath.replace(/^public\//, '')
       const newRelativePath = path.join(path.dirname(oldRelativePath), sanitizedName)
+      const oldKey = '/' + oldRelativePath
+      const newKey = '/' + newRelativePath
 
       // Find and update meta entry
-      for (const [key, entry] of Object.entries(meta.images)) {
-        if (entry.original.path === `/${oldRelativePath}`) {
-          // Update original path
-          entry.original.path = `/${newRelativePath}`
+      if (meta[oldKey]) {
+        const entry = meta[oldKey]
 
-          // Rename thumbnails in public/images
-          const oldExt = path.extname(path.basename(oldPath))
-          const oldBaseName = path.basename(oldPath, oldExt)
-          const newExt = path.extname(sanitizedName)
-          const newBaseName = path.basename(sanitizedName, newExt)
-          const oldDirRelative = path.dirname(oldRelativePath)
-          const thumbnailDir = path.join(process.cwd(), 'public', 'images', oldDirRelative)
+        // Rename thumbnails in public/images
+        const oldThumbPaths = getAllThumbnailPaths(oldKey)
+        const newThumbPaths = getAllThumbnailPaths(newKey)
 
-          for (const [sizeName, sizeData] of Object.entries(entry.sizes)) {
-            const suffix = DEFAULT_SIZES[sizeName]?.suffix || `-${sizeName}`
-            const oldThumbName = `${oldBaseName}${suffix}${oldExt === '.png' ? '.png' : '.jpg'}`
-            const newThumbName = `${newBaseName}${suffix}${newExt === '.png' ? '.png' : '.jpg'}`
-            const oldThumbPath = path.join(thumbnailDir, oldThumbName)
-            const newThumbPath = path.join(thumbnailDir, newThumbName)
-
-            try {
-              await fs.rename(oldThumbPath, newThumbPath)
-              sizeData.path = `/images/${oldDirRelative}/${newThumbName}`.replace(/\/+/g, '/')
-            } catch {
-              // Thumbnail might not exist
-            }
+        for (let i = 0; i < oldThumbPaths.length; i++) {
+          const oldThumbPath = path.join(process.cwd(), 'public', oldThumbPaths[i])
+          const newThumbPath = path.join(process.cwd(), 'public', newThumbPaths[i])
+          
+          // Ensure destination directory exists
+          await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
+          
+          try {
+            await fs.rename(oldThumbPath, newThumbPath)
+          } catch {
+            // Thumbnail might not exist
           }
-
-          // Update the key in meta
-          const newKey = `/${newRelativePath}`
-          delete meta.images[key]
-          meta.images[newKey] = entry
-          break
         }
+
+        // Update the key in meta
+        delete meta[oldKey]
+        meta[newKey] = entry
       }
 
       await saveMeta(meta)
@@ -1649,43 +1496,34 @@ async function handleMove(request: NextRequest) {
         if (stats.isFile() && isImageFile(itemName)) {
           const oldRelativePath = safePath.replace(/^public\//, '')
           const newRelativePath = path.join(safeDestination.replace(/^public\//, ''), itemName)
+          const oldKey = '/' + oldRelativePath
+          const newKey = '/' + newRelativePath
 
-          for (const [key, entry] of Object.entries(meta.images)) {
-            if (entry.original.path === `/${oldRelativePath}`) {
-              entry.original.path = `/${newRelativePath}`
+          if (meta[oldKey]) {
+            const entry = meta[oldKey]
 
-              // Move thumbnails too
-              const oldDir = path.dirname(oldRelativePath)
-              const newDir = path.dirname(newRelativePath)
-              const ext = path.extname(itemName)
-              const baseName = path.basename(itemName, ext)
-              const oldThumbDir = path.join(process.cwd(), 'public', 'images', oldDir)
-              const newThumbDir = path.join(process.cwd(), 'public', 'images', newDir)
+            // Move thumbnails too using derived paths
+            const oldThumbPaths = getAllThumbnailPaths(oldKey)
+            const newThumbPaths = getAllThumbnailPaths(newKey)
 
-              // Ensure new thumb directory exists
-              await fs.mkdir(newThumbDir, { recursive: true })
+            for (let i = 0; i < oldThumbPaths.length; i++) {
+              const oldThumbPath = path.join(process.cwd(), 'public', oldThumbPaths[i])
+              const newThumbPath = path.join(process.cwd(), 'public', newThumbPaths[i])
+              
+              // Ensure destination directory exists
+              await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
 
-              for (const [sizeName, sizeData] of Object.entries(entry.sizes)) {
-                const suffix = DEFAULT_SIZES[sizeName]?.suffix || `-${sizeName}`
-                const thumbName = `${baseName}${suffix}${ext === '.png' ? '.png' : '.jpg'}`
-                const oldThumbPath = path.join(oldThumbDir, thumbName)
-                const newThumbPath = path.join(newThumbDir, thumbName)
-
-                try {
-                  await fs.rename(oldThumbPath, newThumbPath)
-                  sizeData.path = `/images/${newDir}/${thumbName}`.replace(/\/+/g, '/')
-                } catch {
-                  // Thumbnail might not exist
-                }
+              try {
+                await fs.rename(oldThumbPath, newThumbPath)
+              } catch {
+                // Thumbnail might not exist
               }
-
-              // Update key
-              const newKey = `/${newRelativePath}`
-              delete meta.images[key]
-              meta.images[newKey] = entry
-              metaChanged = true
-              break
             }
+
+            // Update key in meta
+            delete meta[oldKey]
+            meta[newKey] = entry
+            metaChanged = true
           }
         }
 
