@@ -301,7 +301,8 @@ export async function handleUnprocessStream(request: NextRequest) {
       try {
         const meta = await loadMeta()
         const cdnUrls = getCdnUrls(meta)
-        const unprocessed: string[] = []
+        const removed: string[] = []
+        const skipped: string[] = []
         const errors: string[] = []
         const urlsToPurge: string[] = []
 
@@ -331,6 +332,13 @@ export async function handleUnprocessStream(request: NextRequest) {
               continue
             }
             
+            // Check if this image has any thumbnails
+            const hasThumbnails = entry.sm || entry.md || entry.lg || entry.f
+            if (!hasThumbnails) {
+              skipped.push(imageKey)
+              continue
+            }
+            
             const existingCdnIndex = entry.c
             const existingCdnUrl = existingCdnIndex !== undefined ? cdnUrls[existingCdnIndex] : undefined
             const isInOurR2 = existingCdnUrl === publicUrl
@@ -355,7 +363,7 @@ export async function handleUnprocessStream(request: NextRequest) {
               ...(entry.c !== undefined ? { c: entry.c } : {}),
             }
             
-            unprocessed.push(imageKey)
+            removed.push(imageKey)
           } catch (error) {
             console.error(`Failed to unprocess ${imageKey}:`, error)
             errors.push(imageKey)
@@ -370,11 +378,21 @@ export async function handleUnprocessStream(request: NextRequest) {
           await purgeCloudflareCache(urlsToPurge)
         }
 
+        // Build completion message
+        let message = `Removed thumbnails from ${removed.length} image${removed.length !== 1 ? 's' : ''}.`
+        if (skipped.length > 0) {
+          message += ` ${skipped.length} image${skipped.length !== 1 ? 's' : ''} had no thumbnails.`
+        }
+        if (errors.length > 0) {
+          message += ` ${errors.length} error${errors.length !== 1 ? 's' : ''}.`
+        }
+
         sendEvent({ 
           type: 'complete', 
-          processed: unprocessed.length,
+          processed: removed.length,
+          skipped: skipped.length,
           errors: errors.length,
-          message: `Removed thumbnails from ${unprocessed.length} image${unprocessed.length !== 1 ? 's' : ''}${errors.length > 0 ? `, ${errors.length} error${errors.length !== 1 ? 's' : ''}` : ''}`
+          message
         })
         
         controller.close()
@@ -530,17 +548,23 @@ export async function handleReprocessStream(request: NextRequest) {
           await purgeCloudflareCache(urlsToPurge)
         }
 
+        // Build completion message
+        let message = `Generated thumbnails for ${processed.length} image${processed.length !== 1 ? 's' : ''}.`
+        if (errors.length > 0) {
+          message += ` ${errors.length} error${errors.length !== 1 ? 's' : ''}.`
+        }
+
         sendEvent({ 
           type: 'complete', 
           processed: processed.length,
           errors: errors.length,
-          message: `Processed ${processed.length} image${processed.length !== 1 ? 's' : ''}${errors.length > 0 ? `, ${errors.length} error${errors.length !== 1 ? 's' : ''}` : ''}`
+          message
         })
         
         controller.close()
       } catch (error) {
         console.error('Reprocess stream error:', error)
-        sendEvent({ type: 'error', message: 'Failed to process images' })
+        sendEvent({ type: 'error', message: 'Failed to generate thumbnails' })
         controller.close()
       }
     }

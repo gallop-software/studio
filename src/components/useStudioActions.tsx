@@ -327,8 +327,8 @@ export function useStudioActions({
     
     const isRemove = mode === 'remove'
     const endpoint = isRemove ? '/api/studio/unprocess-stream' : '/api/studio/reprocess-stream'
-    const progressTitle = isRemove ? 'Removing Thumbnails' : 'Processing Images'
-    const progressMessage = isRemove ? 'Removing thumbnails...' : 'Processing images...'
+    const progressTitle = isRemove ? 'Removing Thumbnails' : 'Generating Thumbnails'
+    const progressMessage = isRemove ? 'Removing thumbnails...' : 'Generating thumbnails...'
     
     setActionState(prev => ({
       ...prev,
