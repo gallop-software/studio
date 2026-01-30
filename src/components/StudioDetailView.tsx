@@ -27,6 +27,7 @@ const styles = {
     overflow: hidden;
   `,
   main: css`
+    position: relative;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -35,6 +36,32 @@ const styles = {
     padding: 24px;
     background: ${colors.background};
     overflow: auto;
+  `,
+  mainCloseBtn: css`
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    padding: 8px;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    
+    &:hover {
+      background-color: ${colors.surfaceHover};
+      border-color: ${colors.borderHover};
+    }
+  `,
+  mainCloseIcon: css`
+    width: 20px;
+    height: 20px;
+    color: ${colors.textSecondary};
   `,
   mediaWrapper: css`
     max-width: 100%;
@@ -89,36 +116,12 @@ const styles = {
   sidebarHeader: css`
     padding: 16px 20px;
     border-bottom: 1px solid ${colors.border};
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
   `,
   sidebarTitle: css`
     font-size: ${fontSize.base};
     font-weight: 600;
     color: ${colors.text};
     margin: 0;
-  `,
-  closeBtn: css`
-    padding: 6px;
-    background: ${colors.surface};
-    border: 1px solid ${colors.border};
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    
-    &:hover {
-      background-color: ${colors.surfaceHover};
-      border-color: ${colors.borderHover};
-    }
-  `,
-  closeIcon: css`
-    width: 16px;
-    height: 16px;
-    color: ${colors.textSecondary};
   `,
   sidebarContent: css`
     flex: 1;
@@ -299,6 +302,11 @@ export function StudioDetailView() {
 
       <div css={styles.container}>
         <div css={styles.main}>
+          <button css={styles.mainCloseBtn} onClick={handleClose} aria-label="Close">
+            <svg css={styles.mainCloseIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
           <div css={styles.mediaWrapper}>
             {renderMedia()}
           </div>
@@ -307,11 +315,6 @@ export function StudioDetailView() {
         <div css={styles.sidebar}>
           <div css={styles.sidebarHeader}>
             <h3 css={styles.sidebarTitle}>Details</h3>
-            <button css={styles.closeBtn} onClick={handleClose} aria-label="Close">
-              <svg css={styles.closeIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
           </div>
 
           <div css={styles.sidebarContent}>

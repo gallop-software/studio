@@ -1084,9 +1084,16 @@ async function processImage(
     small: { path: '', width: 0, height: 0 },
   }
 
-  const fullFileName = imageDir === '.' ? `${baseName}${ext}` : `${imageDir}/${baseName}${ext}`
+  const isPng = ext === '.png'
+  const outputExt = isPng ? '.png' : '.jpg'
+  const fullFileName = imageDir === '.' ? `${baseName}${outputExt}` : `${imageDir}/${baseName}${outputExt}`
   const fullPath = path.join(process.cwd(), 'public', 'images', fullFileName)
-  await sharp(buffer).jpeg({ quality: 85 }).toFile(fullPath)
+  
+  if (isPng) {
+    await sharp(buffer).png({ quality: 85 }).toFile(fullPath)
+  } else {
+    await sharp(buffer).jpeg({ quality: 85 }).toFile(fullPath)
+  }
   sizes.full.path = `/images/${fullFileName}`
 
   for (const [sizeName, sizeConfig] of Object.entries(DEFAULT_SIZES)) {
@@ -1098,11 +1105,15 @@ async function processImage(
 
     const ratio = originalHeight / originalWidth
     const newHeight = Math.round(maxWidth * ratio)
-    const sizeFileName = `${baseName}${suffix}${ext === '.png' ? '.png' : '.jpg'}`
+    const sizeFileName = `${baseName}${suffix}${outputExt}`
     const sizeFilePath = imageDir === '.' ? sizeFileName : `${imageDir}/${sizeFileName}`
     const sizePath = path.join(process.cwd(), 'public', 'images', sizeFilePath)
 
-    await sharp(buffer).resize(maxWidth, newHeight).jpeg({ quality: 80 }).toFile(sizePath)
+    if (isPng) {
+      await sharp(buffer).resize(maxWidth, newHeight).png({ quality: 80 }).toFile(sizePath)
+    } else {
+      await sharp(buffer).resize(maxWidth, newHeight).jpeg({ quality: 80 }).toFile(sizePath)
+    }
 
     sizes[sizeName as ImageSize] = {
       path: `/images/${sizeFilePath}`,
