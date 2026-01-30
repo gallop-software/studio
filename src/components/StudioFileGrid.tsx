@@ -117,6 +117,7 @@ const styles = {
     border-radius: 4px;
   `,
   content: css`
+    position: relative;
     aspect-ratio: 1;
     display: flex;
     align-items: center;
@@ -202,21 +203,19 @@ const styles = {
   labelRow: css`
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 2px;
   `,
   labelText: css`
     flex: 1;
     min-width: 0;
   `,
-  buttonRow: css`
-    display: flex;
-    gap: 6px;
-  `,
   copyBtn: css`
-    position: relative;
-    flex-shrink: 0;
-    height: 28px;
-    width: 28px;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 10;
+    height: 24px;
+    width: 24px;
     font-size: ${fontSize.xs};
     color: ${colors.textSecondary};
     background: ${colors.surface};
@@ -225,9 +224,10 @@ const styles = {
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.15s ease;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
     
     &:hover {
       background: ${colors.surfaceHover};
@@ -236,8 +236,8 @@ const styles = {
     }
   `,
   copyIcon: css`
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
   `,
   tooltip: css`
     position: absolute;
@@ -264,6 +264,30 @@ const styles = {
       border-top-color: #1a1f36;
     }
   `,
+  openBtn: css`
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    z-index: 10;
+    height: 24px;
+    font-size: ${fontSize.xs};
+    font-weight: 500;
+    color: ${colors.primary};
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    padding: 0 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    
+    &:hover {
+      background-color: ${colors.primaryLight};
+      border-color: ${colors.primary};
+    }
+  `,
   name: css`
     font-size: ${fontSize.sm};
     font-weight: 500;
@@ -278,26 +302,6 @@ const styles = {
     font-size: ${fontSize.xs};
     color: ${colors.textMuted};
     margin: 2px 0 0 0;
-  `,
-  openBtn: css`
-    flex-shrink: 0;
-    height: 28px;
-    font-size: ${fontSize.xs};
-    font-weight: 500;
-    color: ${colors.primary};
-    background: ${colors.surface};
-    border: 1px solid ${colors.border};
-    padding: 0 10px;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.15s ease;
-    display: inline-flex;
-    align-items: center;
-    
-    &:hover {
-      background-color: ${colors.primaryLight};
-      border-color: ${colors.primary};
-    }
   `,
   selectAllRow: css`
     display: flex;
@@ -532,6 +536,29 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
       {item.cdnSynced && <span css={styles.cdnBadge}>CDN</span>}
 
       <div css={styles.content}>
+        {/* Copy button - top right of image box */}
+        <button
+          css={styles.copyBtn}
+          onClick={handleCopyPath}
+          title="Copy file path"
+        >
+          {showCopied && <span css={styles.tooltip}>Copied!</span>}
+          <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+
+        {/* Open button - bottom right of image box */}
+        <button
+          css={styles.openBtn}
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpen()
+          }}
+        >
+          Open
+        </button>
+
         {isFolder ? (
           isImagesFolder ? (
             <div css={styles.imagesFolderWrapper}>
@@ -585,27 +612,6 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
             ) : (
               item.size !== undefined && <p css={styles.size}>{formatFileSize(item.size)}</p>
             )}
-          </div>
-          <div css={styles.buttonRow}>
-            <button
-              css={styles.copyBtn}
-              onClick={handleCopyPath}
-              title="Copy file path"
-            >
-              {showCopied && <span css={styles.tooltip}>Copied!</span>}
-              <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </button>
-            <button
-              css={styles.openBtn}
-              onClick={(e) => {
-                e.stopPropagation()
-                onOpen()
-              }}
-            >
-              Open
-            </button>
           </div>
         </div>
       </div>
