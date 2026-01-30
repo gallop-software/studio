@@ -84,6 +84,26 @@ const styles = {
     height: 20px;
     color: ${colors.textSecondary};
   `,
+  statusIcon: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  `,
+  cloudIcon: css`
+    width: 20px;
+    height: 20px;
+    color: #f59e0b;
+  `,
+  globeIcon: css`
+    width: 20px;
+    height: 20px;
+    color: #ef4444;
+  `,
   tooltip: css`
     position: absolute;
     right: 100%;
@@ -565,6 +585,21 @@ export function StudioDetailView() {
         <div css={styles.container} onClick={(e) => e.stopPropagation()}>
           <div css={styles.main}>
             <div css={styles.headerButtons}>
+              {/* Cloud status icons */}
+              {focusedItem.cdnPushed && !focusedItem.isRemote && (
+                <span css={styles.statusIcon} title="Pushed to CDN">
+                  <svg css={styles.cloudIcon} fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                  </svg>
+                </span>
+              )}
+              {focusedItem.isRemote && (
+                <span css={styles.statusIcon} title="Remote image">
+                  <svg css={styles.globeIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                  </svg>
+                </span>
+              )}
               <button css={styles.copyBtn} onClick={handleCopyPath} title="Copy file path">
                 {showCopied && <span css={styles.tooltip}>Copied!</span>}
                 <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
