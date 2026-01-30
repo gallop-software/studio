@@ -116,6 +116,8 @@ const styles = {
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
+    margin-left: auto;
+    flex-shrink: 0;
   `,
   copyBtn: css`
     flex-shrink: 0;
@@ -172,6 +174,7 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex: 1;
   `,
   thumbnailWrapper: css`
     width: 48px;
@@ -192,7 +195,7 @@ const styles = {
   folderIcon: css`
     width: 24px;
     height: 24px;
-    color: #5469d4;
+    color: #0a2540;
   `,
   imagesFolderWrapper: css`
     width: 48px;
