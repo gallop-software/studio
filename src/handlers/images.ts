@@ -323,9 +323,6 @@ export async function handleReprocessStream(request: NextRequest) {
             message: `Processing ${imageKey.slice(1)}...`
           })
 
-          // TODO: Remove this delay - for testing streaming progress only
-          await new Promise(resolve => setTimeout(resolve, 1000))
-
           try {
             let buffer: Buffer
             const entry = getMetaEntry(meta, imageKey)
