@@ -133,6 +133,7 @@ export async function handleList(request: NextRequest) {
           hasThumbnail,
           isProcessed: entry.p === 1,
           cdnPushed: isPushedToCloud,
+          cdnBaseUrl: isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined,
           dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
         })
       }
@@ -211,6 +212,7 @@ export async function handleSearch(request: NextRequest) {
         hasThumbnail,
         isProcessed: entry.p === 1,
         cdnPushed: isPushedToCloud,
+        cdnBaseUrl: isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined,
         dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
       })
     }

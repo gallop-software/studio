@@ -284,14 +284,22 @@ export function StudioDetailView() {
   const isImage = isImageFile(focusedItem.name)
   const isVideo = isVideoFile(focusedItem.name)
   const imageSrc = focusedItem.path.replace('public', '')
+  const relativePath = '/' + focusedItem.path.replace(/^public\//, '')
+  
+  // Compute full URL - use CDN URL if pushed, otherwise use production URL env var
+  const productionUrl = process.env.NEXT_PUBLIC_PRODUCTION_URL || ''
+  const fullUrl = focusedItem.cdnPushed && focusedItem.cdnBaseUrl 
+    ? `${focusedItem.cdnBaseUrl}${relativePath}`
+    : productionUrl 
+      ? `${productionUrl}${relativePath}`
+      : relativePath
 
   const handleClose = () => {
     setFocusedItem(null)
   }
 
   const handleCopyPath = () => {
-    const pathToCopy = '/' + focusedItem.path.replace(/^public\//, '')
-    navigator.clipboard.writeText(pathToCopy)
+    navigator.clipboard.writeText(fullUrl)
     setShowCopied(true)
     setTimeout(() => setShowCopied(false), 1500)
   }
@@ -589,6 +597,10 @@ export function StudioDetailView() {
               <div css={styles.infoRow}>
                 <span css={styles.infoLabel}>CDN Status</span>
                 <span css={styles.infoValue}>{focusedItem.cdnPushed ? 'Pushed' : 'Not pushed'}</span>
+              </div>
+              <div css={styles.infoRow}>
+                <span css={styles.infoLabel}>URL</span>
+                <span css={styles.infoValueWrap} title={fullUrl}>{fullUrl}</span>
               </div>
             </div>
 

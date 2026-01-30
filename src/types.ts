@@ -41,6 +41,7 @@ export interface FileItem {
   dimensions?: { width: number; height: number }
   isProcessed?: boolean
   cdnPushed?: boolean
+  cdnBaseUrl?: string  // CDN base URL when pushed to cloud
   // Folder-specific properties
   fileCount?: number
   totalSize?: number
