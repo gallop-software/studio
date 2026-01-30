@@ -230,6 +230,12 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // Don't close if user is in an input field (e.g., search)
+        const target = e.target as HTMLElement
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+          return
+        }
+        
         if (focusedItem) {
           setFocusedItem(null)
         } else {
