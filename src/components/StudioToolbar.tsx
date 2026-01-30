@@ -164,22 +164,22 @@ const styles = {
   `,
   searchClearBtn: css`
     position: absolute;
-    right: 6px;
+    right: 4px;
     top: 50%;
     transform: translateY(-50%);
-    background: ${colors.textMuted};
+    background: ${colors.primary};
     border: none;
-    padding: 3px;
+    padding: 4px;
     cursor: pointer;
     color: white;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
+    border-radius: 6px;
     transition: all 0.15s ease;
     
     &:hover {
-      background: ${colors.text};
+      background: ${colors.primaryHover};
     }
   `,
   viewBtn: css`
