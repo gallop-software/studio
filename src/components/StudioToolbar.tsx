@@ -665,11 +665,6 @@ export function StudioToolbar() {
   }, [setSearchQuery])
 
   const hasSelection = selectedItems.size > 0
-  
-  // Check if any selected items are in the images folder (protected)
-  const hasImagesSelected = Array.from(selectedItems).some(path => 
-    path === 'public/images' || path.startsWith('public/images/')
-  )
 
   // Hide toolbar actions when viewing detail
   if (focusedItem) {
@@ -784,8 +779,8 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleProcessImages}
-            disabled={processing || isInImagesFolder || hasImagesSelected}
-            title={isInImagesFolder || hasImagesSelected ? 'Cannot process protected images folder' : undefined}
+            disabled={processing || isInImagesFolder}
+            title={isInImagesFolder ? 'Cannot process images folder' : undefined}
           >
             <ImageStackIcon />
             {processing ? 'Processing...' : 'Process Images'}
@@ -793,8 +788,7 @@ export function StudioToolbar() {
           <button
             css={[styles.btn, styles.btnDanger]}
             onClick={handleDeleteClick}
-            disabled={!hasSelection || hasImagesSelected}
-            title={hasImagesSelected ? 'Cannot delete protected images folder items' : undefined}
+            disabled={!hasSelection}
           >
             <TrashIcon />
             Delete
@@ -802,8 +796,7 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleMoveClick}
-            disabled={!hasSelection || hasImagesSelected}
-            title={hasImagesSelected ? 'Cannot move protected images folder items' : undefined}
+            disabled={!hasSelection}
           >
             <MoveIcon />
             Move
