@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { handleList, handleSearch, handleListFolders, handleCountImages, handleFolderImages } from './list'
 
 // File handlers
-import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleMove } from './files'
+import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleMove, handleMoveStream } from './files'
 
 // Image handlers
 import { handleSync, handleReprocess, handleProcessAllStream } from './images'
@@ -105,9 +105,9 @@ export async function POST(request: NextRequest) {
     return handleRename(request)
   }
 
-  // Route: /api/studio/move
+  // Route: /api/studio/move (streaming)
   if (route === 'move') {
-    return handleMove(request)
+    return handleMoveStream(request)
   }
 
   // Route: /api/studio/scan (streaming)

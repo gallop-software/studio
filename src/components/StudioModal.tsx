@@ -343,6 +343,7 @@ export interface ProgressState {
   errors?: number
   errorMessages?: string[]
   isScan?: boolean
+  isMove?: boolean
 }
 
 interface ProgressModalProps {
@@ -380,7 +381,14 @@ export function ProgressModal({
           ) : isComplete ? (
             <>
               <p css={styles.message}>
-                {progress.isScan ? (
+                {progress.isMove ? (
+                  <>
+                    Moved {progress.processed} file{progress.processed !== 1 ? 's' : ''}.
+                    {progress.errors !== undefined && progress.errors > 0 ? (
+                      <> {progress.errors} error{progress.errors !== 1 ? 's' : ''} occurred.</>
+                    ) : null}
+                  </>
+                ) : progress.isScan ? (
                   <>
                     {progress.alreadyProcessed !== undefined && progress.alreadyProcessed > 0 ? (
                       <>{progress.alreadyProcessed} image{progress.alreadyProcessed !== 1 ? 's' : ''} already exist. </>
@@ -397,9 +405,6 @@ export function ProgressModal({
                 )}
                 {progress.orphansRemoved !== undefined && progress.orphansRemoved > 0 ? (
                   <> Removed {progress.orphansRemoved} orphaned thumbnail{progress.orphansRemoved !== 1 ? 's' : ''}.</>
-                ) : null}
-                {progress.errors !== undefined && progress.errors > 0 ? (
-                  <> {progress.errors} error{progress.errors !== 1 ? 's' : ''} occurred.</>
                 ) : null}
               </p>
               {progress.errorMessages && progress.errorMessages.length > 0 && (

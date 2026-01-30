@@ -938,36 +938,86 @@ export function StudioToolbar() {
   }, [selectedItems])
 
   const handleMoveConfirm = useCallback(async (destination: string) => {
+    const paths = Array.from(selectedItems)
+    
+    // Show progress modal
+    setProgressTitle('Moving Files')
+    setShowProgress(true)
+    setProgressState({
+      current: 0,
+      total: paths.length,
+      percent: 0,
+      status: 'processing',
+    })
+
     try {
       const response = await fetch('/api/studio/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: Array.from(selectedItems), destination }),
+        body: JSON.stringify({ paths, destination }),
       })
 
-      const data = await response.json()
+      if (!response.body) {
+        throw new Error('No response body')
+      }
 
-      if (response.ok) {
-        clearSelection()
-        triggerRefresh()
-        if (data.errors && data.errors.length > 0) {
-          setAlertMessage({
-            title: 'Move Completed with Errors',
-            message: data.errors.join('\n'),
-          })
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const data = JSON.parse(line.slice(6))
+
+            if (data.type === 'start') {
+              setProgressState(prev => ({ ...prev, total: data.total }))
+            } else if (data.type === 'progress') {
+              setProgressState({
+                current: data.current,
+                total: data.total,
+                percent: data.percent,
+                currentFile: data.currentFile,
+                status: 'processing',
+              })
+            } else if (data.type === 'complete') {
+              setProgressState(prev => ({
+                ...prev,
+                status: 'complete',
+                processed: data.moved,
+                errors: data.errors,
+                errorMessages: data.errorMessages,
+                isMove: true,
+              }))
+              clearSelection()
+              triggerRefresh()
+            } else if (data.type === 'error') {
+              setProgressState(prev => ({
+                ...prev,
+                status: 'error',
+                errorMessage: data.message,
+              }))
+            }
+          } catch {
+            // Ignore parse errors
+          }
         }
-      } else {
-        setAlertMessage({
-          title: 'Move Failed',
-          message: data.error || 'Unknown error',
-        })
       }
     } catch (error) {
       console.error('Move error:', error)
-      setAlertMessage({
-        title: 'Move Failed',
-        message: 'Failed to move items. Check console for details.',
-      })
+      setProgressState(prev => ({
+        ...prev,
+        status: 'error',
+        errorMessage: 'Failed to move items. Check console for details.',
+      }))
     }
   }, [selectedItems, clearSelection, triggerRefresh])
 

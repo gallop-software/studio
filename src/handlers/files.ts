@@ -342,6 +342,239 @@ export async function handleRename(request: NextRequest) {
   }
 }
 
+export async function handleMoveStream(request: NextRequest) {
+  const encoder = new TextEncoder()
+  
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendEvent = (data: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      try {
+        const { paths, destination } = await request.json()
+
+        if (!paths || !Array.isArray(paths) || paths.length === 0) {
+          sendEvent({ type: 'error', message: 'Paths are required' })
+          controller.close()
+          return
+        }
+
+        if (!destination || typeof destination !== 'string') {
+          sendEvent({ type: 'error', message: 'Destination is required' })
+          controller.close()
+          return
+        }
+
+        const safeDestination = destination.replace(/\.\./g, '')
+        const absoluteDestination = path.join(process.cwd(), safeDestination)
+
+        if (!absoluteDestination.startsWith(path.join(process.cwd(), 'public'))) {
+          sendEvent({ type: 'error', message: 'Invalid destination' })
+          controller.close()
+          return
+        }
+
+        // Ensure destination folder exists
+        await fs.mkdir(absoluteDestination, { recursive: true })
+
+        const meta = await loadMeta()
+        const cdnUrls = getCdnUrls(meta)
+        const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '') || ''
+
+        const moved: string[] = []
+        const errors: string[] = []
+        const total = paths.length
+
+        sendEvent({ type: 'start', total })
+
+        for (let i = 0; i < paths.length; i++) {
+          const itemPath = paths[i]
+          const safePath = itemPath.replace(/\.\./g, '')
+          const itemName = path.basename(safePath)
+          const newAbsolutePath = path.join(absoluteDestination, itemName)
+
+          // Build meta keys
+          const oldRelativePath = safePath.replace(/^public\//, '')
+          const newRelativePath = path.join(safeDestination.replace(/^public\//, ''), itemName)
+          const oldKey = '/' + oldRelativePath
+          const newKey = '/' + newRelativePath
+
+          sendEvent({
+            type: 'progress',
+            current: i + 1,
+            total,
+            percent: Math.round(((i + 1) / total) * 100),
+            currentFile: itemName,
+          })
+
+          // Check if destination already exists in meta
+          if (meta[newKey]) {
+            errors.push(`${itemName} already exists in destination`)
+            continue
+          }
+
+          const entry = meta[oldKey] as MetaEntry | undefined
+          const isImage = isImageFile(itemName)
+
+          // Determine if cloud or remote
+          const isInCloud = entry?.c !== undefined
+          const fileCdnUrl = isInCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
+          const isRemote = isInCloud && (!r2PublicUrl || fileCdnUrl !== r2PublicUrl)
+          const isPushedToR2 = isInCloud && r2PublicUrl && fileCdnUrl === r2PublicUrl
+          const hasProcessedThumbnails = entry?.p === 1
+
+          try {
+            if (isRemote && isImage) {
+              // ===== REMOTE IMAGE =====
+              const remoteUrl = `${fileCdnUrl}${oldKey}`
+              const buffer = await downloadFromRemoteUrl(remoteUrl)
+              
+              await fs.mkdir(path.dirname(newAbsolutePath), { recursive: true })
+              await fs.writeFile(newAbsolutePath, buffer)
+              
+              const newEntry: MetaEntry = {
+                w: entry?.w,
+                h: entry?.h,
+                b: entry?.b,
+              }
+              delete meta[oldKey]
+              meta[newKey] = newEntry
+              moved.push(itemPath)
+
+            } else if (isPushedToR2 && isImage) {
+              // ===== CLOUD IMAGE (R2) =====
+              const buffer = await downloadFromCdn(oldKey)
+              
+              await fs.mkdir(path.dirname(newAbsolutePath), { recursive: true })
+              await fs.writeFile(newAbsolutePath, buffer)
+              
+              const newEntry: MetaEntry = {
+                w: entry?.w,
+                h: entry?.h,
+                b: entry?.b,
+              }
+              
+              if (hasProcessedThumbnails) {
+                const processedEntry = await processImage(buffer, newKey)
+                newEntry.w = processedEntry.w
+                newEntry.h = processedEntry.h
+                newEntry.b = processedEntry.b
+                newEntry.p = 1
+              }
+              
+              await uploadOriginalToCdn(newKey)
+              
+              if (hasProcessedThumbnails) {
+                await uploadToCdn(newKey)
+              }
+              
+              await deleteFromCdn(oldKey, hasProcessedThumbnails)
+              
+              try { await fs.unlink(newAbsolutePath) } catch { /* ignore */ }
+              if (hasProcessedThumbnails) {
+                await deleteLocalThumbnails(newKey)
+              }
+              
+              newEntry.c = entry?.c
+              
+              delete meta[oldKey]
+              meta[newKey] = newEntry
+              moved.push(itemPath)
+
+            } else {
+              // ===== LOCAL FILE =====
+              const absolutePath = path.join(process.cwd(), safePath)
+
+              if (absoluteDestination.startsWith(absolutePath + path.sep)) {
+                errors.push(`Cannot move ${itemName} into itself`)
+                continue
+              }
+
+              try {
+                await fs.access(absolutePath)
+              } catch {
+                errors.push(`${itemName} not found`)
+                continue
+              }
+
+              try {
+                await fs.access(newAbsolutePath)
+                errors.push(`${itemName} already exists in destination`)
+                continue
+              } catch {
+                // Good
+              }
+
+              await fs.rename(absolutePath, newAbsolutePath)
+
+              const stats = await fs.stat(newAbsolutePath)
+              if (stats.isFile() && isImage && entry) {
+                const oldThumbPaths = getAllThumbnailPaths(oldKey)
+                const newThumbPaths = getAllThumbnailPaths(newKey)
+
+                for (let j = 0; j < oldThumbPaths.length; j++) {
+                  const oldThumbPath = path.join(process.cwd(), 'public', oldThumbPaths[j])
+                  const newThumbPath = path.join(process.cwd(), 'public', newThumbPaths[j])
+                  
+                  await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
+
+                  try {
+                    await fs.rename(oldThumbPath, newThumbPath)
+                  } catch {
+                    // Thumbnail might not exist
+                  }
+                }
+
+                delete meta[oldKey]
+                meta[newKey] = entry
+              } else if (stats.isDirectory()) {
+                const oldPrefix = oldKey + '/'
+                const newPrefix = newKey + '/'
+                
+                for (const key of Object.keys(meta)) {
+                  if (key.startsWith(oldPrefix)) {
+                    const newMetaKey = newPrefix + key.slice(oldPrefix.length)
+                    meta[newMetaKey] = meta[key]
+                    delete meta[key]
+                  }
+                }
+              }
+
+              moved.push(itemPath)
+            }
+          } catch (err) {
+            console.error(`Failed to move ${itemName}:`, err)
+            errors.push(`Failed to move ${itemName}`)
+          }
+        }
+
+        await saveMeta(meta)
+
+        sendEvent({
+          type: 'complete',
+          moved: moved.length,
+          errors: errors.length,
+          errorMessages: errors,
+        })
+      } catch (error) {
+        console.error('Failed to move:', error)
+        sendEvent({ type: 'error', message: 'Failed to move items' })
+      } finally {
+        controller.close()
+      }
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
+}
+
 export async function handleMove(request: NextRequest) {
   try {
     const { paths, destination } = await request.json()
