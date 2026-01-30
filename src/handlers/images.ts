@@ -364,9 +364,9 @@ export async function handleProcessAllStream() {
 
               meta[key] = {
                 ...entry,
-                o: [0, 0] as [number, number],
+                o: { w: 0, h: 0 },
                 b: '',
-                f: [0, 0] as [number, number],  // SVG has "full" to indicate processed
+                f: { w: 0, h: 0 },  // SVG has "full" to indicate processed
               }
               
               // Remote images become local after processing

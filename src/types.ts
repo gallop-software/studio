@@ -1,7 +1,10 @@
 /**
- * Dimensions tuple [width, height]
+ * Dimensions object {w, h}
  */
-export type Dimensions = [number, number]
+export interface Dimensions {
+  w: number
+  h: number
+}
 
 /**
  * Meta entry - works for images and non-images
@@ -9,7 +12,7 @@ export type Dimensions = [number, number]
  * sm/md/lg/f: thumbnail dimensions (presence implies processed)
  */
 export interface MetaEntry {
-  o?: Dimensions   // original dimensions [width, height]
+  o?: Dimensions   // original dimensions {w, h}
   b?: string       // blurhash
   sm?: Dimensions  // small thumbnail (300px width)
   md?: Dimensions  // medium thumbnail (700px width)
@@ -30,7 +33,7 @@ export interface FullMeta {
 
 /**
  * Meta schema - keyed by path from public folder
- * Example: { "/portfolio/photo.jpg": { o: [2400, 1600], b: "...", sm: [300, 200], ... } }
+ * Example: { "/portfolio/photo.jpg": { o: {w:2400,h:1600}, b: "...", sm: {w:300,h:200}, ... } }
  */
 export type LeanMeta = Record<string, MetaEntry>
 

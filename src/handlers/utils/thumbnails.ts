@@ -36,7 +36,7 @@ export async function processImage(
 
   // Build the result entry
   const entry: MetaEntry = {
-    o: [originalWidth, originalHeight] as Dimensions,
+    o: { w: originalWidth, h: originalHeight },
   }
 
   // Generate full size (capped at FULL_MAX_WIDTH)
@@ -61,7 +61,7 @@ export async function processImage(
       await sharp(buffer).jpeg({ quality: 85 }).toFile(fullPath)
     }
   }
-  entry.f = [fullWidth, fullHeight] as Dimensions
+  entry.f = { w: fullWidth, h: fullHeight }
 
   // Generate thumbnail sizes
   for (const [, sizeConfig] of Object.entries(DEFAULT_SIZES)) {
@@ -81,7 +81,7 @@ export async function processImage(
       await sharp(buffer).resize(maxWidth, newHeight).jpeg({ quality: 80 }).toFile(sizePath)
     }
 
-    entry[key] = [maxWidth, newHeight] as Dimensions
+    entry[key] = { w: maxWidth, h: newHeight }
   }
 
   // Generate blurhash

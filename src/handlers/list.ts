@@ -215,7 +215,7 @@ export async function handleList(request: NextRequest) {
           cdnBaseUrl: fileCdnUrl,
           isRemote,
           isProtected: isInsideImagesFolder,
-          dimensions: entry.o ? { width: entry.o[0], height: entry.o[1] } : undefined,
+          dimensions: entry.o ? { width: entry.o.w, height: entry.o.h } : undefined,
         })
       }
     }
@@ -301,7 +301,7 @@ export async function handleSearch(request: NextRequest) {
         cdnPushed: isPushedToCloud,
         cdnBaseUrl: fileCdnUrl,
         isRemote,
-        dimensions: entry.o ? { width: entry.o[0], height: entry.o[1] } : undefined,
+        dimensions: entry.o ? { width: entry.o.w, height: entry.o.h } : undefined,
       })
     }
 

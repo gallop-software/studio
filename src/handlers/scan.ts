@@ -5,7 +5,6 @@ import sharp from 'sharp'
 import { encode } from 'blurhash'
 import { loadMeta, saveMeta, isMediaFile, isImageFile, getFileEntries } from './utils'
 import { getAllThumbnailPaths, isProcessed } from '../types'
-import type { Dimensions } from '../types'
 
 /**
  * Streaming scan handler - scans filesystem for new files not in meta
@@ -121,7 +120,7 @@ export async function handleScanStream() {
               
               if (ext === '.svg') {
                 // SVGs don't have pixel dimensions in the same way
-                meta[imageKey] = { o: [0, 0] as Dimensions, b: '' }
+                meta[imageKey] = { o: { w: 0, h: 0 }, b: '' }
               } else {
                 try {
                   const buffer = await fs.readFile(fullPath)
@@ -137,12 +136,12 @@ export async function handleScanStream() {
                   const blurhash = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
                   
                   meta[imageKey] = {
-                    o: [metadata.width || 0, metadata.height || 0] as Dimensions,
+                    o: { w: metadata.width || 0, h: metadata.height || 0 },
                     b: blurhash,
                   }
                 } catch {
                   // Couldn't read dimensions
-                  meta[imageKey] = { o: [0, 0] as Dimensions }
+                  meta[imageKey] = { o: { w: 0, h: 0 } }
                 }
               }
             } else {

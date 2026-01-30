@@ -353,7 +353,7 @@ export function StudioPreview() {
           <>
             <InfoRow
               label="Dimensions"
-              value={imageData.o ? `${imageData.o[0]}x${imageData.o[1]}` : 'Unknown'}
+              value={imageData.o ? `${imageData.o.w}x${imageData.o.h}` : 'Unknown'}
             />
 
             {imageData.c && (

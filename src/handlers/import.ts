@@ -45,7 +45,7 @@ async function processRemoteImage(url: string): Promise<{ o: Dimensions; b: stri
   const blurhash = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
   
   return {
-    o: [metadata.width || 0, metadata.height || 0] as Dimensions,
+    o: { w: metadata.width || 0, h: metadata.height || 0 },
     b: blurhash,
   }
 }
