@@ -6,6 +6,29 @@ import { loadMeta, isImageFile, getCdnUrls, getFileEntries } from './utils'
 import { getThumbnailPath, isProcessed } from '../types'
 
 /**
+ * Get all thumbnail file info for a processed meta entry
+ * Returns the thumbnail paths that exist based on which dimension properties are present
+ */
+function getExistingThumbnails(originalPath: string, entry: MetaEntry): Array<{ path: string; size: 'f' | 'lg' | 'md' | 'sm' }> {
+  const thumbnails: Array<{ path: string; size: 'f' | 'lg' | 'md' | 'sm' }> = []
+  
+  if (entry.f) {
+    thumbnails.push({ path: getThumbnailPath(originalPath, 'full'), size: 'f' })
+  }
+  if (entry.lg) {
+    thumbnails.push({ path: getThumbnailPath(originalPath, 'lg'), size: 'lg' })
+  }
+  if (entry.md) {
+    thumbnails.push({ path: getThumbnailPath(originalPath, 'md'), size: 'md' })
+  }
+  if (entry.sm) {
+    thumbnails.push({ path: getThumbnailPath(originalPath, 'sm'), size: 'sm' })
+  }
+  
+  return thumbnails
+}
+
+/**
  * List files and folders from meta
  * Folders are derived from file paths in meta AND filesystem
  */
@@ -32,7 +55,107 @@ export async function handleList(request: NextRequest) {
     // Check if we're inside the images folder (protected area)
     const isInsideImagesFolder = relativePath === 'images' || relativePath.startsWith('images/')
     
-    // Also check filesystem for folders (including empty ones)
+    // For the images folder, derive contents from meta entries with thumbnails
+    if (isInsideImagesFolder) {
+      // Get the path within images folder (e.g., "images/subfolder" -> "subfolder")
+      const imagesSubPath = relativePath.replace(/^images\/?/, '')
+      const imagesPrefix = imagesSubPath ? `/${imagesSubPath}/` : '/'
+      
+      // Collect all thumbnails from processed entries
+      const allThumbnails: Array<{ path: string; size: 'f' | 'lg' | 'md' | 'sm'; originalKey: string }> = []
+      
+      for (const [key, entry] of fileEntries) {
+        if (isProcessed(entry)) {
+          const thumbnails = getExistingThumbnails(key, entry)
+          for (const thumb of thumbnails) {
+            allThumbnails.push({ ...thumb, originalKey: key })
+          }
+        }
+      }
+      
+      // Filter thumbnails that are in the current images subfolder
+      for (const thumb of allThumbnails) {
+        // thumb.path is like "/images/photos/image.jpg" or "/images/photos/image-lg.jpg"
+        // We need to check if it's under the current images path
+        const thumbRelative = thumb.path.replace(/^\/images\/?/, '')
+        
+        // Check if this is directly in the current folder or in a subfolder
+        if (imagesSubPath === '') {
+          // We're at /images root
+          const slashIndex = thumbRelative.indexOf('/')
+          if (slashIndex === -1) {
+            // Direct file in images root
+            const fileName = thumbRelative
+            items.push({
+              name: fileName,
+              path: `public/images/${fileName}`,
+              type: 'file',
+              thumbnail: thumb.path,
+              hasThumbnail: false,
+              isProtected: true,
+            })
+          } else {
+            // In a subfolder - add the folder
+            const folderName = thumbRelative.slice(0, slashIndex)
+            if (!seenFolders.has(folderName)) {
+              seenFolders.add(folderName)
+              // Count thumbnails in this folder
+              const folderPrefix = `/${folderName}/`
+              const fileCount = allThumbnails.filter(t => 
+                t.path.replace(/^\/images/, '').startsWith(folderPrefix)
+              ).length
+              items.push({
+                name: folderName,
+                path: `public/images/${folderName}`,
+                type: 'folder',
+                fileCount,
+                isProtected: true,
+              })
+            }
+          }
+        } else {
+          // We're in a subfolder of images
+          if (!thumbRelative.startsWith(imagesSubPath + '/') && thumbRelative !== imagesSubPath) continue
+          
+          const remaining = thumbRelative.slice(imagesSubPath.length + 1)
+          if (!remaining) continue
+          
+          const slashIndex = remaining.indexOf('/')
+          if (slashIndex === -1) {
+            // Direct file
+            items.push({
+              name: remaining,
+              path: `public/images/${imagesSubPath}/${remaining}`,
+              type: 'file',
+              thumbnail: thumb.path,
+              hasThumbnail: false,
+              isProtected: true,
+            })
+          } else {
+            // Subfolder
+            const folderName = remaining.slice(0, slashIndex)
+            if (!seenFolders.has(folderName)) {
+              seenFolders.add(folderName)
+              const folderPrefix = `${imagesSubPath}/${folderName}/`
+              const fileCount = allThumbnails.filter(t => 
+                t.path.replace(/^\/images\//, '').startsWith(folderPrefix)
+              ).length
+              items.push({
+                name: folderName,
+                path: `public/images/${imagesSubPath}/${folderName}`,
+                type: 'folder',
+                fileCount,
+                isProtected: true,
+              })
+            }
+          }
+        }
+      }
+      
+      return NextResponse.json({ items })
+    }
+    
+    // Not in images folder - check filesystem for folders (including empty ones)
     const absoluteDir = path.join(process.cwd(), requestedPath)
     try {
       const dirEntries = await fs.readdir(absoluteDir, { withFileTypes: true })
@@ -43,19 +166,19 @@ export async function handleList(request: NextRequest) {
           if (!seenFolders.has(entry.name)) {
             seenFolders.add(entry.name)
             
-            // Check if this folder is the images folder or inside it
+            // Check if this folder is the images folder
             const isImagesFolder = entry.name === 'images' && !relativePath
             const folderPath = relativePath ? `public/${relativePath}/${entry.name}` : `public/${entry.name}`
             
-            // Count files in this folder - from filesystem if inside images, from meta otherwise
+            // Count files in this folder
             let fileCount = 0
-            if (isInsideImagesFolder || isImagesFolder) {
-              // Count files from filesystem for images folder
-              const subDir = path.join(absoluteDir, entry.name)
-              try {
-                const subEntries = await fs.readdir(subDir)
-                fileCount = subEntries.filter(f => !f.startsWith('.')).length
-              } catch { /* ignore */ }
+            if (isImagesFolder) {
+              // Count thumbnails from meta for images folder
+              for (const [key, metaEntry] of fileEntries) {
+                if (isProcessed(metaEntry)) {
+                  fileCount += getExistingThumbnails(key, metaEntry).length
+                }
+              }
             } else {
               // Count files from meta for regular folders
               const folderPrefix = pathPrefix === '/' ? `/${entry.name}/` : `${pathPrefix}${entry.name}/`
@@ -69,35 +192,32 @@ export async function handleList(request: NextRequest) {
               path: folderPath,
               type: 'folder',
               fileCount,
-              isProtected: isImagesFolder || isInsideImagesFolder,
+              isProtected: isImagesFolder,
             })
           }
-        } else if (isInsideImagesFolder) {
-          // List files inside images folder from filesystem (not from meta)
-          const filePath = relativePath ? `public/${relativePath}/${entry.name}` : `public/${entry.name}`
-          const fullPath = path.join(absoluteDir, entry.name)
-          
-          let fileSize: number | undefined
-          try {
-            const stats = await fs.stat(fullPath)
-            fileSize = stats.size
-          } catch { /* ignore */ }
-          
-          const isImage = isImageFile(entry.name)
-          
-          items.push({
-            name: entry.name,
-            path: filePath,
-            type: 'file',
-            size: fileSize,
-            thumbnail: isImage ? `/${relativePath}/${entry.name}` : undefined,
-            hasThumbnail: false,
-            isProtected: true,
-          })
         }
       }
     } catch {
       // Directory might not exist (all files in cloud)
+    }
+    
+    // Always show images folder at root level if any processed images exist
+    if (!relativePath && !seenFolders.has('images')) {
+      let thumbnailCount = 0
+      for (const [key, entry] of fileEntries) {
+        if (isProcessed(entry)) {
+          thumbnailCount += getExistingThumbnails(key, entry).length
+        }
+      }
+      if (thumbnailCount > 0) {
+        items.push({
+          name: 'images',
+          path: 'public/images',
+          type: 'folder',
+          fileCount: thumbnailCount,
+          isProtected: true,
+        })
+      }
     }
     
     // If meta is empty and no folders found, return empty with a flag
