@@ -324,9 +324,15 @@ export function StudioDetailView() {
   const [showR2SetupModal, setShowR2SetupModal] = useState(false)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showCopied, setShowCopied] = useState(false)
+  const [generatingFavicon, setGeneratingFavicon] = useState(false)
   
   // Check if an action is in progress
   const isActionInProgress = actionState.showProgress
+  
+  // Check if this is a favicon source file
+  const isFaviconSource = focusedItem ? 
+    focusedItem.name.toLowerCase() === 'favicon.png' || 
+    focusedItem.name.toLowerCase() === 'favicon.jpg' : false
 
   if (!focusedItem) return null
 
@@ -385,6 +391,43 @@ export function StudioDetailView() {
           message: 'An error occurred while renaming the file',
         })
       }
+    }
+  }
+
+  const handleGenerateFavicons = async () => {
+    if (!focusedItem) return
+    
+    setGeneratingFavicon(true)
+    try {
+      const response = await fetch('/api/studio/generate-favicon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imagePath: '/' + focusedItem.path.replace(/^public\//, ''),
+        }),
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok && data.success) {
+        setAlertMessage({
+          title: 'Favicons Generated',
+          message: data.message + ' Files saved to src/app/',
+        })
+      } else {
+        setAlertMessage({
+          title: 'Generation Failed',
+          message: data.error || data.message || 'Failed to generate favicons',
+        })
+      }
+    } catch (error) {
+      console.error('Favicon generation error:', error)
+      setAlertMessage({
+        title: 'Generation Failed',
+        message: 'An error occurred while generating favicons',
+      })
+    } finally {
+      setGeneratingFavicon(false)
     }
   }
 
@@ -559,6 +602,18 @@ export function StudioDetailView() {
                 </svg>
                 Process Image
               </button>
+              {isFaviconSource && (
+                <button 
+                  css={styles.actionBtn} 
+                  onClick={handleGenerateFavicons}
+                  disabled={generatingFavicon || focusedItem.isProtected}
+                >
+                  <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                  {generatingFavicon ? 'Generating...' : 'Generate Favicons'}
+                </button>
+              )}
               <button 
                 css={[styles.actionBtn, styles.actionBtnDanger]} 
                 onClick={() => requestDelete([focusedItem.path])}

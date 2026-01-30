@@ -15,6 +15,9 @@ import { handleScanStream, handleDeleteOrphans } from './scan'
 // Import handlers
 import { handleImportUrls, handleGetCdns, handleUpdateCdns } from './import'
 
+// Favicon handler
+import { handleGenerateFavicon } from './favicon'
+
 /**
  * Unified GET handler for all Studio API routes
  */
@@ -138,6 +141,11 @@ export async function POST(request: NextRequest) {
   // Route: /api/studio/cdns (update)
   if (route === 'cdns') {
     return handleUpdateCdns(request)
+  }
+
+  // Route: /api/studio/generate-favicon
+  if (route === 'generate-favicon') {
+    return handleGenerateFavicon(request)
   }
 
   return NextResponse.json({ error: 'Not found' }, { status: 404 })
