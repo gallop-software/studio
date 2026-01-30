@@ -3,7 +3,7 @@ import path from 'path'
 import type { FullMeta, MetaEntry } from '../../types'
 
 export async function loadMeta(): Promise<FullMeta> {
-  const metaPath = path.join(process.cwd(), '_data', '_meta.json')
+  const metaPath = path.join(process.cwd(), '_data', 'studio.json')
   
   try {
     const content = await fs.readFile(metaPath, 'utf-8')
@@ -16,7 +16,7 @@ export async function loadMeta(): Promise<FullMeta> {
 export async function saveMeta(meta: FullMeta): Promise<void> {
   const dataDir = path.join(process.cwd(), '_data')
   await fs.mkdir(dataDir, { recursive: true })
-  const metaPath = path.join(dataDir, '_meta.json')
+  const metaPath = path.join(dataDir, 'studio.json')
   
   // Ensure _cdns is at the top by creating ordered object
   const ordered: FullMeta = {}
