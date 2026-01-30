@@ -1169,28 +1169,44 @@ async function handleProcessAllStream() {
 
 async function loadMeta(): Promise<StudioMeta> {
   const metaPath = path.join(process.cwd(), '_data', '_meta.json')
+  const emptyMeta: StudioMeta = {
+    $schema: 'https://gallop.software/schemas/studio-meta.json',
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    images: {},
+  }
+  
   try {
     const content = await fs.readFile(metaPath, 'utf-8')
     const parsed = JSON.parse(content)
     
+    // Check if it's the old verbose format
     if (parsed.images && typeof parsed.images === 'object') {
       return parsed
     }
     
-    // Return empty meta if format is invalid
-    return {
-      $schema: 'https://gallop.software/schemas/studio-meta.json',
-      version: 1,
-      generatedAt: new Date().toISOString(),
-      images: {},
+    // Convert lean format to internal verbose format
+    const meta: StudioMeta = { ...emptyMeta, images: {} }
+    for (const [imagePath, entry] of Object.entries(parsed)) {
+      const leanEntry = entry as LeanImageEntry
+      // Use the path as the key (without leading slash)
+      const key = imagePath.startsWith('/') ? imagePath.slice(1) : imagePath
+      meta.images[key] = {
+        original: {
+          path: imagePath,
+          width: leanEntry.w,
+          height: leanEntry.h,
+          fileSize: 0,
+        },
+        sizes: {} as Record<ImageSize, { path: string; width: number; height: number }>,
+        blurhash: leanEntry.blur,
+        dominantColor: '',
+        cdn: leanEntry.s ? { synced: true, baseUrl: '', syncedAt: '' } : null,
+      }
     }
+    return meta
   } catch {
-    return {
-      $schema: 'https://gallop.software/schemas/studio-meta.json',
-      version: 1,
-      generatedAt: new Date().toISOString(),
-      images: {},
-    }
+    return emptyMeta
   }
 }
 
