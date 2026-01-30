@@ -99,14 +99,42 @@ const styles = {
     color: ${colors.textSecondary};
     margin: 0 0 12px 0;
   `,
+  codeWrapper: css`
+    position: relative;
+  `,
   code: css`
     background-color: ${colors.background};
     border-radius: 8px;
     padding: 12px;
+    padding-right: 40px;
     font-family: 'SF Mono', Monaco, Consolas, monospace;
     font-size: ${fontSize.xs};
     color: ${colors.textSecondary};
     border: 1px solid ${colors.border};
+  `,
+  copyBtn: css`
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 4px;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    &:hover {
+      background-color: ${colors.surfaceHover};
+      border-color: ${colors.borderHover};
+    }
+  `,
+  copyIcon: css`
+    width: 14px;
+    height: 14px;
+    color: ${colors.textSecondary};
   `,
   codeLine: css`
     margin: 0 0 4px 0;
@@ -215,7 +243,21 @@ export function StudioSettings() {
   )
 }
 
+const envTemplate = `CLOUDFLARE_R2_ACCOUNT_ID=abc123def456ghi789
+CLOUDFLARE_R2_ACCESS_KEY_ID=your_access_key_id_here
+CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_access_key_here
+CLOUDFLARE_R2_BUCKET_NAME=my-images-bucket
+CLOUDFLARE_R2_PUBLIC_URL=https://cdn.yourdomain.com`
+
 function SettingsPanel({ onClose }: { onClose: () => void }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(envTemplate)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <div css={styles.overlay} onClick={onClose}>
       <div css={styles.panel} onClick={(e) => e.stopPropagation()}>
@@ -232,12 +274,25 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
           <section>
             <h3 css={styles.sectionTitle}>Cloudflare R2</h3>
             <p css={styles.description}>Configure in .env.local file:</p>
-            <div css={styles.code}>
-              <p css={styles.codeLine}>CLOUDFLARE_R2_ACCOUNT_ID</p>
-              <p css={styles.codeLine}>CLOUDFLARE_R2_ACCESS_KEY_ID</p>
-              <p css={styles.codeLine}>CLOUDFLARE_R2_SECRET_ACCESS_KEY</p>
-              <p css={styles.codeLine}>CLOUDFLARE_R2_BUCKET_NAME</p>
-              <p css={styles.codeLine}>CLOUDFLARE_R2_PUBLIC_URL</p>
+            <div css={styles.codeWrapper}>
+              <button css={styles.copyBtn} onClick={handleCopy} title={copied ? 'Copied!' : 'Copy to clipboard'}>
+                {copied ? (
+                  <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </button>
+              <div css={styles.code}>
+                <p css={styles.codeLine}>CLOUDFLARE_R2_ACCOUNT_ID=abc123def456ghi789</p>
+                <p css={styles.codeLine}>CLOUDFLARE_R2_ACCESS_KEY_ID=your_access_key_id_here</p>
+                <p css={styles.codeLine}>CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_access_key_here</p>
+                <p css={styles.codeLine}>CLOUDFLARE_R2_BUCKET_NAME=my-images-bucket</p>
+                <p css={styles.codeLine}>CLOUDFLARE_R2_PUBLIC_URL=https://cdn.yourdomain.com</p>
+              </div>
             </div>
           </section>
 

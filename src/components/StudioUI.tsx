@@ -81,6 +81,34 @@ const styles = {
     overflow: auto;
     padding: 20px 24px;
   `,
+  dropOverlay: css`
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(99, 91, 255, 0.1);
+    border: 3px dashed ${colors.primary};
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    pointer-events: none;
+  `,
+  dropMessage: css`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: ${colors.primary};
+    font-size: ${fontSize.lg};
+    font-weight: 600;
+  `,
+  dropIcon: css`
+    width: 48px;
+    height: 48px;
+  `,
 }
 
 /**
@@ -96,10 +124,54 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
   const [meta, setMeta] = useState<StudioMeta | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
   }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length === 0) return
+
+    // Don't allow drops in the images folder
+    if (currentPath === 'public/images' || currentPath.startsWith('public/images/')) {
+      return
+    }
+
+    for (const file of files) {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('path', currentPath)
+
+      try {
+        await fetch('/api/studio/upload', {
+          method: 'POST',
+          body: formData,
+        })
+      } catch (error) {
+        console.error('Upload error:', error)
+      }
+    }
+    triggerRefresh()
+  }, [currentPath, triggerRefresh])
 
   const navigateUp = useCallback(() => {
     if (currentPath === 'public') return
@@ -203,6 +275,8 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
     setIsLoading,
     refreshKey,
     triggerRefresh,
+    searchQuery,
+    setSearchQuery,
   }
 
   return (
@@ -224,7 +298,22 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
 
         <StudioToolbar />
 
-        <div css={styles.content}>
+        <div 
+          css={styles.content}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDragging && (
+            <div css={styles.dropOverlay}>
+              <div css={styles.dropMessage}>
+                <svg css={styles.dropIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <span>Drop files to upload</span>
+              </div>
+            </div>
+          )}
           <div css={styles.fileBrowser}>
             {viewMode === 'grid' ? <StudioFileGrid /> : <StudioFileList />}
           </div>

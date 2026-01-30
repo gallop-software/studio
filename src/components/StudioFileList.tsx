@@ -90,6 +90,7 @@ const styles = {
   `,
   parentRow: css`
     cursor: pointer;
+    border-bottom: 1px solid ${colors.border};
     
     &:hover {
       background-color: ${colors.surfaceHover};
@@ -118,6 +119,24 @@ const styles = {
     height: 20px;
     color: #f5a623;
     flex-shrink: 0;
+  `,
+  imagesFolderWrapper: css`
+    position: relative;
+    display: flex;
+    align-items: center;
+  `,
+  imagesFolderIcon: css`
+    width: 20px;
+    height: 20px;
+    color: ${colors.imagesFolder};
+    flex-shrink: 0;
+  `,
+  lockIcon: css`
+    width: 10px;
+    height: 10px;
+    color: ${colors.imagesFolder};
+    margin-left: -6px;
+    margin-top: 8px;
   `,
   parentIcon: css`
     width: 20px;
@@ -213,7 +232,7 @@ const styles = {
 }
 
 export function StudioFileList() {
-  const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem, triggerRefresh } = useStudio()
+  const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem, triggerRefresh, searchQuery } = useStudio()
   const [items, setItems] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
   const isInitialLoad = useRef(true)
@@ -261,7 +280,16 @@ export function StudioFileList() {
     )
   }
 
-  const sortedItems = [...items].sort((a, b) => {
+  // Filter by search query (only images)
+  const filteredItems = searchQuery
+    ? items.filter(item => {
+        if (item.type === 'folder') return true // Always show folders
+        const query = searchQuery.toLowerCase()
+        return item.name.toLowerCase().includes(query)
+      })
+    : items
+
+  const sortedItems = [...filteredItems].sort((a, b) => {
     if (a.type === 'folder' && b.type !== 'folder') return -1
     if (a.type !== 'folder' && b.type === 'folder') return 1
     return a.name.localeCompare(b.name)
@@ -378,6 +406,7 @@ interface ListRowProps {
 function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: ListRowProps) {
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
+  const isImagesFolder = isFolder && (item.name === 'images' || item.path.includes('/images/'))
 
   return (
     <tr 
@@ -398,9 +427,20 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Lis
       <td css={styles.td}>
         <div css={styles.nameCell}>
           {isFolder ? (
-            <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
-              <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
-            </svg>
+            isImagesFolder ? (
+              <div css={styles.imagesFolderWrapper}>
+                <svg css={styles.imagesFolderIcon} fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
+                </svg>
+                <svg css={styles.lockIcon} fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                </svg>
+              </div>
+            ) : (
+              <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
+                <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
+              </svg>
+            )
           ) : isImage && item.hasThumbnail ? (
             <img css={styles.thumbnail} src={item.thumbnail} alt={item.name} loading="lazy" />
           ) : isImage && !item.hasThumbnail ? (

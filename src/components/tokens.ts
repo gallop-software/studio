@@ -40,16 +40,20 @@ export const colors = {
   // Shadows
   shadow: 'rgba(50, 50, 93, 0.1)',
   shadowDark: 'rgba(50, 50, 93, 0.2)',
+  
+  // Special folders
+  imagesFolder: '#8b5cf6',
+  imagesFolderLight: '#f3f0ff',
 }
 
 // Font sizes - slightly larger for better readability
 export const fontSize = {
-  xs: '12px',
-  sm: '13px',
-  base: '14px',
-  md: '15px',
-  lg: '16px',
-  xl: '18px',
+  xs: '13px',
+  sm: '14px',
+  base: '15px',
+  md: '16px',
+  lg: '18px',
+  xl: '20px',
 }
 
 // Base reset styles for Studio container - isolates from parent template

@@ -45,6 +45,10 @@ export interface StudioState {
   // Refresh trigger
   refreshKey: number
   triggerRefresh: () => void
+
+  // Search
+  searchQuery: string
+  setSearchQuery: (query: string) => void
 }
 
 const defaultState: StudioState = {
@@ -71,6 +75,8 @@ const defaultState: StudioState = {
   setIsLoading: () => {},
   refreshKey: 0,
   triggerRefresh: () => {},
+  searchQuery: '',
+  setSearchQuery: () => {},
 }
 
 export const StudioContext = createContext<StudioState>(defaultState)

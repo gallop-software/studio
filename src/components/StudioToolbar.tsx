@@ -132,6 +132,27 @@ const styles = {
     border-radius: 6px;
     overflow: hidden;
   `,
+  searchInput: css`
+    height: ${btnHeight};
+    padding: 0 12px;
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
+    font-size: ${fontSize.base};
+    background: ${colors.surface};
+    color: ${colors.text};
+    width: 180px;
+    transition: all 0.15s ease;
+    
+    &:focus {
+      outline: none;
+      border-color: ${colors.primary};
+      box-shadow: 0 0 0 2px ${colors.primaryLight};
+    }
+    
+    &::placeholder {
+      color: ${colors.textMuted};
+    }
+  `,
   viewBtn: css`
     height: 100%;
     padding: 0 10px;
@@ -525,9 +546,11 @@ export function StudioToolbar() {
     console.log('Sync CDN clicked', selectedItems)
   }, [selectedItems])
 
-  const handleScan = useCallback(() => {
-    console.log('Scan clicked')
-  }, [])
+  const { searchQuery, setSearchQuery } = useStudio()
+  
+  const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value)
+  }, [setSearchQuery])
 
   const hasSelection = selectedItems.size > 0
 
@@ -634,10 +657,13 @@ export function StudioToolbar() {
             <CloudIcon />
             Sync CDN
           </button>
-          <button css={styles.btn} onClick={handleScan}>
-            <ScanIcon />
-            Scan
-          </button>
+          <input
+            css={styles.searchInput}
+            type="text"
+            placeholder="Search images..."
+            value={searchQuery}
+            onChange={handleSearch}
+          />
         </div>
 
         <div css={styles.right}>

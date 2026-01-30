@@ -36,6 +36,7 @@ const styles = {
     flex: 1;
     margin: 24px;
     background: ${colors.surface};
+    border: 1px solid ${colors.border};
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
