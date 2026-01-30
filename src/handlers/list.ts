@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import type { FileItem, MetaEntry } from '../types'
 import { loadMeta, isImageFile, getCdnUrls, getFileEntries } from './utils'
-import { getThumbnailPath } from '../types'
+import { getThumbnailPath, isProcessed } from '../types'
 
 /**
  * List files and folders from meta
@@ -155,8 +155,10 @@ export async function handleList(request: NextRequest) {
         let hasThumbnail = false
         let fileSize: number | undefined
         
-        if (isImage && entry.p === 1) {
-          // Has been processed (p: 1) - use thumbnail
+        const entryIsProcessed = isProcessed(entry)
+        
+        if (isImage && entryIsProcessed) {
+          // Has been processed - use thumbnail
           const thumbPath = getThumbnailPath(key, 'sm')
           
           if (isPushedToCloud && entry.c !== undefined) {
@@ -208,12 +210,12 @@ export async function handleList(request: NextRequest) {
           size: fileSize,
           thumbnail,
           hasThumbnail,
-          isProcessed: entry.p === 1,
+          isProcessed: entryIsProcessed,
           cdnPushed: isPushedToCloud,
           cdnBaseUrl: fileCdnUrl,
           isRemote,
           isProtected: isInsideImagesFolder,
-          dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
+          dimensions: entry.o ? { width: entry.o[0], height: entry.o[1] } : undefined,
         })
       }
     }
@@ -255,9 +257,10 @@ export async function handleSearch(request: NextRequest) {
       
       let thumbnail: string | undefined
       let hasThumbnail = false
+      const entryIsProcessed = isProcessed(entry)
       
-      if (isImage && entry.p === 1) {
-        // Has been processed (p: 1) - use thumbnail
+      if (isImage && entryIsProcessed) {
+        // Has been processed - use thumbnail
         const thumbPath = getThumbnailPath(key, 'sm')
         
         if (isPushedToCloud && entry.c !== undefined) {
@@ -294,11 +297,11 @@ export async function handleSearch(request: NextRequest) {
         type: 'file',
         thumbnail,
         hasThumbnail,
-        isProcessed: entry.p === 1,
+        isProcessed: entryIsProcessed,
         cdnPushed: isPushedToCloud,
         cdnBaseUrl: fileCdnUrl,
         isRemote,
-        dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
+        dimensions: entry.o ? { width: entry.o[0], height: entry.o[1] } : undefined,
       })
     }
 

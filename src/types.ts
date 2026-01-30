@@ -1,14 +1,21 @@
 /**
+ * Dimensions tuple [width, height]
+ */
+export type Dimensions = [number, number]
+
+/**
  * Meta entry - works for images and non-images
- * Images have w, h, b (after processing)
- * c is the index into _cdns array (omit if not on CDN)
+ * o: original dimensions, b: blurhash, c: CDN index
+ * sm/md/lg/f: thumbnail dimensions (presence implies processed)
  */
 export interface MetaEntry {
-  w?: number     // original width (images only)
-  h?: number     // original height (images only)
-  b?: string     // blurhash (images only, after processing)
-  p?: 1          // processed (has thumbnails and blurhash)
-  c?: number     // CDN index - index into _cdns array (omit if not on CDN)
+  o?: Dimensions   // original dimensions [width, height]
+  b?: string       // blurhash
+  sm?: Dimensions  // small thumbnail (300px width)
+  md?: Dimensions  // medium thumbnail (700px width)
+  lg?: Dimensions  // large thumbnail (1400px width)
+  f?: Dimensions   // full size (capped at 2560px width)
+  c?: number       // CDN index - index into _cdns array
 }
 
 /**
@@ -22,12 +29,12 @@ export interface FullMeta {
 }
 
 /**
- * Meta schema - keyed by path from public folder (legacy type)
- * Example: { "/portfolio/photo.jpg": { w: 2400, h: 1600, b: "..." } }
+ * Meta schema - keyed by path from public folder
+ * Example: { "/portfolio/photo.jpg": { o: [2400, 1600], b: "...", sm: [300, 200], ... } }
  */
 export type LeanMeta = Record<string, MetaEntry>
 
-// Legacy alias for compatibility
+// Alias for compatibility
 export type LeanImageEntry = MetaEntry
 
 /**
@@ -95,4 +102,12 @@ export function getAllThumbnailPaths(originalPath: string): string[] {
     getThumbnailPath(originalPath, 'md'),
     getThumbnailPath(originalPath, 'sm'),
   ]
+}
+
+/**
+ * Check if an image entry is processed (has any thumbnail dimensions)
+ */
+export function isProcessed(entry: MetaEntry | undefined): boolean {
+  if (!entry) return false
+  return !!(entry.f || entry.lg || entry.md || entry.sm)
 }

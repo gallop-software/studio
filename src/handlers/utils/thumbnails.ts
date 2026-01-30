@@ -2,12 +2,14 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import sharp from 'sharp'
 import { encode } from 'blurhash'
-import type { MetaEntry } from '../../types'
+import type { MetaEntry, Dimensions } from '../../types'
 
-export const DEFAULT_SIZES: Record<string, { width: number; suffix: string }> = {
-  small: { width: 300, suffix: '-sm' },
-  medium: { width: 700, suffix: '-md' },
-  large: { width: 1400, suffix: '-lg' },
+export const FULL_MAX_WIDTH = 2560
+
+export const DEFAULT_SIZES: Record<string, { width: number; suffix: string; key: 'sm' | 'md' | 'lg' }> = {
+  small: { width: 300, suffix: '-sm', key: 'sm' },
+  medium: { width: 700, suffix: '-md', key: 'md' },
+  large: { width: 1400, suffix: '-lg', key: 'lg' },
 }
 
 export async function processImage(
@@ -18,6 +20,7 @@ export async function processImage(
   const metadata = await sharpInstance.metadata()
   const originalWidth = metadata.width || 0
   const originalHeight = metadata.height || 0
+  const ratio = originalHeight / originalWidth
 
   // Remove leading slash for path operations
   const keyWithoutSlash = imageKey.startsWith('/') ? imageKey.slice(1) : imageKey
@@ -30,25 +33,43 @@ export async function processImage(
 
   const isPng = ext === '.png'
   const outputExt = isPng ? '.png' : '.jpg'
-  
-  // Generate full size
+
+  // Build the result entry
+  const entry: MetaEntry = {
+    o: [originalWidth, originalHeight] as Dimensions,
+  }
+
+  // Generate full size (capped at FULL_MAX_WIDTH)
   const fullFileName = imageDir === '.' ? `${baseName}${outputExt}` : `${imageDir}/${baseName}${outputExt}`
   const fullPath = path.join(process.cwd(), 'public', 'images', fullFileName)
-  
-  if (isPng) {
-    await sharp(buffer).png({ quality: 85 }).toFile(fullPath)
+
+  let fullWidth = originalWidth
+  let fullHeight = originalHeight
+
+  if (originalWidth > FULL_MAX_WIDTH) {
+    fullWidth = FULL_MAX_WIDTH
+    fullHeight = Math.round(FULL_MAX_WIDTH * ratio)
+    if (isPng) {
+      await sharp(buffer).resize(fullWidth, fullHeight).png({ quality: 85 }).toFile(fullPath)
+    } else {
+      await sharp(buffer).resize(fullWidth, fullHeight).jpeg({ quality: 85 }).toFile(fullPath)
+    }
   } else {
-    await sharp(buffer).jpeg({ quality: 85 }).toFile(fullPath)
+    if (isPng) {
+      await sharp(buffer).png({ quality: 85 }).toFile(fullPath)
+    } else {
+      await sharp(buffer).jpeg({ quality: 85 }).toFile(fullPath)
+    }
   }
+  entry.f = [fullWidth, fullHeight] as Dimensions
 
   // Generate thumbnail sizes
   for (const [, sizeConfig] of Object.entries(DEFAULT_SIZES)) {
-    const { width: maxWidth, suffix } = sizeConfig
+    const { width: maxWidth, suffix, key } = sizeConfig
     if (originalWidth <= maxWidth) {
       continue // Skip if original is smaller than this size
     }
 
-    const ratio = originalHeight / originalWidth
     const newHeight = Math.round(maxWidth * ratio)
     const sizeFileName = `${baseName}${suffix}${outputExt}`
     const sizeFilePath = imageDir === '.' ? sizeFileName : `${imageDir}/${sizeFileName}`
@@ -59,6 +80,8 @@ export async function processImage(
     } else {
       await sharp(buffer).resize(maxWidth, newHeight).jpeg({ quality: 80 }).toFile(sizePath)
     }
+
+    entry[key] = [maxWidth, newHeight] as Dimensions
   }
 
   // Generate blurhash
@@ -68,11 +91,7 @@ export async function processImage(
     .raw()
     .toBuffer({ resolveWithObject: true })
 
-  const blurhash = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
+  entry.b = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
 
-  return {
-    w: originalWidth,
-    h: originalHeight,
-    b: blurhash,
-  }
+  return entry
 }

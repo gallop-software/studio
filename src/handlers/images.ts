@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
-import { getAllThumbnailPaths } from '../types'
+import { getAllThumbnailPaths, isProcessed } from '../types'
 import {
   loadMeta,
   saveMeta,
@@ -111,7 +111,7 @@ export async function handleSync(request: NextRequest) {
         urlsToPurge.push(`${publicUrl}${imageKey}`)
 
         // Upload thumbnails (only if processed locally, not for remote imports)
-        if (!isRemote && entry.p) {
+        if (!isRemote && isProcessed(entry)) {
           for (const thumbPath of getAllThumbnailPaths(imageKey)) {
             const localPath = path.join(process.cwd(), 'public', thumbPath)
             try {
@@ -228,7 +228,7 @@ export async function handleReprocess(request: NextRequest) {
         }
 
         const updatedEntry = await processImage(buffer, imageKey)
-        updatedEntry.p = 1  // Mark as processed
+        // No need to set p flag - presence of thumbnail dims (sm/md/lg/f) indicates processed
         
         if (isInOurR2) {
           // Re-upload thumbnails to R2 and clean up local files
@@ -302,8 +302,8 @@ export async function handleProcessAllStream() {
           const fileName = path.basename(key)
           if (!isImageFile(fileName)) continue
           
-          // Check if needs processing (no p = not processed yet)
-          if (!entry.p) {
+          // Check if needs processing (no thumbnail dims = not processed yet)
+          if (!isProcessed(entry)) {
             imagesToProcess.push({ key, entry })
           } else {
             alreadyProcessed++
@@ -364,10 +364,9 @@ export async function handleProcessAllStream() {
 
               meta[key] = {
                 ...entry,
-                w: 0,
-                h: 0,
+                o: [0, 0] as [number, number],
                 b: '',
-                p: 1,
+                f: [0, 0] as [number, number],  // SVG has "full" to indicate processed
               }
               
               // Remote images become local after processing
@@ -378,7 +377,6 @@ export async function handleProcessAllStream() {
               const processedEntry = await processImage(buffer, key)
               meta[key] = {
                 ...processedEntry,
-                p: 1,
                 ...(isInOurR2 ? { c: existingCdnIndex } : {}),
               }
               // Remote images become local after processing (no c)

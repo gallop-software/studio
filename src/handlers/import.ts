@@ -8,6 +8,7 @@ import {
   getMetaEntry,
   setMetaEntry,
 } from './utils'
+import type { Dimensions } from '../types'
 
 /**
  * Parse an image URL into base URL and path
@@ -24,7 +25,7 @@ function parseImageUrl(url: string): { base: string; path: string } {
 /**
  * Fetch remote image and get dimensions + blurhash
  */
-async function processRemoteImage(url: string): Promise<{ w: number; h: number; b: string }> {
+async function processRemoteImage(url: string): Promise<{ o: Dimensions; b: string }> {
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(`Failed to fetch: ${response.status}`)
@@ -44,8 +45,7 @@ async function processRemoteImage(url: string): Promise<{ w: number; h: number; 
   const blurhash = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
   
   return {
-    w: metadata.width || 0,
-    h: metadata.height || 0,
+    o: [metadata.width || 0, metadata.height || 0] as Dimensions,
     b: blurhash,
   }
 }
@@ -109,10 +109,9 @@ export async function handleImportUrls(request: NextRequest) {
             const imageData = await processRemoteImage(url)
             
             // Add entry to meta
-            // Note: No p flag since this is an external image, not processed locally
+            // Note: No thumbnail dims since this is an external image, not processed locally
             setMetaEntry(meta, path, {
-              w: imageData.w,
-              h: imageData.h,
+              o: imageData.o,
               b: imageData.b,
               c: cdnIndex,
             })

@@ -4,7 +4,8 @@ import path from 'path'
 import sharp from 'sharp'
 import { encode } from 'blurhash'
 import { loadMeta, saveMeta, isMediaFile, isImageFile, getFileEntries } from './utils'
-import { getAllThumbnailPaths } from '../types'
+import { getAllThumbnailPaths, isProcessed } from '../types'
+import type { Dimensions } from '../types'
 
 /**
  * Streaming scan handler - scans filesystem for new files not in meta
@@ -120,7 +121,7 @@ export async function handleScanStream() {
               
               if (ext === '.svg') {
                 // SVGs don't have pixel dimensions in the same way
-                meta[imageKey] = { w: 0, h: 0, b: '' }
+                meta[imageKey] = { o: [0, 0] as Dimensions, b: '' }
               } else {
                 try {
                   const buffer = await fs.readFile(fullPath)
@@ -136,13 +137,12 @@ export async function handleScanStream() {
                   const blurhash = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
                   
                   meta[imageKey] = {
-                    w: metadata.width || 0,
-                    h: metadata.height || 0,
+                    o: [metadata.width || 0, metadata.height || 0] as Dimensions,
                     b: blurhash,
                   }
                 } catch {
                   // Couldn't read dimensions
-                  meta[imageKey] = { w: 0, h: 0 }
+                  meta[imageKey] = { o: [0, 0] as Dimensions }
                 }
               }
             } else {
@@ -166,7 +166,7 @@ export async function handleScanStream() {
         const fileEntries = getFileEntries(meta)
         for (const [imageKey, entry] of fileEntries) {
           // Only track local thumbnails (not pushed to CDN)
-          if (entry.c === undefined && entry.p === 1) {
+          if (entry.c === undefined && isProcessed(entry)) {
             for (const thumbPath of getAllThumbnailPaths(imageKey)) {
               expectedThumbnails.add(thumbPath)
             }

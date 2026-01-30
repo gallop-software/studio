@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import sharp from 'sharp'
 import type { MetaEntry } from '../types'
-import { getAllThumbnailPaths } from '../types'
+import { getAllThumbnailPaths, isProcessed } from '../types'
 import { 
   loadMeta, 
   saveMeta, 
@@ -422,7 +422,7 @@ export async function handleMoveStream(request: NextRequest) {
           const fileCdnUrl = isInCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
           const isRemote = isInCloud && (!r2PublicUrl || fileCdnUrl !== r2PublicUrl)
           const isPushedToR2 = isInCloud && r2PublicUrl && fileCdnUrl === r2PublicUrl
-          const hasProcessedThumbnails = entry?.p === 1
+          const hasProcessedThumbnails = isProcessed(entry)
 
           try {
             if (isRemote && isImage) {
@@ -434,8 +434,7 @@ export async function handleMoveStream(request: NextRequest) {
               await fs.writeFile(newAbsolutePath, buffer)
               
               const newEntry: MetaEntry = {
-                w: entry?.w,
-                h: entry?.h,
+                o: entry?.o,
                 b: entry?.b,
               }
               delete meta[oldKey]
@@ -449,18 +448,14 @@ export async function handleMoveStream(request: NextRequest) {
               await fs.mkdir(path.dirname(newAbsolutePath), { recursive: true })
               await fs.writeFile(newAbsolutePath, buffer)
               
-              const newEntry: MetaEntry = {
-                w: entry?.w,
-                h: entry?.h,
+              let newEntry: MetaEntry = {
+                o: entry?.o,
                 b: entry?.b,
               }
               
               if (hasProcessedThumbnails) {
                 const processedEntry = await processImage(buffer, newKey)
-                newEntry.w = processedEntry.w
-                newEntry.h = processedEntry.h
-                newEntry.b = processedEntry.b
-                newEntry.p = 1
+                newEntry = { ...newEntry, ...processedEntry }
               }
               
               await uploadOriginalToCdn(newKey)
@@ -629,7 +624,7 @@ export async function handleMove(request: NextRequest) {
       const fileCdnUrl = isInCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
       const isRemote = isInCloud && (!r2PublicUrl || fileCdnUrl !== r2PublicUrl)
       const isPushedToR2 = isInCloud && r2PublicUrl && fileCdnUrl === r2PublicUrl
-      const hasProcessedThumbnails = entry?.p === 1
+      const hasProcessedThumbnails = isProcessed(entry)
 
       try {
         if (isRemote && isImage) {
@@ -643,10 +638,9 @@ export async function handleMove(request: NextRequest) {
           
           // Update meta: remove c (now local), keep other properties
           const newEntry: MetaEntry = {
-            w: entry?.w,
-            h: entry?.h,
+            o: entry?.o,
             b: entry?.b,
-            // Don't copy p since remote images don't have local thumbnails
+            // Don't copy thumbnail dims since remote images don't have local thumbnails
             // Don't copy c since it's now local
           }
           delete meta[oldKey]
@@ -665,19 +659,15 @@ export async function handleMove(request: NextRequest) {
           await fs.writeFile(newAbsolutePath, buffer)
           
           // Create new meta entry
-          const newEntry: MetaEntry = {
-            w: entry?.w,
-            h: entry?.h,
+          let newEntry: MetaEntry = {
+            o: entry?.o,
             b: entry?.b,
           }
           
           // If processed, regenerate thumbnails
           if (hasProcessedThumbnails) {
             const processedEntry = await processImage(buffer, newKey)
-            newEntry.w = processedEntry.w
-            newEntry.h = processedEntry.h
-            newEntry.b = processedEntry.b
-            newEntry.p = 1
+            newEntry = { ...newEntry, ...processedEntry }
           }
           
           // Upload original to new R2 location
