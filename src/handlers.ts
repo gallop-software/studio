@@ -6,11 +6,11 @@ import { encode } from 'blurhash'
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import type { StudioMeta, ImageEntry, ImageSize, FileItem } from './types'
 
-// Default thumbnail sizes
-const DEFAULT_SIZES = {
-  small: 300,
-  medium: 700,
-  large: 1400,
+// Default thumbnail sizes with their suffixes
+const DEFAULT_SIZES: Record<string, { width: number; suffix: string }> = {
+  small: { width: 300, suffix: '-sm' },
+  medium: { width: 700, suffix: '-md' },
+  large: { width: 1400, suffix: '-lg' },
 }
 
 /**
@@ -37,6 +37,11 @@ export async function GET(request: NextRequest) {
   // Route: /api/studio/count-images
   if (route === 'count-images') {
     return handleCountImages()
+  }
+
+  // Route: /api/studio/folder-images
+  if (route === 'folder-images') {
+    return handleFolderImages(request)
   }
 
   return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -127,15 +132,31 @@ async function handleList(request: NextRequest) {
           totalSize: folderStats.totalSize,
         })
       } else if (isMediaFile(entry.name)) {
-        const stats = await fs.stat(path.join(absolutePath, entry.name))
-        // For images, provide thumbnail path (the file itself serves as thumbnail)
-        const thumbnail = isImageFile(entry.name) ? itemPath.replace('public', '') : undefined
+        const filePath = path.join(absolutePath, entry.name)
+        const stats = await fs.stat(filePath)
+        // For images, provide thumbnail path and dimensions
+        const isImage = isImageFile(entry.name)
+        const thumbnail = isImage ? itemPath.replace('public', '') : undefined
+        
+        let dimensions: { width: number; height: number } | undefined
+        if (isImage && !entry.name.toLowerCase().endsWith('.svg')) {
+          try {
+            const metadata = await sharp(filePath).metadata()
+            if (metadata.width && metadata.height) {
+              dimensions = { width: metadata.width, height: metadata.height }
+            }
+          } catch {
+            // Ignore dimension errors
+          }
+        }
+        
         items.push({
           name: entry.name,
           path: itemPath,
           type: 'file',
           size: stats.size,
           thumbnail,
+          dimensions,
         })
       }
     }
@@ -358,15 +379,16 @@ async function handleUpload(request: NextRequest) {
       sizes.full = { path: `/images/${relativeDir ? relativeDir + '/' : ''}${fullFileName}`, width: originalWidth, height: originalHeight }
 
       // Generate each thumbnail size
-      for (const [sizeName, maxWidth] of Object.entries(DEFAULT_SIZES) as [ImageSize, number][]) {
+      for (const [sizeName, sizeConfig] of Object.entries(DEFAULT_SIZES)) {
+        const { width: maxWidth, suffix } = sizeConfig
         if (originalWidth <= maxWidth) {
-          sizes[sizeName] = { ...sizes.full }
+          sizes[sizeName as ImageSize] = { ...sizes.full }
           continue
         }
 
         const ratio = originalHeight / originalWidth
         const newHeight = Math.round(maxWidth * ratio)
-        const sizeFileName = `${baseName}-${maxWidth}${outputExt}`
+        const sizeFileName = `${baseName}${suffix}${outputExt}`
         const sizePath = path.join(imagesPath, sizeFileName)
 
         if (ext === '.png') {
@@ -375,7 +397,7 @@ async function handleUpload(request: NextRequest) {
           await sharp(buffer).resize(maxWidth, newHeight).jpeg({ quality: 80 }).toFile(sizePath)
         }
 
-        sizes[sizeName] = {
+        sizes[sizeName as ImageSize] = {
           path: `/images/${relativeDir ? relativeDir + '/' : ''}${sizeFileName}`,
           width: maxWidth,
           height: newHeight,
@@ -687,6 +709,60 @@ async function handleCountImages() {
   } catch (error) {
     console.error('Failed to count images:', error)
     return NextResponse.json({ error: 'Failed to count images' }, { status: 500 })
+  }
+}
+
+async function handleFolderImages(request: NextRequest) {
+  try {
+    const searchParams = request.nextUrl.searchParams
+    const foldersParam = searchParams.get('folders')
+    
+    if (!foldersParam) {
+      return NextResponse.json({ error: 'No folders provided' }, { status: 400 })
+    }
+
+    const folders = foldersParam.split(',')
+    const allImages: string[] = []
+
+    async function scanFolder(dir: string, relativePath: string = ''): Promise<void> {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        
+        for (const entry of entries) {
+          if (entry.name.startsWith('.')) continue
+          
+          const fullPath = path.join(dir, entry.name)
+          const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+
+          if (entry.isDirectory()) {
+            await scanFolder(fullPath, relPath)
+          } else if (isImageFile(entry.name)) {
+            allImages.push(relPath)
+          }
+        }
+      } catch {
+        // Directory might not exist
+      }
+    }
+
+    for (const folder of folders) {
+      // Folder paths come as "public/photos" - we need relative path from public
+      const relativePath = folder.replace(/^public\/?/, '')
+      
+      // Skip the images folder
+      if (relativePath === 'images' || relativePath.startsWith('images/')) continue
+      
+      const folderPath = path.join(process.cwd(), folder)
+      await scanFolder(folderPath, relativePath)
+    }
+
+    return NextResponse.json({
+      count: allImages.length,
+      images: allImages,
+    })
+  } catch (error) {
+    console.error('Failed to get folder images:', error)
+    return NextResponse.json({ error: 'Failed to get folder images' }, { status: 500 })
   }
 }
 
@@ -1013,21 +1089,22 @@ async function processImage(
   await sharp(buffer).jpeg({ quality: 85 }).toFile(fullPath)
   sizes.full.path = `/images/${fullFileName}`
 
-  for (const [sizeName, maxWidth] of Object.entries(DEFAULT_SIZES) as [ImageSize, number][]) {
+  for (const [sizeName, sizeConfig] of Object.entries(DEFAULT_SIZES)) {
+    const { width: maxWidth, suffix } = sizeConfig
     if (originalWidth <= maxWidth) {
-      sizes[sizeName] = { ...sizes.full }
+      sizes[sizeName as ImageSize] = { ...sizes.full }
       continue
     }
 
     const ratio = originalHeight / originalWidth
     const newHeight = Math.round(maxWidth * ratio)
-    const sizeFileName = `${baseName}-${maxWidth}${ext === '.png' ? '.png' : '.jpg'}`
+    const sizeFileName = `${baseName}${suffix}${ext === '.png' ? '.png' : '.jpg'}`
     const sizeFilePath = imageDir === '.' ? sizeFileName : `${imageDir}/${sizeFileName}`
     const sizePath = path.join(process.cwd(), 'public', 'images', sizeFilePath)
 
     await sharp(buffer).resize(maxWidth, newHeight).jpeg({ quality: 80 }).toFile(sizePath)
 
-    sizes[sizeName] = {
+    sizes[sizeName as ImageSize] = {
       path: `/images/${sizeFilePath}`,
       width: maxWidth,
       height: newHeight,

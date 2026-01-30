@@ -228,7 +228,7 @@ export interface ProgressState {
   total: number
   percent: number
   currentFile?: string
-  status: 'processing' | 'cleanup' | 'complete' | 'error'
+  status: 'processing' | 'cleanup' | 'complete' | 'error' | 'stopped'
   message?: string
   processed?: number
   orphansRemoved?: number
@@ -239,19 +239,23 @@ interface ProgressModalProps {
   title: string
   progress: ProgressState
   onClose?: () => void
+  onStop?: () => void
 }
 
 export function ProgressModal({
   title,
   progress,
   onClose,
+  onStop,
 }: ProgressModalProps) {
   const isComplete = progress.status === 'complete'
   const isError = progress.status === 'error'
-  const canClose = isComplete || isError
+  const isStopped = progress.status === 'stopped'
+  const canClose = isComplete || isError || isStopped
+  const isRunning = !canClose
 
   return (
-    <div css={styles.overlay} onClick={canClose ? onClose : undefined}>
+    <div css={styles.overlay}>
       <div css={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div css={styles.header}>
           <h3 css={styles.title}>{title}</h3>
@@ -259,15 +263,19 @@ export function ProgressModal({
         <div css={styles.body}>
           {isError ? (
             <p css={styles.message}>{progress.message || 'An error occurred'}</p>
+          ) : isStopped ? (
+            <p css={styles.message}>
+              Processing stopped. Processed {progress.processed ?? progress.current} image{(progress.processed ?? progress.current) !== 1 ? 's' : ''} before stopping.
+            </p>
           ) : isComplete ? (
             <p css={styles.message}>
               Processed {progress.processed} image{progress.processed !== 1 ? 's' : ''}.
-              {progress.orphansRemoved && progress.orphansRemoved > 0 && (
+              {progress.orphansRemoved !== undefined && progress.orphansRemoved > 0 ? (
                 <> Removed {progress.orphansRemoved} orphaned thumbnail{progress.orphansRemoved !== 1 ? 's' : ''}.</>
-              )}
-              {progress.errors && progress.errors > 0 && (
+              ) : null}
+              {progress.errors !== undefined && progress.errors > 0 ? (
                 <> {progress.errors} error{progress.errors !== 1 ? 's' : ''} occurred.</>
-              )}
+              ) : null}
             </p>
           ) : (
             <>
@@ -296,13 +304,18 @@ export function ProgressModal({
             </>
           )}
         </div>
-        {canClose && (
-          <div css={styles.footer}>
+        <div css={styles.footer}>
+          {isRunning && onStop && (
+            <button css={[styles.btn, styles.btnDanger]} onClick={onStop}>
+              Stop
+            </button>
+          )}
+          {canClose && (
             <button css={[styles.btn, styles.btnConfirm]} onClick={onClose}>
               Done
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )

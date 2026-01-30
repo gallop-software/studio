@@ -404,7 +404,7 @@ function GridItem({ item, isSelected, onClick, onOpen }: GridItemProps) {
       <div css={styles.label}>
         <div css={styles.labelRow}>
           <div css={styles.labelText}>
-            <p css={styles.name} title={item.name}>{item.name}</p>
+            <p css={styles.name} title={item.name}>{truncateMiddle(item.name)}</p>
             {isFolder ? (
               <p css={styles.size}>
                 {item.fileCount !== undefined ? `${item.fileCount} files` : ''}
@@ -434,4 +434,25 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function truncateMiddle(str: string, maxLength: number = 24): string {
+  if (str.length <= maxLength) return str
+  
+  // Find the extension
+  const lastDot = str.lastIndexOf('.')
+  const ext = lastDot > 0 ? str.substring(lastDot) : ''
+  const name = lastDot > 0 ? str.substring(0, lastDot) : str
+  
+  // Calculate how much we can show of the name
+  const availableLength = maxLength - ext.length - 3 // 3 for "..."
+  if (availableLength < 6) {
+    // Too short, just truncate from end
+    return str.substring(0, maxLength - 3) + '...'
+  }
+  
+  const startLength = Math.ceil(availableLength / 2)
+  const endLength = Math.floor(availableLength / 2)
+  
+  return name.substring(0, startLength) + '...' + name.substring(name.length - endLength) + ext
 }

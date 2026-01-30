@@ -150,6 +150,7 @@ const styles = {
 export function StudioToolbar() {
   const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem } = useStudio()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const [uploading, setUploading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [processing, setProcessing] = useState(false)
@@ -164,6 +165,7 @@ export function StudioToolbar() {
   })
   const [processCount, setProcessCount] = useState(0)
   const [processMode, setProcessMode] = useState<'all' | 'selected'>('all')
+  const [imagesToProcess, setImagesToProcess] = useState<string[]>([])
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
 
   // Check if we're in the images folder (uploads not allowed there)
@@ -230,21 +232,46 @@ export function StudioToolbar() {
     const hasSelection = selectedItems.size > 0
     
     if (hasSelection) {
-      // Process selected images
-      const selectedImagePaths = Array.from(selectedItems).filter(p => {
+      const selectedPaths = Array.from(selectedItems)
+      
+      // Separate folders and image files
+      const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif']
+      const selectedImagePaths = selectedPaths.filter(p => {
         const ext = p.split('.').pop()?.toLowerCase() || ''
-        return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif'].includes(ext)
+        return imageExtensions.includes(ext)
       })
+      const selectedFolders = selectedPaths.filter(p => !p.includes('.') || p.endsWith('/'))
+      
+      // If folders are selected, fetch all images from them
+      if (selectedFolders.length > 0) {
+        try {
+          const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
+          const data = await response.json()
+          
+          if (data.images) {
+            // Add folder images to selectedImagePaths (as public/ paths)
+            for (const img of data.images) {
+              const fullPath = `public/${img}`
+              if (!selectedImagePaths.includes(fullPath)) {
+                selectedImagePaths.push(fullPath)
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Failed to get folder images:', error)
+        }
+      }
       
       if (selectedImagePaths.length === 0) {
         setAlertMessage({
-          title: 'No Images Selected',
-          message: 'Please select image files to process.',
+          title: 'No Images Found',
+          message: 'No images found in the selected items.',
         })
         return
       }
       
       setProcessCount(selectedImagePaths.length)
+      setImagesToProcess(selectedImagePaths)
       setProcessMode('selected')
       setShowProcessConfirm(true)
     } else {
@@ -278,6 +305,10 @@ export function StudioToolbar() {
     setShowProcessConfirm(false)
     setProcessing(true)
 
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
+
     try {
       if (processMode === 'all') {
         // Process all images with streaming progress
@@ -291,6 +322,7 @@ export function StudioToolbar() {
 
         const response = await fetch('/api/studio/process-all', {
           method: 'POST',
+          signal,
         })
 
         if (!response.body) {
@@ -300,57 +332,77 @@ export function StudioToolbar() {
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
 
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
 
-          const text = decoder.decode(value)
-          const lines = text.split('\n\n').filter(line => line.startsWith('data: '))
-
-          for (const line of lines) {
-            try {
-              const data = JSON.parse(line.replace('data: ', ''))
-              
-              if (data.type === 'start') {
-                setProgressState(prev => ({
-                  ...prev,
-                  total: data.total,
-                }))
-              } else if (data.type === 'progress') {
-                setProgressState({
-                  current: data.current,
-                  total: data.total,
-                  percent: data.percent,
-                  currentFile: data.currentFile,
-                  status: 'processing',
-                })
-              } else if (data.type === 'cleanup') {
-                setProgressState(prev => ({
-                  ...prev,
-                  status: 'cleanup',
-                  currentFile: undefined,
-                }))
-              } else if (data.type === 'complete') {
-                setProgressState({
-                  current: data.processed,
-                  total: data.processed,
-                  percent: 100,
-                  status: 'complete',
-                  processed: data.processed,
-                  orphansRemoved: data.orphansRemoved,
-                  errors: data.errors,
-                })
-                triggerRefresh()
-              } else if (data.type === 'error') {
-                setProgressState(prev => ({
-                  ...prev,
-                  status: 'error',
-                  message: data.message,
-                }))
-              }
-            } catch {
-              // Ignore parse errors
+            // Check if aborted
+            if (signal.aborted) {
+              reader.cancel()
+              break
             }
+
+            const text = decoder.decode(value)
+            const lines = text.split('\n\n').filter(line => line.startsWith('data: '))
+
+            for (const line of lines) {
+              try {
+                const data = JSON.parse(line.replace('data: ', ''))
+                
+                if (data.type === 'start') {
+                  setProgressState(prev => ({
+                    ...prev,
+                    total: data.total,
+                  }))
+                } else if (data.type === 'progress') {
+                  setProgressState({
+                    current: data.current,
+                    total: data.total,
+                    percent: data.percent,
+                    currentFile: data.currentFile,
+                    status: 'processing',
+                  })
+                } else if (data.type === 'cleanup') {
+                  setProgressState(prev => ({
+                    ...prev,
+                    status: 'cleanup',
+                    currentFile: undefined,
+                  }))
+                } else if (data.type === 'complete') {
+                  setProgressState({
+                    current: data.processed,
+                    total: data.processed,
+                    percent: 100,
+                    status: 'complete',
+                    processed: data.processed,
+                    orphansRemoved: data.orphansRemoved,
+                    errors: data.errors,
+                  })
+                  triggerRefresh()
+                } else if (data.type === 'error') {
+                  setProgressState(prev => ({
+                    ...prev,
+                    status: 'error',
+                    message: data.message,
+                  }))
+                }
+              } catch {
+                // Ignore parse errors
+              }
+            }
+          }
+        } catch (err) {
+          if (signal.aborted) {
+            // User stopped - update state to show stopped status
+            setProgressState(prev => ({
+              ...prev,
+              status: 'stopped',
+              processed: prev.current,
+            }))
+            triggerRefresh()
+          } else {
+            throw err
           }
         }
       } else {
@@ -363,17 +415,14 @@ export function StudioToolbar() {
           status: 'processing',
         })
 
-        const selectedImageKeys = Array.from(selectedItems)
-          .filter(p => {
-            const ext = p.split('.').pop()?.toLowerCase() || ''
-            return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif'].includes(ext)
-          })
-          .map(p => p.replace(/^public\//, ''))
+        // Use stored imagesToProcess instead of selectedItems
+        const selectedImageKeys = imagesToProcess.map(p => p.replace(/^public\//, ''))
         
         const response = await fetch('/api/studio/reprocess', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageKeys: selectedImageKeys }),
+          signal,
         })
         
         const data = await response.json()
@@ -400,18 +449,35 @@ export function StudioToolbar() {
         }
       }
     } catch (error) {
-      console.error('Processing error:', error)
-      setProgressState({
-        current: 0,
-        total: 0,
-        percent: 0,
-        status: 'error',
-        message: 'Processing failed. Check console for details.',
-      })
+      if (signal.aborted) {
+        // User stopped
+        setProgressState(prev => ({
+          ...prev,
+          status: 'stopped',
+          processed: prev.current,
+        }))
+        triggerRefresh()
+      } else {
+        console.error('Processing error:', error)
+        setProgressState({
+          current: 0,
+          total: 0,
+          percent: 0,
+          status: 'error',
+          message: 'Processing failed. Check console for details.',
+        })
+      }
     } finally {
       setProcessing(false)
+      abortControllerRef.current = null
     }
-  }, [processMode, processCount, selectedItems, clearSelection, triggerRefresh])
+  }, [processMode, processCount, imagesToProcess, clearSelection, triggerRefresh])
+
+  const handleStopProcessing = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+  }, [])
 
   const handleDeleteClick = useCallback(() => {
     if (selectedItems.size === 0) return
@@ -492,6 +558,7 @@ export function StudioToolbar() {
         <ProgressModal
           title="Processing Images"
           progress={progressState}
+          onStop={handleStopProcessing}
           onClose={() => {
             setShowProgress(false)
             setProgressState({

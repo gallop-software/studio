@@ -148,6 +148,14 @@ const styles = {
     text-overflow: ellipsis;
     white-space: nowrap;
   `,
+  infoValueWrap: css`
+    color: ${colors.text};
+    font-weight: 500;
+    text-align: right;
+    max-width: 160px;
+    word-break: break-all;
+    white-space: normal;
+  `,
   actions: css`
     display: flex;
     flex-direction: column;
@@ -310,7 +318,7 @@ export function StudioDetailView() {
             <div css={styles.info}>
               <div css={styles.infoRow}>
                 <span css={styles.infoLabel}>Name</span>
-                <span css={styles.infoValue} title={focusedItem.name}>{focusedItem.name}</span>
+                <span css={styles.infoValueWrap}>{focusedItem.name}</span>
               </div>
               {focusedItem.size !== undefined && (
                 <div css={styles.infoRow}>
