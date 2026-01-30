@@ -622,23 +622,55 @@ async function handleReprocess(request: NextRequest) {
     const errors: string[] = []
 
     for (const imageKey of imageKeys) {
-      const entry = meta.images[imageKey]
-      if (!entry) {
-        errors.push(`Image not found in meta: ${imageKey}`)
-        continue
-      }
-
       try {
         let buffer: Buffer
-
-        const originalPath = path.join(process.cwd(), 'public', entry.original.path)
+        let entry = meta.images[imageKey]
+        
+        // Try to read the original file from public folder
+        const originalPath = path.join(process.cwd(), 'public', imageKey)
+        
         try {
           buffer = await fs.readFile(originalPath)
         } catch {
-          if (entry.cdn?.synced) {
-            buffer = await downloadFromCdn(entry.original.path)
+          // File not in public folder, try from entry's original path or CDN
+          if (entry) {
+            const entryOriginalPath = path.join(process.cwd(), 'public', entry.original.path)
+            try {
+              buffer = await fs.readFile(entryOriginalPath)
+            } catch {
+              if (entry.cdn?.synced) {
+                buffer = await downloadFromCdn(entry.original.path)
+              } else {
+                throw new Error('Original not found locally and not on CDN')
+              }
+            }
           } else {
-            throw new Error('Original not found locally and not on CDN')
+            throw new Error(`File not found: ${imageKey}`)
+          }
+        }
+
+        // If no existing entry, create a minimal one for new images
+        if (!entry) {
+          const sharpInstance = sharp(buffer)
+          const metadata = await sharpInstance.metadata()
+          const stats = await fs.stat(originalPath)
+          
+          entry = {
+            original: {
+              path: imageKey,
+              width: metadata.width || 0,
+              height: metadata.height || 0,
+              fileSize: stats.size,
+            },
+            sizes: {
+              full: { path: '', width: 0, height: 0 },
+              large: { path: '', width: 0, height: 0 },
+              medium: { path: '', width: 0, height: 0 },
+              small: { path: '', width: 0, height: 0 },
+            },
+            blurhash: '',
+            dominantColor: '#000000',
+            cdn: null,
           }
         }
 
