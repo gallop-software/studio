@@ -164,23 +164,22 @@ const styles = {
   `,
   searchClearBtn: css`
     position: absolute;
-    right: 8px;
+    right: 6px;
     top: 50%;
     transform: translateY(-50%);
-    background: none;
+    background: ${colors.textMuted};
     border: none;
-    padding: 4px;
+    padding: 3px;
     cursor: pointer;
-    color: ${colors.textMuted};
+    color: white;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
+    border-radius: 50%;
     transition: all 0.15s ease;
     
     &:hover {
-      color: ${colors.text};
-      background: ${colors.surfaceHover};
+      background: ${colors.text};
     }
   `,
   viewBtn: css`
@@ -587,6 +586,13 @@ export function StudioToolbar() {
     setSearchQuery(e.target.value)
   }, [setSearchQuery])
 
+  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setSearchQuery('')
+      ;(e.target as HTMLInputElement).blur()
+    }
+  }, [setSearchQuery])
+
   const hasSelection = selectedItems.size > 0
   
   // Check if any selected items are in the images folder (protected)
@@ -705,6 +711,7 @@ export function StudioToolbar() {
               placeholder="Search images..."
               value={searchQuery}
               onChange={handleSearch}
+              onKeyDown={handleSearchKeyDown}
             />
             {searchQuery && (
               <button
