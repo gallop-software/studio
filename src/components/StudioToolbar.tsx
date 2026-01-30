@@ -6,6 +6,7 @@ import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal, ProgressModal, InputModal, type ProgressState } from './StudioModal'
 import { StudioFolderPicker } from './StudioFolderPicker'
+import { R2SetupModal } from './R2SetupModal'
 import { colors, fontSize } from './tokens'
 
 // Standard button height for consistency
@@ -234,6 +235,8 @@ export function StudioToolbar() {
   const [showNewFolderModal, setShowNewFolderModal] = useState(false)
   const [showRenameFolderModal, setShowRenameFolderModal] = useState(false)
   const [showMoveModal, setShowMoveModal] = useState(false)
+  const [showR2SetupModal, setShowR2SetupModal] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
   // Check if we're in the images folder (uploads not allowed there)
   const isInImagesFolder = currentPath === 'public/images' || currentPath.startsWith('public/images/')
@@ -580,9 +583,71 @@ export function StudioToolbar() {
     }
   }, [selectedItems, clearSelection, triggerRefresh])
 
-  const handleSyncCdn = useCallback(() => {
-    console.log('Sync CDN clicked', selectedItems)
-  }, [selectedItems])
+  const handleSyncCdn = useCallback(async () => {
+    if (selectedItems.size === 0) return
+
+    // Get image keys from selected items (files only, not folders)
+    const imageKeys = Array.from(selectedItems)
+      .filter(p => !p.endsWith('/')) // Filter out folders
+      .map(p => '/' + p.replace(/^public\//, ''))
+
+    if (imageKeys.length === 0) {
+      setAlertMessage({
+        title: 'No Images Selected',
+        message: 'Please select image files to sync to CDN.',
+      })
+      return
+    }
+
+    setSyncing(true)
+
+    try {
+      const response = await fetch('/api/studio/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageKeys }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        const syncedCount = data.synced?.length || 0
+        const errorCount = data.errors?.length || 0
+        
+        if (errorCount > 0) {
+          setAlertMessage({
+            title: 'Sync Partially Complete',
+            message: `Synced ${syncedCount} images. ${errorCount} failed.`,
+          })
+        } else {
+          setAlertMessage({
+            title: 'Sync Complete',
+            message: `Successfully synced ${syncedCount} images to CDN.`,
+          })
+        }
+        clearSelection()
+        triggerRefresh()
+      } else {
+        // Check if it's an R2 configuration error
+        if (data.error?.includes('R2 not configured') || data.error?.includes('CLOUDFLARE_R2')) {
+          setShowR2SetupModal(true)
+        } else {
+          setAlertMessage({
+            title: 'Sync Failed',
+            message: data.error || 'Failed to sync to CDN.',
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Sync error:', error)
+      setAlertMessage({
+        title: 'Sync Failed',
+        message: 'Failed to sync to CDN. Check console for details.',
+      })
+    } finally {
+      setSyncing(false)
+    }
+  }, [selectedItems, clearSelection, triggerRefresh])
 
   const handleCreateFolder = useCallback(async (folderName: string) => {
     setShowNewFolderModal(false)
@@ -782,6 +847,11 @@ export function StudioToolbar() {
         />
       )}
 
+      <R2SetupModal
+        isOpen={showR2SetupModal}
+        onClose={() => setShowR2SetupModal(false)}
+      />
+
       <div css={styles.toolbar}>
         <input
           ref={fileInputRef}
@@ -841,10 +911,10 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleSyncCdn}
-            disabled={!hasSelection}
+            disabled={!hasSelection || syncing}
           >
             <CloudIcon />
-            Sync CDN
+            {syncing ? 'Syncing...' : 'Sync CDN'}
           </button>
           <div css={styles.searchWrapper}>
             <input

@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal, InputModal, ProgressModal, type ProgressState } from './StudioModal'
+import { R2SetupModal } from './R2SetupModal'
 import { colors, fontSize } from './tokens'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif']
@@ -272,9 +273,11 @@ export function StudioDetailView() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showRenameModal, setShowRenameModal] = useState(false)
   const [showProcessConfirm, setShowProcessConfirm] = useState(false)
+  const [showR2SetupModal, setShowR2SetupModal] = useState(false)
   const [processProgress, setProcessProgress] = useState<ProgressState | null>(null)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showCopied, setShowCopied] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
   if (!focusedItem) return null
 
@@ -355,9 +358,46 @@ export function StudioDetailView() {
     }
   }
 
-  const handleSync = () => {
-    console.log('Sync to CDN:', focusedItem.path)
-    // TODO: Implement sync API
+  const handleSync = async () => {
+    const imageKey = '/' + focusedItem.path.replace(/^public\//, '')
+    
+    setSyncing(true)
+    
+    try {
+      const response = await fetch('/api/studio/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageKeys: [imageKey] }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setAlertMessage({
+          title: 'Sync Complete',
+          message: 'Successfully synced to CDN.',
+        })
+        triggerRefresh()
+      } else {
+        // Check if it's an R2 configuration error
+        if (data.error?.includes('R2 not configured') || data.error?.includes('CLOUDFLARE_R2')) {
+          setShowR2SetupModal(true)
+        } else {
+          setAlertMessage({
+            title: 'Sync Failed',
+            message: data.error || 'Failed to sync to CDN.',
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Sync error:', error)
+      setAlertMessage({
+        title: 'Sync Failed',
+        message: 'Failed to sync to CDN. Check console for details.',
+      })
+    } finally {
+      setSyncing(false)
+    }
   }
 
   const handleProcessImage = async () => {
@@ -463,6 +503,11 @@ export function StudioDetailView() {
         />
       )}
 
+      <R2SetupModal
+        isOpen={showR2SetupModal}
+        onClose={() => setShowR2SetupModal(false)}
+      />
+
       {showRenameModal && (
         <InputModal
           title="Rename File"
@@ -554,11 +599,11 @@ export function StudioDetailView() {
                 </svg>
                 Rename
               </button>
-              <button css={styles.actionBtn} onClick={handleSync}>
+              <button css={styles.actionBtn} onClick={handleSync} disabled={syncing}>
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                Sync to CDN
+                {syncing ? 'Syncing...' : 'Sync to CDN'}
               </button>
               <button css={styles.actionBtn} onClick={() => setShowProcessConfirm(true)}>
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
