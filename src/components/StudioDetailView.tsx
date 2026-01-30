@@ -4,9 +4,8 @@
 import { useState } from 'react'
 import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
-import { ConfirmModal, AlertModal, InputModal, ProgressModal, type ProgressState } from './StudioModal'
+import { AlertModal, InputModal } from './StudioModal'
 import { R2SetupModal } from './R2SetupModal'
-import { StudioFolderPicker } from './StudioFolderPicker'
 import { colors, fontSize } from './tokens'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif']
@@ -309,17 +308,25 @@ const styles = {
 }
 
 export function StudioDetailView() {
-  const { focusedItem, setFocusedItem, triggerRefresh, clearSelection } = useStudio()
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const { 
+    focusedItem, 
+    setFocusedItem, 
+    triggerRefresh,
+    fileItems,
+    // Shared action handlers
+    requestDelete,
+    requestMove,
+    requestSync,
+    requestProcess,
+    actionState,
+  } = useStudio()
   const [showRenameModal, setShowRenameModal] = useState(false)
-  const [showMoveModal, setShowMoveModal] = useState(false)
-  const [showProcessConfirm, setShowProcessConfirm] = useState(false)
   const [showR2SetupModal, setShowR2SetupModal] = useState(false)
-  const [processProgress, setProcessProgress] = useState<ProgressState | null>(null)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showCopied, setShowCopied] = useState(false)
-  const [pushing, setPushing] = useState(false)
-  const [moving, setMoving] = useState(false)
+  
+  // Check if an action is in progress
+  const isActionInProgress = actionState.showProgress
 
   if (!focusedItem) return null
 
@@ -381,201 +388,6 @@ export function StudioDetailView() {
     }
   }
 
-  const handleDelete = async () => {
-    setShowDeleteConfirm(false)
-    try {
-      const response = await fetch('/api/studio/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: [focusedItem.path] }),
-      })
-
-      if (response.ok) {
-        clearSelection()
-        triggerRefresh()
-        setFocusedItem(null)
-      } else {
-        const error = await response.json()
-        setAlertMessage({
-          title: 'Delete Failed',
-          message: error.error || 'Unknown error',
-        })
-      }
-    } catch (error) {
-      console.error('Delete error:', error)
-      setAlertMessage({
-        title: 'Delete Failed',
-        message: 'Delete failed. Check console for details.',
-      })
-    }
-  }
-
-  const handleMove = async (destination: string) => {
-    setShowMoveModal(false)
-    setMoving(true)
-    
-    try {
-      const response = await fetch('/api/studio/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: [focusedItem.path], destination }),
-      })
-
-      if (!response.body) {
-        throw new Error('No response body')
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const data = JSON.parse(line.slice(6))
-
-            if (data.type === 'complete') {
-              if (data.errors > 0 && data.errorMessages?.length > 0) {
-                setAlertMessage({
-                  title: 'Move Failed',
-                  message: data.errorMessages.join('\n'),
-                })
-              } else {
-                clearSelection()
-                triggerRefresh()
-                setFocusedItem(null)
-              }
-            } else if (data.type === 'error') {
-              setAlertMessage({
-                title: 'Move Failed',
-                message: data.message || 'Unknown error',
-              })
-            }
-          } catch {
-            // Ignore parse errors
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Move error:', error)
-      setAlertMessage({
-        title: 'Move Failed',
-        message: 'Failed to move file. Check console for details.',
-      })
-    } finally {
-      setMoving(false)
-    }
-  }
-
-  const handleSync = async () => {
-    const imageKey = '/' + focusedItem.path.replace(/^public\//, '')
-    
-    setPushing(true)
-    
-    try {
-      const response = await fetch('/api/studio/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageKeys: [imageKey] }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        setAlertMessage({
-          title: 'Push Complete',
-          message: 'Successfully pushed to CDN.',
-        })
-        triggerRefresh()
-      } else {
-        // Check if it's an R2 configuration error
-        if (data.error?.includes('R2 not configured') || data.error?.includes('CLOUDFLARE_R2')) {
-          setShowR2SetupModal(true)
-        } else {
-          setAlertMessage({
-            title: 'Push Failed',
-            message: data.error || 'Failed to push to CDN.',
-          })
-        }
-      }
-    } catch (error) {
-      console.error('Push error:', error)
-      setAlertMessage({
-        title: 'Push Failed',
-        message: 'Failed to push to CDN. Check console for details.',
-      })
-    } finally {
-      setPushing(false)
-    }
-  }
-
-  const handleProcessImage = async () => {
-    setShowProcessConfirm(false)
-    
-    setProcessProgress({
-      current: 0,
-      total: 1,
-      percent: 0,
-      status: 'processing',
-      currentFile: focusedItem.name,
-    })
-
-    try {
-      const imageKey = focusedItem.path.replace(/^public\//, '')
-      const formattedKey = imageKey.startsWith('/') ? imageKey : `/${imageKey}`
-      const response = await fetch('/api/studio/reprocess', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageKeys: [formattedKey],
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Processing failed')
-      }
-
-      if (data.processed?.length > 0) {
-        setProcessProgress({
-          current: 1,
-          total: 1,
-          percent: 100,
-          status: 'complete',
-          message: `Processed ${focusedItem.name}`,
-        })
-      } else if (data.errors?.length > 0) {
-        setProcessProgress({
-          current: 0,
-          total: 1,
-          percent: 0,
-          status: 'error',
-          message: `Failed to process: ${data.errors.join(', ')}`,
-        })
-      }
-
-      triggerRefresh()
-    } catch (error) {
-      console.error('Process error:', error)
-      setProcessProgress({
-        current: 0,
-        total: 1,
-        percent: 0,
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Failed to process image',
-      })
-    }
-  }
-
   const renderMedia = () => {
     if (isImage) {
       return <img css={styles.image} src={imageSrc} alt={focusedItem.name} />
@@ -595,17 +407,6 @@ export function StudioDetailView() {
 
   return (
     <>
-      {showDeleteConfirm && (
-        <ConfirmModal
-          title="Delete File"
-          message={`Are you sure you want to delete "${focusedItem.name}"? This action cannot be undone.`}
-          confirmLabel="Delete"
-          variant="danger"
-          onConfirm={handleDelete}
-          onCancel={() => setShowDeleteConfirm(false)}
-        />
-      )}
-
       {alertMessage && (
         <AlertModal
           title={alertMessage.title}
@@ -628,33 +429,6 @@ export function StudioDetailView() {
           confirmLabel="Rename"
           onConfirm={handleRename}
           onCancel={() => setShowRenameModal(false)}
-        />
-      )}
-
-      {showMoveModal && (
-        <StudioFolderPicker
-          selectedItems={new Set([focusedItem.path])}
-          currentPath={focusedItem.path.split('/').slice(0, -1).join('/')}
-          onMove={handleMove}
-          onCancel={() => setShowMoveModal(false)}
-        />
-      )}
-
-      {showProcessConfirm && (
-        <ConfirmModal
-          title="Process Image"
-          message={`Generate thumbnails for "${focusedItem.name}"?`}
-          confirmLabel="Process"
-          onConfirm={handleProcessImage}
-          onCancel={() => setShowProcessConfirm(false)}
-        />
-      )}
-
-      {processProgress && (
-        <ProgressModal
-          title="Processing Image"
-          progress={processProgress}
-          onClose={() => setProcessProgress(null)}
         />
       )}
 
@@ -756,29 +530,29 @@ export function StudioDetailView() {
               </button>
               <button 
                 css={styles.actionBtn} 
-                onClick={() => setShowMoveModal(true)}
-                disabled={moving || focusedItem.isProtected}
+                onClick={() => requestMove([focusedItem.path])}
+                disabled={isActionInProgress || focusedItem.isProtected}
               >
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                 </svg>
-                {moving ? 'Moving...' : 'Move'}
+                Move
               </button>
               <button 
                 css={styles.actionBtn} 
-                onClick={handleSync} 
-                disabled={pushing || focusedItem.isProtected || (focusedItem.cdnPushed && !focusedItem.isRemote)}
+                onClick={() => requestSync([focusedItem.path], fileItems)} 
+                disabled={isActionInProgress || focusedItem.isProtected || (focusedItem.cdnPushed && !focusedItem.isRemote)}
                 title={focusedItem.cdnPushed && !focusedItem.isRemote ? 'Already in R2' : undefined}
               >
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                {pushing ? 'Pushing...' : 'Push to CDN'}
+                Push to CDN
               </button>
               <button 
                 css={styles.actionBtn} 
-                onClick={() => setShowProcessConfirm(true)}
-                disabled={focusedItem.isProtected}
+                onClick={() => requestProcess([focusedItem.path])}
+                disabled={isActionInProgress || focusedItem.isProtected}
               >
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -787,8 +561,8 @@ export function StudioDetailView() {
               </button>
               <button 
                 css={[styles.actionBtn, styles.actionBtnDanger]} 
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={focusedItem.isProtected}
+                onClick={() => requestDelete([focusedItem.path])}
+                disabled={isActionInProgress || focusedItem.isProtected}
               >
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

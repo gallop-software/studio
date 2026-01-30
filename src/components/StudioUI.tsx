@@ -10,6 +10,9 @@ import { StudioFileList } from './StudioFileList'
 import { StudioDetailView } from './StudioDetailView'
 import { StudioSettings } from './StudioSettings'
 import { ErrorModal } from './ErrorModal'
+import { ConfirmModal, ProgressModal } from './StudioModal'
+import { StudioFolderPicker } from './StudioFolderPicker'
+import { useStudioActions } from './useStudioActions'
 import { colors, fontSize, baseReset } from './tokens'
 import type { FileItem, LeanMeta } from '../types'
 
@@ -296,6 +299,18 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
     setSelectedItems(new Set())
   }, [])
 
+  // Shared action handlers
+  const setFocusedItemCallback = useCallback((item: FileItem | null) => {
+    setFocusedItem(item)
+  }, [])
+
+  const actions = useStudioActions({
+    triggerRefresh,
+    clearSelection,
+    setFocusedItem: setFocusedItemCallback,
+    showError,
+  })
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -360,6 +375,21 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
     clearError,
     fileItems,
     setFileItems,
+    // Shared action state and handlers
+    actionState: actions.actionState,
+    requestDelete: actions.requestDelete,
+    requestMove: actions.requestMove,
+    requestSync: actions.requestSync,
+    requestProcess: actions.requestProcess,
+    confirmDelete: actions.confirmDelete,
+    confirmMove: actions.confirmMove,
+    confirmSync: actions.confirmSync,
+    confirmProcess: actions.confirmProcess,
+    cancelAction: actions.cancelAction,
+    closeProgress: actions.closeProgress,
+    stopProcessing: actions.stopProcessing,
+    abortController: actions.abortController,
+    deleteOrphans: actions.deleteOrphans,
   }
 
   return (
@@ -412,6 +442,57 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
 
         {/* Error modal */}
         <ErrorModal />
+
+        {/* Shared action modals */}
+        {actions.actionState.showDeleteConfirm && (
+          <ConfirmModal
+            title="Delete Files"
+            message={`Are you sure you want to delete ${actions.actionState.actionPaths.length} item${actions.actionState.actionPaths.length !== 1 ? 's' : ''}? This action cannot be undone.`}
+            confirmLabel="Delete"
+            variant="danger"
+            onConfirm={actions.confirmDelete}
+            onCancel={actions.cancelAction}
+          />
+        )}
+
+        {actions.actionState.showSyncConfirm && (
+          <ConfirmModal
+            title="Push to CDN"
+            message={`Push ${actions.actionState.syncImageCount} image${actions.actionState.syncImageCount !== 1 ? 's' : ''} to Cloudflare R2?${actions.actionState.syncHasRemote ? ' Remote images will be downloaded first.' : ''}${actions.actionState.syncHasLocal ? ' After pushing, local files will be deleted.' : ''}`}
+            confirmLabel="Push"
+            onConfirm={actions.confirmSync}
+            onCancel={actions.cancelAction}
+          />
+        )}
+
+        {actions.actionState.showProcessConfirm && (
+          <ConfirmModal
+            title="Process Images"
+            message={`Generate thumbnails for ${actions.actionState.actionPaths.length} image${actions.actionState.actionPaths.length !== 1 ? 's' : ''}?`}
+            confirmLabel="Process"
+            onConfirm={actions.confirmProcess}
+            onCancel={actions.cancelAction}
+          />
+        )}
+
+        {actions.actionState.showMoveModal && (
+          <StudioFolderPicker
+            selectedItems={new Set(actions.actionState.actionPaths)}
+            currentPath={currentPath}
+            onMove={(destination) => actions.confirmMove(destination)}
+            onCancel={actions.cancelAction}
+          />
+        )}
+
+        {actions.actionState.showProgress && (
+          <ProgressModal
+            title={actions.actionState.progressTitle}
+            progress={actions.actionState.progressState}
+            onStop={actions.stopProcessing}
+            onDeleteOrphans={actions.deleteOrphans}
+            onClose={actions.closeProgress}
+          />
+        )}
       </div>
     </StudioContext.Provider>
   )

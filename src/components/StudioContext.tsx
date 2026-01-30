@@ -12,6 +12,44 @@ export interface ErrorMessage {
 }
 
 /**
+ * Progress state for action modals
+ */
+export interface ProgressState {
+  current: number
+  total: number
+  percent: number
+  status: 'processing' | 'complete' | 'error' | 'stopped' | 'cleanup'
+  currentFile?: string
+  message?: string
+  processed?: number
+  alreadyProcessed?: number
+  orphansRemoved?: number
+  orphanedFiles?: string[]
+}
+
+/**
+ * Action state for shared action handlers
+ */
+export interface ActionState {
+  // Progress modal
+  showProgress: boolean
+  progressTitle: string
+  progressState: ProgressState
+  
+  // Confirmation modals
+  showDeleteConfirm: boolean
+  showMoveModal: boolean
+  showSyncConfirm: boolean
+  showProcessConfirm: boolean
+  
+  // Action-specific state
+  actionPaths: string[]  // Paths being acted upon
+  syncImageCount: number
+  syncHasRemote: boolean
+  syncHasLocal: boolean
+}
+
+/**
  * Studio state interface
  * State is managed by StudioUI and provided to all child components
  */
@@ -71,6 +109,46 @@ export interface StudioState {
   // File items (for toolbar to check cloud status)
   fileItems: FileItem[]
   setFileItems: (items: FileItem[]) => void
+
+  // Shared action state
+  actionState: ActionState
+  
+  // Shared action handlers (initiate confirmation)
+  requestDelete: (paths: string[]) => void
+  requestMove: (paths: string[]) => void
+  requestSync: (paths: string[], fileItems: FileItem[]) => void
+  requestProcess: (paths: string[]) => void
+  
+  // Action confirmations (execute action)
+  confirmDelete: () => Promise<void>
+  confirmMove: (destination: string) => Promise<void>
+  confirmSync: () => Promise<void>
+  confirmProcess: () => Promise<void>
+  
+  // Cancel/close actions
+  cancelAction: () => void
+  closeProgress: () => void
+  
+  // Stop processing
+  stopProcessing: () => void
+  abortController: AbortController | null
+  
+  // Delete orphans (from scan)
+  deleteOrphans: () => Promise<void>
+}
+
+const defaultActionState: ActionState = {
+  showProgress: false,
+  progressTitle: '',
+  progressState: { current: 0, total: 0, percent: 0, status: 'processing' },
+  showDeleteConfirm: false,
+  showMoveModal: false,
+  showSyncConfirm: false,
+  showProcessConfirm: false,
+  actionPaths: [],
+  syncImageCount: 0,
+  syncHasRemote: false,
+  syncHasLocal: false,
 }
 
 const defaultState: StudioState = {
@@ -107,6 +185,24 @@ const defaultState: StudioState = {
   clearError: () => {},
   fileItems: [],
   setFileItems: () => {},
+  
+  // Shared action state
+  actionState: defaultActionState,
+  
+  // Shared action handlers
+  requestDelete: () => {},
+  requestMove: () => {},
+  requestSync: () => {},
+  requestProcess: () => {},
+  confirmDelete: async () => {},
+  confirmMove: async () => {},
+  confirmSync: async () => {},
+  confirmProcess: async () => {},
+  cancelAction: () => {},
+  closeProgress: () => {},
+  stopProcessing: () => {},
+  abortController: null,
+  deleteOrphans: async () => {},
 }
 
 export const StudioContext = createContext<StudioState>(defaultState)
