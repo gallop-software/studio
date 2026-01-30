@@ -4,6 +4,14 @@ import { createContext, useContext } from 'react'
 import type { FileItem, LeanMeta } from '../types'
 
 /**
+ * Error message type for centralized error handling
+ */
+export interface ErrorMessage {
+  title: string
+  message: string
+}
+
+/**
  * Studio state interface
  * State is managed by StudioUI and provided to all child components
  */
@@ -49,6 +57,11 @@ export interface StudioState {
   // Search
   searchQuery: string
   setSearchQuery: (query: string) => void
+
+  // Error handling
+  error: ErrorMessage | null
+  showError: (title: string, message: string) => void
+  clearError: () => void
 }
 
 const defaultState: StudioState = {
@@ -77,6 +90,9 @@ const defaultState: StudioState = {
   triggerRefresh: () => {},
   searchQuery: '',
   setSearchQuery: () => {},
+  error: null,
+  showError: () => {},
+  clearError: () => {},
 }
 
 export const StudioContext = createContext<StudioState>(defaultState)

@@ -3,7 +3,7 @@ import { defineConfig } from 'tsup'
 export default defineConfig({
   entry: [
     'src/index.tsx',
-    'src/handlers.ts',
+    'src/handlers/index.ts',
   ],
   format: ['cjs', 'esm'],
   dts: true,

@@ -9,6 +9,7 @@ import { StudioFileGrid } from './StudioFileGrid'
 import { StudioFileList } from './StudioFileList'
 import { StudioDetailView } from './StudioDetailView'
 import { StudioSettings } from './StudioSettings'
+import { ErrorModal } from './ErrorModal'
 import { colors, fontSize, baseReset } from './tokens'
 import type { FileItem, LeanMeta } from '../types'
 
@@ -172,10 +173,19 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
+  const [error, setError] = useState<{ title: string; message: string } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
+  }, [])
+
+  const showError = useCallback((title: string, message: string) => {
+    setError({ title, message })
+  }, [])
+
+  const clearError = useCallback(() => {
+    setError(null)
   }, [])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -330,6 +340,9 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
     triggerRefresh,
     searchQuery,
     setSearchQuery,
+    error,
+    showError,
+    clearError,
   }
 
   return (
@@ -379,6 +392,9 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
         
         {/* Detail view as modal overlay */}
         {focusedItem && <StudioDetailView />}
+
+        {/* Error modal */}
+        <ErrorModal />
       </div>
     </StudioContext.Provider>
   )

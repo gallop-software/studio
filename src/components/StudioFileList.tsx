@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useState } from 'react'
 import { css, keyframes } from '@emotion/react'
-import { useStudio } from './StudioContext'
+import { useFileList } from '../hooks/useFileList'
 import { colors, fontSize } from './tokens'
 import type { FileItem } from '../types'
 
@@ -318,39 +318,20 @@ const styles = {
 }
 
 export function StudioFileList() {
-  const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem, triggerRefresh, searchQuery } = useStudio()
-  const [items, setItems] = useState<FileItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const isInitialLoad = useRef(true)
-  const lastPath = useRef(currentPath)
-
-  useEffect(() => {
-    async function loadItems() {
-      // Only show loading spinner on initial load or path change, not on refresh
-      const isPathChange = lastPath.current !== currentPath
-      if (isInitialLoad.current || isPathChange) {
-        setLoading(true)
-      }
-      lastPath.current = currentPath
-      
-      try {
-        // Use search API when query has 2+ characters
-        const url = searchQuery && searchQuery.length >= 2
-          ? `/api/studio/search?q=${encodeURIComponent(searchQuery)}`
-          : `/api/studio/list?path=${encodeURIComponent(currentPath)}`
-        const response = await fetch(url)
-        if (response.ok) {
-          const data = await response.json()
-          setItems(data.items || [])
-        }
-      } catch (error) {
-        console.error('Failed to load items:', error)
-      }
-      setLoading(false)
-      isInitialLoad.current = false
-    }
-    loadItems()
-  }, [currentPath, refreshKey, searchQuery])
+  const {
+    loading,
+    sortedItems,
+    isAtRoot,
+    isSearching,
+    allItemsSelected,
+    someItemsSelected,
+    selectedItems,
+    navigateUp,
+    handleItemClick,
+    handleOpen,
+    handleGenerateThumbnail,
+    handleSelectAll,
+  } = useFileList()
 
   if (loading) {
     return (
@@ -360,64 +341,12 @@ export function StudioFileList() {
     )
   }
 
-  const isAtRoot = currentPath === 'public'
-
-  if (items.length === 0 && isAtRoot) {
+  if (sortedItems.length === 0 && isAtRoot) {
     return (
       <div css={styles.empty}>
         <p>No files in this folder</p>
       </div>
     )
-  }
-
-  // When searching, items already come filtered from the API
-  const isSearching = searchQuery && searchQuery.length >= 2
-
-  const sortedItems = [...items].sort((a, b) => {
-    if (a.type === 'folder' && b.type !== 'folder') return -1
-    if (a.type !== 'folder' && b.type === 'folder') return 1
-    return a.name.localeCompare(b.name)
-  })
-
-  const handleItemClick = (item: FileItem, e: React.MouseEvent) => {
-    if (e.shiftKey && lastSelectedPath) {
-      selectRange(lastSelectedPath, item.path, sortedItems)
-    } else {
-      toggleSelection(item.path)
-    }
-  }
-
-  const handleOpen = (item: FileItem) => {
-    if (item.type === 'folder') {
-      setCurrentPath(item.path)
-    } else {
-      setFocusedItem(item)
-    }
-  }
-
-  const handleGenerateThumbnail = async (item: FileItem) => {
-    try {
-      const imageKey = item.path.replace(/^public\//, '')
-      await fetch('/api/studio/reprocess', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageKeys: [imageKey] }),
-      })
-      triggerRefresh()
-    } catch (error) {
-      console.error('Failed to generate thumbnail:', error)
-    }
-  }
-
-  const allItemsSelected = sortedItems.length > 0 && sortedItems.every(item => selectedItems.has(item.path))
-  const someItemsSelected = sortedItems.some(item => selectedItems.has(item.path))
-
-  const handleSelectAll = () => {
-    if (allItemsSelected) {
-      clearSelection()
-    } else {
-      selectAll(sortedItems)
-    }
   }
 
   return (

@@ -12,9 +12,9 @@
       "require": "./dist/index.js"
     },
     "./handlers": {
-      "types": "./dist/handlers.d.ts",
-      "import": "./dist/handlers.mjs",
-      "require": "./dist/handlers.js"
+      "types": "./dist/handlers/index.d.ts",
+      "import": "./dist/handlers/index.mjs",
+      "require": "./dist/handlers/index.js"
     }
   },
   "files": [

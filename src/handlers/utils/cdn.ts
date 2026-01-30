@@ -1,0 +1,78 @@
+import { promises as fs } from 'fs'
+import path from 'path'
+import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { getAllThumbnailPaths } from '../../types'
+import { getContentType } from './files'
+
+function getR2Client() {
+  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
+  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
+  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
+
+  if (!accountId || !accessKeyId || !secretAccessKey) {
+    throw new Error('R2 not configured')
+  }
+
+  return new S3Client({
+    region: 'auto',
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: { accessKeyId, secretAccessKey },
+  })
+}
+
+export async function downloadFromCdn(originalPath: string): Promise<Buffer> {
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME
+  if (!bucketName) throw new Error('R2 bucket not configured')
+
+  const r2 = getR2Client()
+
+  const response = await r2.send(
+    new GetObjectCommand({
+      Bucket: bucketName,
+      Key: originalPath.replace(/^\//, ''),
+    })
+  )
+
+  const stream = response.Body as NodeJS.ReadableStream
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) {
+    chunks.push(Buffer.from(chunk))
+  }
+  return Buffer.concat(chunks)
+}
+
+export async function uploadToCdn(imageKey: string): Promise<void> {
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME
+  if (!bucketName) throw new Error('R2 bucket not configured')
+
+  const r2 = getR2Client()
+
+  // Upload all thumbnail sizes derived from imageKey
+  for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+    const localPath = path.join(process.cwd(), 'public', thumbPath)
+    try {
+      const fileBuffer = await fs.readFile(localPath)
+      await r2.send(
+        new PutObjectCommand({
+          Bucket: bucketName,
+          Key: thumbPath.replace(/^\//, ''),
+          Body: fileBuffer,
+          ContentType: getContentType(thumbPath),
+        })
+      )
+    } catch {
+      // File might not exist (e.g., if image is smaller than thumbnail size)
+    }
+  }
+}
+
+export async function deleteLocalThumbnails(imageKey: string): Promise<void> {
+  for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+    const localPath = path.join(process.cwd(), 'public', thumbPath)
+    try {
+      await fs.unlink(localPath)
+    } catch {
+      // File might not exist
+    }
+  }
+}
