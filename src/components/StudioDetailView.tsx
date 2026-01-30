@@ -29,8 +29,7 @@ const styles = {
     bottom: 0;
     z-index: 100;
     display: flex;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
+    background: transparent;
   `,
   container: css`
     display: flex;
