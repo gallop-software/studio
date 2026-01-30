@@ -262,8 +262,8 @@ const styles = {
     justify-content: center;
   `,
   cloudIcon: css`
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     color: #f59e0b;
   `,
   globeIcon: css`

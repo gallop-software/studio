@@ -189,8 +189,8 @@ const styles = {
     justify-content: center;
   `,
   cloudIcon: css`
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     color: #f59e0b;
   `,
   globeIcon: css`
