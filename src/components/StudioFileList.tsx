@@ -105,8 +105,8 @@ const styles = {
     vertical-align: middle;
   `,
   checkbox: css`
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     accent-color: ${colors.primary};
     cursor: pointer;
     display: block;
