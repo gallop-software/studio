@@ -99,6 +99,7 @@ const styles = {
     width: 22px;
     height: 22px;
     color: #f59e0b;
+    transform: translateY(1px);
   `,
   globeIcon: css`
     width: 20px;

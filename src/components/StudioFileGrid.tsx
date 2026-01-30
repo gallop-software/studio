@@ -265,6 +265,7 @@ const styles = {
     width: 20px;
     height: 20px;
     color: #f59e0b;
+    transform: translateY(1px);
   `,
   globeIcon: css`
     width: 18px;

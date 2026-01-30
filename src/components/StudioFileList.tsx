@@ -192,6 +192,7 @@ const styles = {
     width: 18px;
     height: 18px;
     color: #f59e0b;
+    transform: translateY(1px);
   `,
   globeIcon: css`
     width: 16px;
