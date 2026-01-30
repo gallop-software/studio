@@ -523,44 +523,38 @@ export function StudioDetailView() {
     })
 
     try {
+      const imageKey = focusedItem.path.replace(/^public\//, '')
+      const formattedKey = imageKey.startsWith('/') ? imageKey : `/${imageKey}`
       const response = await fetch('/api/studio/reprocess', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          paths: [focusedItem.path],
+          imageKeys: [formattedKey],
         }),
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        throw new Error('Processing failed')
+        throw new Error(data.error || 'Processing failed')
       }
 
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('No response body')
-      }
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              setProcessProgress(data)
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
+      if (data.processed?.length > 0) {
+        setProcessProgress({
+          current: 1,
+          total: 1,
+          percent: 100,
+          status: 'complete',
+          message: `Processed ${focusedItem.name}`,
+        })
+      } else if (data.errors?.length > 0) {
+        setProcessProgress({
+          current: 0,
+          total: 1,
+          percent: 0,
+          status: 'error',
+          message: `Failed to process: ${data.errors.join(', ')}`,
+        })
       }
 
       triggerRefresh()
@@ -571,7 +565,7 @@ export function StudioDetailView() {
         total: 1,
         percent: 0,
         status: 'error',
-        message: 'Failed to process image',
+        message: error instanceof Error ? error.message : 'Failed to process image',
       })
     }
   }
