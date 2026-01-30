@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
-import { AlertModal, InputModal } from './StudioModal'
+import { AlertModal, InputModal, ProgressModal, type ProgressState } from './StudioModal'
 import { R2SetupModal } from './R2SetupModal'
 import { colors, fontSize } from './tokens'
 
@@ -324,7 +324,14 @@ export function StudioDetailView() {
   const [showR2SetupModal, setShowR2SetupModal] = useState(false)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showCopied, setShowCopied] = useState(false)
-  const [generatingFavicon, setGeneratingFavicon] = useState(false)
+  const [showFaviconProgress, setShowFaviconProgress] = useState(false)
+  const [faviconProgress, setFaviconProgress] = useState<ProgressState>({
+    current: 0,
+    total: 3,
+    percent: 0,
+    status: 'processing',
+    message: 'Generating favicons...',
+  })
   
   // Check if an action is in progress
   const isActionInProgress = actionState.showProgress
@@ -397,7 +404,15 @@ export function StudioDetailView() {
   const handleGenerateFavicons = async () => {
     if (!focusedItem) return
     
-    setGeneratingFavicon(true)
+    setShowFaviconProgress(true)
+    setFaviconProgress({
+      current: 0,
+      total: 3,
+      percent: 0,
+      status: 'processing',
+      message: 'Generating favicons...',
+    })
+    
     try {
       const response = await fetch('/api/studio/generate-favicon', {
         method: 'POST',
@@ -407,27 +422,78 @@ export function StudioDetailView() {
         }),
       })
       
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
-        setAlertMessage({
-          title: 'Favicons Generated',
-          message: data.message + ' Files saved to src/app/',
+      if (!response.ok) {
+        const error = await response.json()
+        setFaviconProgress({
+          current: 0,
+          total: 3,
+          percent: 0,
+          status: 'error',
+          message: error.error || 'Failed to generate favicons',
         })
-      } else {
-        setAlertMessage({
-          title: 'Generation Failed',
-          message: data.error || data.message || 'Failed to generate favicons',
-        })
+        return
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (reader) {
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                
+                if (data.type === 'start') {
+                  setFaviconProgress(prev => ({
+                    ...prev,
+                    total: data.total,
+                  }))
+                } else if (data.type === 'progress') {
+                  setFaviconProgress({
+                    current: data.current,
+                    total: data.total,
+                    percent: data.percent,
+                    status: 'processing',
+                    message: data.message,
+                  })
+                } else if (data.type === 'complete') {
+                  setFaviconProgress({
+                    current: data.processed,
+                    total: data.processed,
+                    percent: 100,
+                    status: data.errors > 0 ? 'error' : 'complete',
+                    message: data.message,
+                  })
+                } else if (data.type === 'error') {
+                  setFaviconProgress(prev => ({
+                    ...prev,
+                    status: 'error',
+                    message: data.message,
+                  }))
+                }
+              } catch { /* ignore parse errors */ }
+            }
+          }
+        }
       }
     } catch (error) {
       console.error('Favicon generation error:', error)
-      setAlertMessage({
-        title: 'Generation Failed',
+      setFaviconProgress({
+        current: 0,
+        total: 3,
+        percent: 0,
+        status: 'error',
         message: 'An error occurred while generating favicons',
       })
-    } finally {
-      setGeneratingFavicon(false)
     }
   }
 
@@ -472,6 +538,14 @@ export function StudioDetailView() {
           confirmLabel="Rename"
           onConfirm={handleRename}
           onCancel={() => setShowRenameModal(false)}
+        />
+      )}
+
+      {showFaviconProgress && (
+        <ProgressModal
+          title="Generating Favicons"
+          progress={faviconProgress}
+          onClose={() => setShowFaviconProgress(false)}
         />
       )}
 
@@ -606,12 +680,12 @@ export function StudioDetailView() {
                 <button 
                   css={styles.actionBtn} 
                   onClick={handleGenerateFavicons}
-                  disabled={generatingFavicon || focusedItem.isProtected}
+                  disabled={showFaviconProgress || focusedItem.isProtected}
                 >
                   <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                   </svg>
-                  {generatingFavicon ? 'Generating...' : 'Generate Favicons'}
+                  Generate Favicons
                 </button>
               )}
               <button 
