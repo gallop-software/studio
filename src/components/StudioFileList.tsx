@@ -38,11 +38,13 @@ const styles = {
     background: ${colors.surface};
     border-radius: 8px;
     border: 1px solid ${colors.border};
-    overflow: hidden;
+    overflow-x: auto;
   `,
   table: css`
     width: 100%;
+    min-width: 600px;
     border-collapse: collapse;
+    white-space: nowrap;
   `,
   th: css`
     text-align: left;
@@ -269,6 +271,10 @@ const styles = {
     font-weight: 500;
     color: ${colors.text};
     letter-spacing: -0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 300px;
   `,
   meta: css`
     font-size: ${fontSize.sm};
