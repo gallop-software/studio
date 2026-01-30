@@ -255,41 +255,102 @@ export function StudioToolbar() {
     const files = e.target.files
     if (!files || files.length === 0) return
 
-    setUploading(true)
+    const fileList = Array.from(files)
+    
+    // Show progress modal for multiple files
+    if (fileList.length > 1) {
+      setProgressState({
+        current: 0,
+        total: fileList.length,
+        percent: 0,
+        status: 'processing',
+        message: 'Uploading files...',
+      })
+      setShowProgress(true)
+    } else {
+      setUploading(true)
+    }
+
+    let uploaded = 0
+    let errors = 0
+
     try {
-      for (const file of Array.from(files)) {
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i]
+        
+        if (fileList.length > 1) {
+          setProgressState({
+            current: i + 1,
+            total: fileList.length,
+            percent: Math.round(((i + 1) / fileList.length) * 100),
+            status: 'processing',
+            currentFile: file.name,
+          })
+        }
+
         const formData = new FormData()
         formData.append('file', file)
         formData.append('path', currentPath)
 
-        const response = await fetch('/api/studio/upload', {
-          method: 'POST',
-          body: formData,
-        })
+        try {
+          const response = await fetch('/api/studio/upload', {
+            method: 'POST',
+            body: formData,
+          })
 
-        if (!response.ok) {
-          const error = await response.json()
-          if (response.status >= 500) {
-            console.error('Upload error:', error)
-            setAlertMessage({
-              title: 'Upload Failed',
-              message: `Failed to upload ${file.name}: ${error.error || 'Unknown error'}`,
-            })
+          if (!response.ok) {
+            const error = await response.json()
+            errors++
+            if (fileList.length === 1) {
+              if (response.status >= 500) {
+                console.error('Upload error:', error)
+                setAlertMessage({
+                  title: 'Upload Failed',
+                  message: `Failed to upload ${file.name}: ${error.error || 'Unknown error'}`,
+                })
+              } else {
+                setAlertMessage({
+                  title: 'Cannot Upload Here',
+                  message: error.error || 'Upload not allowed in this location.',
+                })
+              }
+            }
           } else {
-            setAlertMessage({
-              title: 'Cannot Upload Here',
-              message: error.error || 'Upload not allowed in this location.',
-            })
+            uploaded++
           }
+        } catch {
+          errors++
         }
       }
+
+      if (fileList.length > 1) {
+        setProgressState({
+          current: fileList.length,
+          total: fileList.length,
+          percent: 100,
+          status: 'complete',
+          processed: uploaded,
+          errors: errors,
+        })
+      }
+      
       triggerRefresh()
     } catch (error) {
       console.error('Upload error:', error)
-      setAlertMessage({
-        title: 'Upload Failed',
-        message: 'Upload failed. Check console for details.',
-      })
+      if (fileList.length > 1) {
+        setProgressState({
+          current: 0,
+          total: 0,
+          percent: 0,
+          status: 'error',
+          message: 'Upload failed.',
+        })
+      } else {
+        setAlertMessage({
+          title: 'Upload Failed',
+          message: 'Upload failed. Check console for details.',
+        })
+      }
     } finally {
       setUploading(false)
       if (fileInputRef.current) {
@@ -586,66 +647,119 @@ export function StudioToolbar() {
   const handleSyncCdn = useCallback(async () => {
     if (selectedItems.size === 0) return
 
-    // Get image keys from selected items (files only, not folders)
-    const imageKeys = Array.from(selectedItems)
-      .filter(p => !p.endsWith('/')) // Filter out folders
-      .map(p => '/' + p.replace(/^public\//, ''))
+    const selectedPaths = Array.from(selectedItems)
+    
+    // Separate folders and image files
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif']
+    const selectedImagePaths = selectedPaths.filter(p => {
+      const ext = p.split('.').pop()?.toLowerCase() || ''
+      return imageExtensions.includes(ext)
+    })
+    const selectedFolders = selectedPaths.filter(p => !p.includes('.') || p.endsWith('/'))
+
+    // If folders are selected, fetch all images from them
+    if (selectedFolders.length > 0) {
+      try {
+        const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
+        const data = await response.json()
+        
+        if (data.images) {
+          for (const img of data.images) {
+            const fullPath = `public/${img}`
+            if (!selectedImagePaths.includes(fullPath)) {
+              selectedImagePaths.push(fullPath)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to get folder images:', error)
+      }
+    }
+
+    // Convert to image keys
+    const imageKeys = selectedImagePaths.map(p => '/' + p.replace(/^public\//, ''))
 
     if (imageKeys.length === 0) {
       setAlertMessage({
-        title: 'No Images Selected',
-        message: 'Please select image files to sync to CDN.',
+        title: 'No Images Found',
+        message: 'No images found in the selected items.',
       })
       return
     }
 
-    setSyncing(true)
+    // Show progress modal
+    setProgressState({
+      current: 0,
+      total: imageKeys.length,
+      percent: 0,
+      status: 'processing',
+      message: 'Syncing to CDN...',
+    })
+    setShowProgress(true)
+
+    let synced = 0
+    let errors = 0
 
     try {
-      const response = await fetch('/api/studio/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageKeys }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        const syncedCount = data.synced?.length || 0
-        const errorCount = data.errors?.length || 0
+      // Sync images one by one for progress tracking
+      for (let i = 0; i < imageKeys.length; i++) {
+        const imageKey = imageKeys[i]
         
-        if (errorCount > 0) {
-          setAlertMessage({
-            title: 'Sync Partially Complete',
-            message: `Synced ${syncedCount} images. ${errorCount} failed.`,
+        setProgressState({
+          current: i + 1,
+          total: imageKeys.length,
+          percent: Math.round(((i + 1) / imageKeys.length) * 100),
+          status: 'processing',
+          currentFile: imageKey.replace(/^\//, ''),
+        })
+
+        try {
+          const response = await fetch('/api/studio/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageKeys: [imageKey] }),
           })
-        } else {
-          setAlertMessage({
-            title: 'Sync Complete',
-            message: `Successfully synced ${syncedCount} images to CDN.`,
-          })
-        }
-        clearSelection()
-        triggerRefresh()
-      } else {
-        // Check if it's an R2 configuration error
-        if (data.error?.includes('R2 not configured') || data.error?.includes('CLOUDFLARE_R2')) {
-          setShowR2SetupModal(true)
-        } else {
-          setAlertMessage({
-            title: 'Sync Failed',
-            message: data.error || 'Failed to sync to CDN.',
-          })
+
+          const data = await response.json()
+
+          if (!response.ok) {
+            // Check if it's an R2 configuration error
+            if (data.error?.includes('R2 not configured') || data.error?.includes('CLOUDFLARE_R2')) {
+              setShowProgress(false)
+              setShowR2SetupModal(true)
+              return
+            }
+            errors++
+          } else if (data.synced?.length > 0) {
+            synced++
+          } else if (data.errors?.length > 0) {
+            errors++
+          }
+        } catch {
+          errors++
         }
       }
+
+      setProgressState({
+        current: imageKeys.length,
+        total: imageKeys.length,
+        percent: 100,
+        status: 'complete',
+        processed: synced,
+        errors: errors,
+      })
+      
+      clearSelection()
+      triggerRefresh()
     } catch (error) {
       console.error('Sync error:', error)
-      setAlertMessage({
-        title: 'Sync Failed',
-        message: 'Failed to sync to CDN. Check console for details.',
+      setProgressState({
+        current: 0,
+        total: 0,
+        percent: 0,
+        status: 'error',
+        message: 'Failed to sync to CDN.',
       })
-    } finally {
-      setSyncing(false)
     }
   }, [selectedItems, clearSelection, triggerRefresh])
 
@@ -911,10 +1025,10 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleSyncCdn}
-            disabled={!hasSelection || syncing}
+            disabled={!hasSelection}
           >
             <CloudIcon />
-            {syncing ? 'Syncing...' : 'Sync CDN'}
+            Sync CDN
           </button>
           <div css={styles.searchWrapper}>
             <input
