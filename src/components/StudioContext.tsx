@@ -41,13 +41,13 @@ export interface ActionState {
   showMoveModal: boolean
   showSyncConfirm: boolean
   showProcessConfirm: boolean
-  showUnprocessConfirm: boolean
   
   // Action-specific state
   actionPaths: string[]  // Paths being acted upon
   syncImageCount: number
   syncHasRemote: boolean
   syncHasLocal: boolean
+  processMode: 'generate' | 'remove'  // Mode for process modal
 }
 
 /**
@@ -119,13 +119,12 @@ export interface StudioState {
   requestMove: (paths: string[]) => void
   requestSync: (paths: string[], fileItems: FileItem[]) => void
   requestProcess: (paths: string[]) => void
-  requestUnprocess: (paths: string[]) => void
+  setProcessMode: (mode: 'generate' | 'remove') => void
   
   // Action confirmations (execute action)
   confirmDelete: () => Promise<void>
   confirmMove: (destination: string) => Promise<void>
   confirmSync: () => Promise<void>
-  confirmUnprocess: () => Promise<void>
   confirmProcess: () => Promise<void>
   
   // Cancel/close actions
@@ -148,11 +147,11 @@ const defaultActionState: ActionState = {
   showMoveModal: false,
   showSyncConfirm: false,
   showProcessConfirm: false,
-  showUnprocessConfirm: false,
   actionPaths: [],
   syncImageCount: 0,
   syncHasRemote: false,
   syncHasLocal: false,
+  processMode: 'generate',
 }
 
 const defaultState: StudioState = {
@@ -198,12 +197,11 @@ const defaultState: StudioState = {
   requestMove: () => {},
   requestSync: () => {},
   requestProcess: () => {},
-  requestUnprocess: () => {},
+  setProcessMode: () => {},
   confirmDelete: async () => {},
   confirmMove: async () => {},
   confirmSync: async () => {},
   confirmProcess: async () => {},
-  confirmUnprocess: async () => {},
   cancelAction: () => {},
   closeProgress: () => {},
   stopProcessing: () => {},

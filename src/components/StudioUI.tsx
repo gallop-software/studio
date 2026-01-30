@@ -381,12 +381,11 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
     requestMove: actions.requestMove,
     requestSync: actions.requestSync,
     requestProcess: actions.requestProcess,
-    requestUnprocess: actions.requestUnprocess,
+    setProcessMode: actions.setProcessMode,
     confirmDelete: actions.confirmDelete,
     confirmMove: actions.confirmMove,
     confirmSync: actions.confirmSync,
     confirmProcess: actions.confirmProcess,
-    confirmUnprocess: actions.confirmUnprocess,
     cancelAction: actions.cancelAction,
     closeProgress: actions.closeProgress,
     stopProcessing: actions.stopProcessing,
@@ -468,22 +467,11 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
         )}
 
         {actions.actionState.showProcessConfirm && (
-          <ConfirmModal
-            title="Process Images"
-            message={`Generate thumbnails for ${actions.actionState.actionPaths.length} image${actions.actionState.actionPaths.length !== 1 ? 's' : ''}?`}
-            confirmLabel="Process"
+          <ProcessConfirmModal
+            imageCount={actions.actionState.actionPaths.length}
+            mode={actions.actionState.processMode}
+            onModeChange={actions.setProcessMode}
             onConfirm={actions.confirmProcess}
-            onCancel={actions.cancelAction}
-          />
-        )}
-
-        {actions.actionState.showUnprocessConfirm && (
-          <ConfirmModal
-            title="Remove Thumbnails"
-            message={`Remove generated thumbnails for ${actions.actionState.actionPaths.length} image${actions.actionState.actionPaths.length !== 1 ? 's' : ''}? Original images will be kept.`}
-            confirmLabel="Remove"
-            variant="danger"
-            onConfirm={actions.confirmUnprocess}
             onCancel={actions.cancelAction}
           />
         )}
@@ -508,6 +496,166 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
         )}
       </div>
     </StudioContext.Provider>
+  )
+}
+
+interface ProcessConfirmModalProps {
+  imageCount: number
+  mode: 'generate' | 'remove'
+  onModeChange: (mode: 'generate' | 'remove') => void
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+function ProcessConfirmModal({ imageCount, mode, onModeChange, onConfirm, onCancel }: ProcessConfirmModalProps) {
+  const processModalStyles = {
+    overlay: css`
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    `,
+    container: css`
+      background: ${colors.surface};
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    `,
+    title: css`
+      font-size: ${fontSize.lg};
+      font-weight: 600;
+      color: ${colors.text};
+      margin: 0 0 16px;
+    `,
+    modeToggle: css`
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    `,
+    modeBtn: css`
+      flex: 1;
+      padding: 10px 16px;
+      border: 2px solid ${colors.border};
+      border-radius: 8px;
+      background: ${colors.background};
+      color: ${colors.textSecondary};
+      font-size: ${fontSize.base};
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      
+      &:hover {
+        border-color: ${colors.borderHover};
+      }
+    `,
+    modeBtnActive: css`
+      border-color: ${colors.primary};
+      background: rgba(99, 91, 255, 0.1);
+      color: ${colors.primary};
+    `,
+    modeBtnDanger: css`
+      border-color: ${colors.danger};
+      background: rgba(239, 68, 68, 0.1);
+      color: ${colors.danger};
+    `,
+    message: css`
+      font-size: ${fontSize.base};
+      color: ${colors.textSecondary};
+      margin: 0 0 20px;
+      line-height: 1.5;
+    `,
+    actions: css`
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    `,
+    cancelBtn: css`
+      padding: 10px 20px;
+      border: 1px solid ${colors.border};
+      border-radius: 8px;
+      background: ${colors.background};
+      color: ${colors.text};
+      font-size: ${fontSize.base};
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      
+      &:hover {
+        background: ${colors.surfaceHover};
+        border-color: ${colors.borderHover};
+      }
+    `,
+    confirmBtn: css`
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      background: ${colors.primary};
+      color: white;
+      font-size: ${fontSize.base};
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      
+      &:hover {
+        background: ${colors.primaryHover};
+      }
+    `,
+    confirmBtnDanger: css`
+      background: ${colors.danger};
+      
+      &:hover {
+        background: #dc2626;
+      }
+    `,
+  }
+
+  const isRemove = mode === 'remove'
+  const title = 'Process Images'
+  const message = isRemove
+    ? `Remove generated thumbnails for ${imageCount} image${imageCount !== 1 ? 's' : ''}? Original images will be kept.`
+    : `Generate thumbnails for ${imageCount} image${imageCount !== 1 ? 's' : ''}?`
+  const confirmLabel = isRemove ? 'Remove' : 'Process'
+
+  return (
+    <div css={processModalStyles.overlay} onClick={onCancel}>
+      <div css={processModalStyles.container} onClick={e => e.stopPropagation()}>
+        <h2 css={processModalStyles.title}>{title}</h2>
+        
+        <div css={processModalStyles.modeToggle}>
+          <button
+            css={[processModalStyles.modeBtn, mode === 'generate' && processModalStyles.modeBtnActive]}
+            onClick={() => onModeChange('generate')}
+          >
+            Generate Thumbnails
+          </button>
+          <button
+            css={[processModalStyles.modeBtn, mode === 'remove' && processModalStyles.modeBtnDanger]}
+            onClick={() => onModeChange('remove')}
+          >
+            Remove Thumbnails
+          </button>
+        </div>
+        
+        <p css={processModalStyles.message}>{message}</p>
+        
+        <div css={processModalStyles.actions}>
+          <button css={processModalStyles.cancelBtn} onClick={onCancel}>
+            Cancel
+          </button>
+          <button 
+            css={[processModalStyles.confirmBtn, isRemove && processModalStyles.confirmBtnDanger]} 
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
