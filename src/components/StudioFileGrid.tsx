@@ -236,8 +236,28 @@ const styles = {
     width: 18px;
     height: 18px;
   `,
-  copyBtnFlash: css`
-    color: ${colors.success};
+  tooltip: css`
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #1a1f36;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    margin-top: 6px;
+    pointer-events: none;
+    z-index: 100;
+    
+    &::before {
+      content: '';
+      position: absolute;
+      bottom: 100%;
+      right: 8px;
+      border: 4px solid transparent;
+      border-bottom-color: #1a1f36;
+    }
   `,
   openBtn: css`
     position: absolute;
@@ -513,10 +533,11 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
       <div css={styles.content}>
         {/* Copy button - top right of image box */}
         <button
-          css={[styles.copyBtn, showCopied && styles.copyBtnFlash]}
+          css={styles.copyBtn}
           onClick={handleCopyPath}
           title="Copy file path"
         >
+          {showCopied && <span css={styles.tooltip}>Copied!</span>}
           <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>

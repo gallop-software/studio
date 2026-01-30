@@ -133,12 +133,29 @@ const styles = {
       border-color: ${colors.borderHover};
     }
   `,
-  copyBtnFlash: css`
-    background: ${colors.successLight};
-    border-color: ${colors.success};
+  tooltip: css`
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1f36;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    margin-bottom: 6px;
+    pointer-events: none;
+    z-index: 100;
     
-    svg {
-      color: ${colors.success};
+    &::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 4px solid transparent;
+      border-top-color: #1a1f36;
     }
   `,
   copyIcon: css`
@@ -285,16 +302,11 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
             <h3 css={styles.sectionTitle}>Cloudflare R2</h3>
             <p css={styles.description}>Configure in .env.local file:</p>
             <div css={styles.codeWrapper}>
-              <button css={[styles.copyBtn, copied && styles.copyBtnFlash]} onClick={handleCopy} title="Copy to clipboard">
-                {copied ? (
-                  <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                )}
+              <button css={styles.copyBtn} onClick={handleCopy} title="Copy to clipboard">
+                {copied && <span css={styles.tooltip}>Copied!</span>}
+                <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
               </button>
               <div css={styles.code}>
                 <p css={styles.codeLine}>CLOUDFLARE_R2_ACCOUNT_ID=abc123def456ghi789</p>

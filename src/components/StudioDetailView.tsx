@@ -83,18 +83,35 @@ const styles = {
     height: 20px;
     color: ${colors.textSecondary};
   `,
-  copyBtnFlash: css`
-    background: ${colors.successLight};
-    border-color: ${colors.success};
+  tooltip: css`
+    position: absolute;
+    right: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1a1f36;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    margin-right: 8px;
+    pointer-events: none;
+    z-index: 100;
     
-    svg {
-      color: ${colors.success};
+    &::after {
+      content: '';
+      position: absolute;
+      left: 100%;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 4px solid transparent;
+      border-left-color: #1a1f36;
     }
   `,
   mainCloseBtn: css`
     padding: 8px;
-    background: ${colors.danger};
-    border: 1px solid ${colors.danger};
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -104,14 +121,14 @@ const styles = {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
     
     &:hover {
-      background-color: ${colors.dangerHover};
-      border-color: ${colors.dangerHover};
+      background-color: ${colors.surfaceHover};
+      border-color: ${colors.borderHover};
     }
   `,
   mainCloseIcon: css`
     width: 20px;
     height: 20px;
-    color: white;
+    color: ${colors.textSecondary};
   `,
   mediaWrapper: css`
     max-width: 100%;
@@ -362,7 +379,8 @@ export function StudioDetailView() {
         <div css={styles.container} onClick={(e) => e.stopPropagation()}>
           <div css={styles.main}>
             <div css={styles.headerButtons}>
-              <button css={[styles.copyBtn, showCopied && styles.copyBtnFlash]} onClick={handleCopyPath} title="Copy file path">
+              <button css={styles.copyBtn} onClick={handleCopyPath} title="Copy file path">
+                {showCopied && <span css={styles.tooltip}>Copied!</span>}
                 <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>

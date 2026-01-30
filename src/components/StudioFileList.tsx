@@ -139,14 +139,34 @@ const styles = {
       color: ${colors.text};
     }
   `,
-  copyBtnFlash: css`
-    background: ${colors.successLight};
-    border-color: ${colors.success};
-    color: ${colors.success};
-  `,
   copyIcon: css`
     width: 16px;
     height: 16px;
+  `,
+  tooltip: css`
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1f36;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    margin-bottom: 6px;
+    pointer-events: none;
+    z-index: 100;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 4px solid transparent;
+      border-top-color: #1a1f36;
+    }
   `,
   nameCell: css`
     display: flex;
@@ -534,10 +554,11 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Lis
           <span css={styles.name} title={item.name}>{truncateMiddle(item.name)}</span>
           <div css={styles.actionsCell}>
             <button
-              css={[styles.copyBtn, showCopied && styles.copyBtnFlash]}
+              css={styles.copyBtn}
               onClick={handleCopyPath}
               title="Copy file path"
             >
+              {showCopied && <span css={styles.tooltip}>Copied!</span>}
               <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
