@@ -75,12 +75,6 @@ export async function handleSync(request: NextRequest) {
 
       // Check if this is a remote image (in another CDN)
       const isRemote = entry.c !== undefined && existingCdnUrl !== publicUrl
-      
-      // For local images, must be processed first
-      if (!isRemote && !entry.p) {
-        errors.push(`Image not processed: ${imageKey}. Run Process Images first.`)
-        continue
-      }
 
       try {
         let originalBuffer: Buffer

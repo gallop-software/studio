@@ -225,6 +225,8 @@ export function StudioToolbar() {
   const [showProcessConfirm, setShowProcessConfirm] = useState(false)
   const [showSyncConfirm, setShowSyncConfirm] = useState(false)
   const [syncImageCount, setSyncImageCount] = useState(0)
+  const [syncHasRemote, setSyncHasRemote] = useState(false)
+  const [syncHasLocal, setSyncHasLocal] = useState(false)
   const [showProgress, setShowProgress] = useState(false)
   const [progressTitle, setProgressTitle] = useState('Processing Images')
   const [progressState, setProgressState] = useState<ProgressState>({
@@ -779,10 +781,27 @@ export function StudioToolbar() {
       return
     }
 
-    // Store count and show confirm modal
+    // Determine what types of images are selected
+    let hasRemote = false
+    let hasLocal = false
+    
+    for (const imgPath of selectedImagePaths) {
+      const item = fileItems.find(f => f.path === imgPath)
+      if (item) {
+        if (item.isRemote) {
+          hasRemote = true
+        } else if (!item.cdnPushed) {
+          hasLocal = true
+        }
+      }
+    }
+
+    // Store info and show confirm modal
     setSyncImageCount(selectedImagePaths.length)
+    setSyncHasRemote(hasRemote)
+    setSyncHasLocal(hasLocal)
     setShowSyncConfirm(true)
-  }, [selectedItems])
+  }, [selectedItems, fileItems])
 
   const handleSyncConfirm = useCallback(async () => {
     setShowSyncConfirm(false)
@@ -1089,7 +1108,7 @@ export function StudioToolbar() {
       {showSyncConfirm && (
         <ConfirmModal
           title="Push to CDN"
-          message={`Push ${syncImageCount} image${syncImageCount !== 1 ? 's' : ''} to Cloudflare R2? Local images must be processed first. Remote images will be downloaded first. After pushing, local files will be deleted.`}
+          message={`Push ${syncImageCount} image${syncImageCount !== 1 ? 's' : ''} to Cloudflare R2?${syncHasRemote ? ' Remote images will be downloaded first.' : ''}${syncHasLocal ? ' After pushing, local files will be deleted.' : ''}`}
           confirmLabel="Push"
           onConfirm={handleSyncConfirm}
           onCancel={() => setShowSyncConfirm(false)}
