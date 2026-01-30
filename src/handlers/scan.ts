@@ -1,13 +1,16 @@
+import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
 import sharp from 'sharp'
 import { encode } from 'blurhash'
-import { loadMeta, saveMeta, isMediaFile, isImageFile } from './utils'
+import { loadMeta, saveMeta, isMediaFile, isImageFile, getFileEntries } from './utils'
+import { getAllThumbnailPaths } from '../types'
 
 /**
  * Streaming scan handler - scans filesystem for new files not in meta
  * For images, reads dimensions (w/h)
  * Handles collisions by renaming files with -1, -2, etc.
+ * Also detects orphaned files in the images folder
  */
 export async function handleScanStream() {
   const encoder = new TextEncoder()
@@ -20,11 +23,12 @@ export async function handleScanStream() {
 
       try {
         const meta = await loadMeta()
-        const existingCount = Object.keys(meta).length
+        const existingCount = Object.keys(meta).filter(k => !k.startsWith('_')).length
         const existingKeys = new Set(Object.keys(meta))
         const added: string[] = []
         const renamed: Array<{ from: string; to: string }> = []
         const errors: string[] = []
+        const orphanedFiles: string[] = []
 
         // Collect all files first
         const allFiles: Array<{ relativePath: string; fullPath: string }> = []
@@ -154,6 +158,53 @@ export async function handleScanStream() {
           }
         }
 
+        // Check for orphaned files in the images folder
+        sendEvent({ type: 'cleanup', message: 'Checking for orphaned thumbnails...' })
+        
+        // Build set of expected thumbnail paths from meta entries
+        const expectedThumbnails = new Set<string>()
+        const fileEntries = getFileEntries(meta)
+        for (const [imageKey, entry] of fileEntries) {
+          // Only track local thumbnails (not pushed to CDN)
+          if (entry.c === undefined && entry.p === 1) {
+            for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+              expectedThumbnails.add(thumbPath)
+            }
+          }
+        }
+
+        // Scan the images folder for orphaned files
+        async function findOrphans(dir: string, relativePath: string = ''): Promise<void> {
+          try {
+            const entries = await fs.readdir(dir, { withFileTypes: true })
+            
+            for (const entry of entries) {
+              if (entry.name.startsWith('.')) continue
+
+              const fullPath = path.join(dir, entry.name)
+              const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+
+              if (entry.isDirectory()) {
+                await findOrphans(fullPath, relPath)
+              } else if (isImageFile(entry.name)) {
+                const publicPath = `/images/${relPath}`
+                if (!expectedThumbnails.has(publicPath)) {
+                  orphanedFiles.push(publicPath)
+                }
+              }
+            }
+          } catch {
+            // Directory might not exist
+          }
+        }
+
+        const imagesDir = path.join(process.cwd(), 'public', 'images')
+        try {
+          await findOrphans(imagesDir)
+        } catch {
+          // images dir might not exist
+        }
+
         await saveMeta(meta)
 
         sendEvent({ 
@@ -163,6 +214,7 @@ export async function handleScanStream() {
           renamed: renamed.length,
           errors: errors.length,
           renamedFiles: renamed,
+          orphanedFiles: orphanedFiles.length > 0 ? orphanedFiles : undefined,
         })
       } catch (error) {
         console.error('Scan failed:', error)
@@ -180,4 +232,80 @@ export async function handleScanStream() {
       'Connection': 'keep-alive',
     },
   })
+}
+
+/**
+ * Delete orphaned files from the images folder
+ */
+export async function handleDeleteOrphans(request: NextRequest) {
+  try {
+    const { paths } = await request.json() as { paths: string[] }
+    
+    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+      return NextResponse.json({ error: 'No paths provided' }, { status: 400 })
+    }
+    
+    const deleted: string[] = []
+    const errors: string[] = []
+    
+    for (const orphanPath of paths) {
+      // Ensure the path is within the images folder for safety
+      if (!orphanPath.startsWith('/images/')) {
+        errors.push(`Invalid path: ${orphanPath}`)
+        continue
+      }
+      
+      const fullPath = path.join(process.cwd(), 'public', orphanPath)
+      
+      try {
+        await fs.unlink(fullPath)
+        deleted.push(orphanPath)
+      } catch (err) {
+        console.error(`Failed to delete ${orphanPath}:`, err)
+        errors.push(orphanPath)
+      }
+    }
+    
+    // Clean up empty directories
+    const imagesDir = path.join(process.cwd(), 'public', 'images')
+    
+    async function removeEmptyDirs(dir: string): Promise<boolean> {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        let isEmpty = true
+        
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            const subDirEmpty = await removeEmptyDirs(path.join(dir, entry.name))
+            if (!subDirEmpty) isEmpty = false
+          } else {
+            isEmpty = false
+          }
+        }
+        
+        if (isEmpty && dir !== imagesDir) {
+          await fs.rmdir(dir)
+        }
+        
+        return isEmpty
+      } catch {
+        return true
+      }
+    }
+    
+    try {
+      await removeEmptyDirs(imagesDir)
+    } catch {
+      // images dir might not exist
+    }
+    
+    return NextResponse.json({
+      success: true,
+      deleted: deleted.length,
+      errors: errors.length,
+    })
+  } catch (error) {
+    console.error('Failed to delete orphans:', error)
+    return NextResponse.json({ error: 'Failed to delete orphaned files' }, { status: 500 })
+  }
 }

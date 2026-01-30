@@ -43,6 +43,7 @@ export interface FileItem {
   cdnPushed?: boolean
   cdnBaseUrl?: string  // CDN base URL when pushed to cloud
   isRemote?: boolean   // true if CDN URL doesn't match R2 (external import)
+  isProtected?: boolean // true for images folder and its contents (cannot select/modify)
   // Folder-specific properties
   fileCount?: number
   totalSize?: number

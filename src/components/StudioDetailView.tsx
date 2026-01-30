@@ -665,8 +665,8 @@ export function StudioDetailView() {
               {/* Cloud status icons */}
               {focusedItem.cdnPushed && !focusedItem.isRemote && (
                 <span css={styles.statusIcon} title="Pushed to CDN">
-                  <svg css={styles.cloudIcon} fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                  <svg css={styles.cloudIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
                   </svg>
                 </span>
               )}

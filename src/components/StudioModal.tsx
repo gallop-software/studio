@@ -340,6 +340,7 @@ export interface ProgressState {
   processed?: number
   alreadyProcessed?: number
   orphansRemoved?: number
+  orphanedFiles?: string[]  // List of orphaned files found during scan
   errors?: number
   errorMessages?: string[]
   isScan?: boolean
@@ -351,12 +352,14 @@ interface ProgressModalProps {
   progress: ProgressState
   onClose?: () => void
   onStop?: () => void
+  onDeleteOrphans?: () => void
 }
 
 export function ProgressModal({
   title,
   progress,
   onClose,
+  onDeleteOrphans,
   onStop,
 }: ProgressModalProps) {
   const isComplete = progress.status === 'complete'
@@ -449,6 +452,11 @@ export function ProgressModal({
           {isRunning && onStop && (
             <button css={[styles.btn, styles.btnDanger]} onClick={onStop}>
               Stop
+            </button>
+          )}
+          {canClose && progress.orphanedFiles && progress.orphanedFiles.length > 0 && onDeleteOrphans && (
+            <button css={[styles.btn, styles.btnDanger]} onClick={onDeleteOrphans}>
+              Delete {progress.orphanedFiles.length} Orphan{progress.orphanedFiles.length !== 1 ? 's' : ''}
             </button>
           )}
           {canClose && (

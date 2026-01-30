@@ -29,14 +29,21 @@ export async function handleList(request: NextRequest) {
     const seenFolders = new Set<string>()
     const metaKeys = fileEntries.map(([key]) => key)
     
+    // Check if we're inside the images folder (protected area)
+    const isInsideImagesFolder = relativePath === 'images' || relativePath.startsWith('images/')
+    
     // Also check filesystem for folders (including empty ones)
     const absoluteDir = path.join(process.cwd(), requestedPath)
     try {
       const dirEntries = await fs.readdir(absoluteDir, { withFileTypes: true })
       for (const entry of dirEntries) {
-        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'images') {
+        if (entry.isDirectory() && !entry.name.startsWith('.')) {
           if (!seenFolders.has(entry.name)) {
             seenFolders.add(entry.name)
+            
+            // Check if this folder is the images folder or inside it
+            const isImagesFolder = entry.name === 'images' && !relativePath
+            const folderPath = relativePath ? `public/${relativePath}/${entry.name}` : `public/${entry.name}`
             
             // Count files in this folder from meta
             const folderPrefix = pathPrefix === '/' ? `/${entry.name}/` : `${pathPrefix}${entry.name}/`
@@ -47,9 +54,10 @@ export async function handleList(request: NextRequest) {
             
             items.push({
               name: entry.name,
-              path: relativePath ? `public/${relativePath}/${entry.name}` : `public/${entry.name}`,
+              path: folderPath,
               type: 'folder',
               fileCount,
+              isProtected: isImagesFolder || isInsideImagesFolder,
             })
           }
         }
@@ -96,6 +104,7 @@ export async function handleList(request: NextRequest) {
             path: relativePath ? `public/${relativePath}/${folderName}` : `public/${folderName}`,
             type: 'folder',
             fileCount,
+            isProtected: isInsideImagesFolder,
           })
         }
       } else {
@@ -169,6 +178,7 @@ export async function handleList(request: NextRequest) {
           cdnPushed: isPushedToCloud,
           cdnBaseUrl: fileCdnUrl,
           isRemote,
+          isProtected: isInsideImagesFolder,
           dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
         })
       }

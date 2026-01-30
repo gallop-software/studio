@@ -10,7 +10,7 @@ import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleMov
 import { handleSync, handleReprocess, handleProcessAllStream } from './images'
 
 // Scan handler
-import { handleScanStream } from './scan'
+import { handleScanStream, handleDeleteOrphans } from './scan'
 
 // Import handlers
 import { handleImportUrls, handleGetCdns, handleUpdateCdns } from './import'
@@ -113,6 +113,11 @@ export async function POST(request: NextRequest) {
   // Route: /api/studio/scan (streaming)
   if (route === 'scan') {
     return handleScanStream()
+  }
+
+  // Route: /api/studio/delete-orphans
+  if (route === 'delete-orphans') {
+    return handleDeleteOrphans(request)
   }
 
   // Route: /api/studio/import (streaming)

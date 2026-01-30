@@ -487,7 +487,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
   const [showCopied, setShowCopied] = useState(false)
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
-  const isImagesFolder = isFolder && (item.name === 'images' || item.path.includes('/images/'))
+  const isProtected = item.isProtected || (isFolder && item.name === 'images' && item.path === 'public/images')
 
   const handleCopyPath = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -497,30 +497,42 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
     setTimeout(() => setShowCopied(false), 1500)
   }
 
+  const handleClick = (e: React.MouseEvent) => {
+    // Protected items cannot be selected, only opened
+    if (isProtected) {
+      e.stopPropagation()
+      onOpen()
+      return
+    }
+    onClick(e)
+  }
+
   return (
     <div 
-      css={[styles.item, isSelected && styles.itemSelected]} 
-      onClick={onClick}
+      css={[styles.item, isSelected && !isProtected && styles.itemSelected]} 
+      onClick={handleClick}
     >
-      <div
-        css={styles.checkboxWrapper}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <input
-          type="checkbox"
-          css={styles.checkbox}
-          checked={isSelected}
-          onChange={() => onClick({} as React.MouseEvent)}
-        />
-      </div>
+      {!isProtected && (
+        <div
+          css={styles.checkboxWrapper}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            css={styles.checkbox}
+            checked={isSelected}
+            onChange={() => onClick({} as React.MouseEvent)}
+          />
+        </div>
+      )}
 
 
       <div css={styles.content}>
         {/* Cloud status icon - to the left of copy button */}
         {item.cdnPushed && !item.isRemote && (
           <span css={styles.statusBtn} title="Pushed to CDN">
-            <svg css={styles.cloudIcon} fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+            <svg css={styles.cloudIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
             </svg>
           </span>
         )}
@@ -556,7 +568,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
         </button>
 
         {isFolder ? (
-          isImagesFolder ? (
+          isProtected ? (
             <div css={styles.imagesFolderWrapper}>
               <svg css={styles.imagesFolderIcon} fill="currentColor" viewBox="0 0 24 24">
                 <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />

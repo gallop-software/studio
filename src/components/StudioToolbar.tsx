@@ -300,7 +300,16 @@ export function StudioToolbar() {
               status: 'processing',
               currentFile: data.currentFile,
             })
+          } else if (data.type === 'cleanup') {
+            setProgressState(prev => ({
+              ...prev,
+              message: data.message,
+            }))
           } else if (data.type === 'complete') {
+            let message = data.renamed > 0 ? `${data.renamed} file(s) renamed due to conflicts. ` : ''
+            if (data.orphanedFiles && data.orphanedFiles.length > 0) {
+              message += `Found ${data.orphanedFiles.length} orphaned thumbnail(s) in images folder.`
+            }
             setProgressState({
               current: data.total || 0,
               total: data.total || 0,
@@ -309,7 +318,8 @@ export function StudioToolbar() {
               processed: data.added,
               alreadyProcessed: data.existingCount,
               errors: data.errors,
-              message: data.renamed > 0 ? `${data.renamed} file(s) renamed due to conflicts` : undefined,
+              orphanedFiles: data.orphanedFiles,
+              message: message || undefined,
               isScan: true,
             })
             triggerRefresh()
@@ -706,6 +716,42 @@ export function StudioToolbar() {
       abortControllerRef.current.abort()
     }
   }, [])
+
+  const handleDeleteOrphans = useCallback(async () => {
+    const orphanedFiles = progressState.orphanedFiles
+    if (!orphanedFiles || orphanedFiles.length === 0) return
+
+    try {
+      const response = await fetch('/api/studio/delete-orphans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: orphanedFiles }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setProgressState(prev => ({
+          ...prev,
+          orphanedFiles: undefined,
+          orphansRemoved: data.deleted,
+          message: `Deleted ${data.deleted} orphaned thumbnail${data.deleted !== 1 ? 's' : ''}.`,
+        }))
+        triggerRefresh()
+      } else {
+        setAlertMessage({
+          title: 'Delete Failed',
+          message: data.error || 'Failed to delete orphaned files.',
+        })
+      }
+    } catch (error) {
+      console.error('Delete orphans error:', error)
+      setAlertMessage({
+        title: 'Delete Failed',
+        message: 'Failed to delete orphaned files. Check console for details.',
+      })
+    }
+  }, [progressState.orphanedFiles, triggerRefresh])
 
   const handleDeleteClick = useCallback(() => {
     if (selectedItems.size === 0) return
@@ -1133,6 +1179,7 @@ export function StudioToolbar() {
           title={progressTitle}
           progress={progressState}
           onStop={handleStopProcessing}
+          onDeleteOrphans={handleDeleteOrphans}
           onClose={() => {
             setShowProgress(false)
             setProgressState({
