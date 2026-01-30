@@ -212,8 +212,8 @@ const styles = {
   `,
   copyBtn: css`
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 4px;
+    right: 4px;
     z-index: 10;
     height: 28px;
     width: 28px;
@@ -238,25 +238,27 @@ const styles = {
   `,
   tooltip: css`
     position: absolute;
-    top: 100%;
-    right: 0;
+    top: 50%;
+    right: 100%;
+    transform: translateY(-50%);
     background: #1a1f36;
     color: white;
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 12px;
     white-space: nowrap;
-    margin-top: 6px;
+    margin-right: 6px;
     pointer-events: none;
     z-index: 100;
     
     &::before {
       content: '';
       position: absolute;
-      bottom: 100%;
-      right: 8px;
+      left: 100%;
+      top: 50%;
+      transform: translateY(-50%);
       border: 4px solid transparent;
-      border-bottom-color: #1a1f36;
+      border-left-color: #1a1f36;
     }
   `,
   openBtn: css`
