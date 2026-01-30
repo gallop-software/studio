@@ -5,7 +5,6 @@ import { useEffect, useState, useRef } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { colors, fontSize } from './tokens'
-import { InputModal } from './StudioModal'
 import type { FileItem } from '../types'
 
 const spin = keyframes`
@@ -74,10 +73,6 @@ const styles = {
     &:hover {
       border-color: #d0d5dd;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
-      
-      button[title="Rename"] {
-        opacity: 1;
-      }
     }
   `,
   itemSelected: css`
@@ -237,35 +232,6 @@ const styles = {
       color: ${colors.text};
     }
   `,
-  nameRow: css`
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  `,
-  renameBtn: css`
-    flex-shrink: 0;
-    height: 20px;
-    width: 20px;
-    color: ${colors.textMuted};
-    background: transparent;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.15s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    
-    &:hover {
-      color: ${colors.text};
-    }
-  `,
-  renameIcon: css`
-    width: 14px;
-    height: 14px;
-  `,
   copyIcon: css`
     width: 18px;
     height: 18px;
@@ -367,7 +333,6 @@ export function StudioFileGrid() {
   const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem, triggerRefresh, searchQuery } = useStudio()
   const [items, setItems] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [renameItem, setRenameItem] = useState<FileItem | null>(null)
   const isInitialLoad = useRef(true)
   const lastPath = useRef(currentPath)
 
@@ -461,23 +426,6 @@ export function StudioFileGrid() {
     }
   }
 
-  const handleRename = async (newName: string) => {
-    if (!renameItem) return
-    setRenameItem(null)
-    try {
-      const response = await fetch('/api/studio/rename', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPath: renameItem.path, newName }),
-      })
-      if (response.ok) {
-        triggerRefresh()
-      }
-    } catch (error) {
-      console.error('Failed to rename:', error)
-    }
-  }
-
   const allItemsSelected = sortedItems.length > 0 && sortedItems.every(item => selectedItems.has(item.path))
   const someItemsSelected = sortedItems.some(item => selectedItems.has(item.path))
 
@@ -491,17 +439,6 @@ export function StudioFileGrid() {
 
   return (
     <div>
-      {renameItem && (
-        <InputModal
-          title={renameItem.type === 'folder' ? 'Rename Folder' : 'Rename File'}
-          message="Enter a new name:"
-          placeholder={renameItem.name}
-          defaultValue={renameItem.name}
-          confirmLabel="Rename"
-          onConfirm={handleRename}
-          onCancel={() => setRenameItem(null)}
-        />
-      )}
       {sortedItems.length > 0 && (
         <div css={styles.selectAllRow}>
           <label css={styles.selectAllLabel}>
@@ -545,7 +482,6 @@ export function StudioFileGrid() {
             onClick={(e) => handleItemClick(item, e)}
             onOpen={() => handleOpen(item)}
             onGenerateThumbnail={() => handleGenerateThumbnail(item)}
-            onRename={() => setRenameItem(item)}
           />
         ))}
       </div>
@@ -559,10 +495,9 @@ interface GridItemProps {
   onClick: (e: React.MouseEvent) => void
   onOpen: () => void
   onGenerateThumbnail: () => void
-  onRename: () => void
 }
 
-function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail, onRename }: GridItemProps) {
+function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: GridItemProps) {
   const [showCopied, setShowCopied] = useState(false)
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
@@ -662,18 +597,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail, onRe
       <div css={styles.label}>
         <div css={styles.labelRow}>
           <div css={styles.labelText}>
-            <div css={styles.nameRow}>
-              <p css={styles.name} title={item.name}>{truncateMiddle(item.name)}</p>
-              <button
-                css={styles.renameBtn}
-                onClick={(e) => { e.stopPropagation(); onRename(); }}
-                title="Rename"
-              >
-                <svg css={styles.renameIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-            </div>
+            <p css={styles.name} title={item.name}>{truncateMiddle(item.name)}</p>
             {isFolder ? (
               <p css={styles.size}>
                 {item.fileCount !== undefined ? `${item.fileCount} files` : ''}

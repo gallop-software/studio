@@ -5,7 +5,6 @@ import { useEffect, useState, useRef } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { colors, fontSize } from './tokens'
-import { InputModal } from './StudioModal'
 import type { FileItem } from '../types'
 
 const spin = keyframes`
@@ -322,7 +321,6 @@ export function StudioFileList() {
   const { currentPath, setCurrentPath, navigateUp, selectedItems, toggleSelection, selectRange, lastSelectedPath, selectAll, clearSelection, refreshKey, setFocusedItem, triggerRefresh, searchQuery } = useStudio()
   const [items, setItems] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [renameItem, setRenameItem] = useState<FileItem | null>(null)
   const isInitialLoad = useRef(true)
   const lastPath = useRef(currentPath)
 
@@ -411,23 +409,6 @@ export function StudioFileList() {
     }
   }
 
-  const handleRename = async (newName: string) => {
-    if (!renameItem) return
-    setRenameItem(null)
-    try {
-      const response = await fetch('/api/studio/rename', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPath: renameItem.path, newName }),
-      })
-      if (response.ok) {
-        triggerRefresh()
-      }
-    } catch (error) {
-      console.error('Failed to rename:', error)
-    }
-  }
-
   const allItemsSelected = sortedItems.length > 0 && sortedItems.every(item => selectedItems.has(item.path))
   const someItemsSelected = sortedItems.some(item => selectedItems.has(item.path))
 
@@ -441,17 +422,6 @@ export function StudioFileList() {
 
   return (
     <div css={styles.tableWrapper}>
-      {renameItem && (
-        <InputModal
-          title={renameItem.type === 'folder' ? 'Rename Folder' : 'Rename File'}
-          message="Enter a new name:"
-          placeholder={renameItem.name}
-          defaultValue={renameItem.name}
-          confirmLabel="Rename"
-          onConfirm={handleRename}
-          onCancel={() => setRenameItem(null)}
-        />
-      )}
       <table css={styles.table}>
         <thead>
           <tr>
@@ -501,7 +471,6 @@ export function StudioFileList() {
               onClick={(e) => handleItemClick(item, e)}
               onOpen={() => handleOpen(item)}
               onGenerateThumbnail={() => handleGenerateThumbnail(item)}
-              onRename={() => setRenameItem(item)}
             />
           ))}
         </tbody>
@@ -516,10 +485,9 @@ interface ListRowProps {
   onClick: (e: React.MouseEvent) => void
   onOpen: () => void
   onGenerateThumbnail: () => void
-  onRename: () => void
 }
 
-function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail, onRename }: ListRowProps) {
+function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: ListRowProps) {
   const [showCopied, setShowCopied] = useState(false)
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
@@ -601,15 +569,6 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail, onRen
               {showCopied && <span css={styles.tooltip}>Copied!</span>}
               <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </button>
-            <button
-              css={styles.copyBtn}
-              onClick={(e) => { e.stopPropagation(); onRename(); }}
-              title="Rename"
-            >
-              <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
             </button>
             <button

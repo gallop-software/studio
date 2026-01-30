@@ -232,6 +232,7 @@ export function StudioToolbar() {
   const [imagesToProcess, setImagesToProcess] = useState<string[]>([])
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showNewFolderModal, setShowNewFolderModal] = useState(false)
+  const [showRenameFolderModal, setShowRenameFolderModal] = useState(false)
   const [showMoveModal, setShowMoveModal] = useState(false)
 
   // Check if we're in the images folder (uploads not allowed there)
@@ -665,6 +666,30 @@ export function StudioToolbar() {
   }, [setSearchQuery])
 
   const hasSelection = selectedItems.size > 0
+  
+  // Check if exactly one folder is selected (for rename)
+  const selectedPaths = Array.from(selectedItems)
+  const singleFolderSelected = selectedPaths.length === 1 && !selectedPaths[0].includes('.')
+  const selectedFolderPath = singleFolderSelected ? selectedPaths[0] : null
+  const selectedFolderName = selectedFolderPath ? selectedFolderPath.split('/').pop() || '' : ''
+
+  const handleRenameFolder = useCallback(async (newName: string) => {
+    if (!selectedFolderPath) return
+    setShowRenameFolderModal(false)
+    try {
+      const response = await fetch('/api/studio/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPath: selectedFolderPath, newName }),
+      })
+      if (response.ok) {
+        clearSelection()
+        triggerRefresh()
+      }
+    } catch (error) {
+      console.error('Failed to rename folder:', error)
+    }
+  }, [selectedFolderPath, clearSelection, triggerRefresh])
 
   // Hide toolbar actions when viewing detail
   if (focusedItem) {
@@ -737,6 +762,18 @@ export function StudioToolbar() {
         />
       )}
 
+      {showRenameFolderModal && selectedFolderPath && (
+        <InputModal
+          title="Rename Folder"
+          message="Enter a new name for the folder:"
+          placeholder={selectedFolderName}
+          defaultValue={selectedFolderName}
+          confirmLabel="Rename"
+          onConfirm={handleRenameFolder}
+          onCancel={() => setShowRenameFolderModal(false)}
+        />
+      )}
+
       {alertMessage && (
         <AlertModal
           title={alertMessage.title}
@@ -766,12 +803,12 @@ export function StudioToolbar() {
           </button>
           <button
             css={styles.btn}
-            onClick={() => setShowNewFolderModal(true)}
-            disabled={isInImagesFolder}
-            title={isInImagesFolder ? 'Cannot create folders in protected images folder' : undefined}
+            onClick={() => singleFolderSelected ? setShowRenameFolderModal(true) : setShowNewFolderModal(true)}
+            disabled={isInImagesFolder && !singleFolderSelected}
+            title={isInImagesFolder && !singleFolderSelected ? 'Cannot create folders in protected images folder' : undefined}
           >
-            <FolderPlusIcon />
-            New Folder
+            {singleFolderSelected ? <RenameIcon /> : <FolderPlusIcon />}
+            {singleFolderSelected ? 'Rename Folder' : 'New Folder'}
           </button>
           
           <div css={styles.divider} />
@@ -899,6 +936,14 @@ function FolderPlusIcon() {
   return (
     <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+    </svg>
+  )
+}
+
+function RenameIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
     </svg>
   )
 }
