@@ -283,15 +283,20 @@ const styles = {
     color: ${colors.text};
     text-align: left;
     
-    &:hover {
+    &:hover:not(:disabled) {
       background-color: ${colors.surfaceHover};
       border-color: ${colors.borderHover};
+    }
+    
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
   `,
   actionBtnDanger: css`
     color: ${colors.danger};
     
-    &:hover {
+    &:hover:not(:disabled) {
       background-color: ${colors.dangerLight};
       border-color: ${colors.danger};
     }
