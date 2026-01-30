@@ -81,3 +81,19 @@ export interface StudioConfig {
     large: number
   }
 }
+
+/**
+ * Lean meta entry - minimal data per image
+ */
+export interface LeanImageEntry {
+  w: number      // original width
+  h: number      // original height
+  blur: string   // blurhash
+  s?: 1          // synced to CDN (omit if not synced)
+}
+
+/**
+ * Lean meta schema - keyed by path from public folder
+ * Example: { "/portfolio/photo.jpg": { w: 2400, h: 1600, blur: "..." } }
+ */
+export type LeanMeta = Record<string, LeanImageEntry>

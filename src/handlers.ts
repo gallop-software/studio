@@ -4,7 +4,7 @@ import path from 'path'
 import sharp from 'sharp'
 import { encode } from 'blurhash'
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
-import type { StudioMeta, ImageEntry, ImageSize, FileItem } from './types'
+import type { StudioMeta, ImageEntry, ImageSize, FileItem, LeanMeta, LeanImageEntry } from './types'
 
 // Default thumbnail sizes with their suffixes
 const DEFAULT_SIZES: Record<string, { width: number; suffix: string }> = {
@@ -1195,10 +1195,29 @@ async function loadMeta(): Promise<StudioMeta> {
 }
 
 async function saveMeta(meta: StudioMeta): Promise<void> {
-  const metaPath = path.join(process.cwd(), '_data', '_meta.json')
-  await fs.mkdir(path.join(process.cwd(), '_data'), { recursive: true })
+  const dataDir = path.join(process.cwd(), '_data')
+  await fs.mkdir(dataDir, { recursive: true })
   meta.generatedAt = new Date().toISOString()
+  
+  // Write verbose format (existing)
+  const metaPath = path.join(dataDir, '_meta.json')
   await fs.writeFile(metaPath, JSON.stringify(meta, null, 2))
+  
+  // Write lean format (new)
+  const lean: LeanMeta = {}
+  for (const [key, entry] of Object.entries(meta.images)) {
+    const imagePath = entry.original?.path || `/${key}`
+    lean[imagePath] = {
+      w: entry.original?.width || 0,
+      h: entry.original?.height || 0,
+      blur: entry.blurhash || '',
+    }
+    if (entry.cdn?.synced) {
+      lean[imagePath].s = 1
+    }
+  }
+  const leanPath = path.join(dataDir, '_meta.lean.json')
+  await fs.writeFile(leanPath, JSON.stringify(lean, null, 2))
 }
 
 function isImageFile(filename: string): boolean {
