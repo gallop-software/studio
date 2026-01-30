@@ -49,6 +49,11 @@ export async function GET(request: NextRequest) {
     return handleSearch(request)
   }
 
+  // Route: /api/studio/list-folders
+  if (route === 'list-folders') {
+    return handleListFolders()
+  }
+
   return NextResponse.json({ error: 'Not found' }, { status: 404 })
 }
 
@@ -86,6 +91,21 @@ export async function POST(request: NextRequest) {
   // Route: /api/studio/process-all (streaming)
   if (route === 'process-all') {
     return handleProcessAllStream()
+  }
+
+  // Route: /api/studio/create-folder
+  if (route === 'create-folder') {
+    return handleCreateFolder(request)
+  }
+
+  // Route: /api/studio/rename
+  if (route === 'rename') {
+    return handleRename(request)
+  }
+
+  // Route: /api/studio/move
+  if (route === 'move') {
+    return handleMove(request)
   }
 
   return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -1375,5 +1395,329 @@ async function deleteLocalFiles(entry: ImageEntry): Promise<void> {
     } catch {
       // File might not exist
     }
+  }
+}
+
+// ============================================================================
+// FOLDER MANAGEMENT HANDLERS
+// ============================================================================
+
+async function handleCreateFolder(request: NextRequest) {
+  try {
+    const { parentPath, name } = await request.json()
+
+    if (!name || typeof name !== 'string') {
+      return NextResponse.json({ error: 'Folder name is required' }, { status: 400 })
+    }
+
+    // Sanitize folder name
+    const sanitizedName = name.replace(/[<>:"/\\|?*]/g, '').trim()
+    if (!sanitizedName) {
+      return NextResponse.json({ error: 'Invalid folder name' }, { status: 400 })
+    }
+
+    const safePath = (parentPath || 'public').replace(/\.\./g, '')
+    const folderPath = path.join(process.cwd(), safePath, sanitizedName)
+
+    // Check if we're within public folder
+    if (!folderPath.startsWith(path.join(process.cwd(), 'public'))) {
+      return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+    }
+
+    // Check if folder already exists
+    try {
+      await fs.access(folderPath)
+      return NextResponse.json({ error: 'A folder with this name already exists' }, { status: 400 })
+    } catch {
+      // Good - folder doesn't exist
+    }
+
+    await fs.mkdir(folderPath, { recursive: true })
+
+    return NextResponse.json({ success: true, path: path.join(safePath, sanitizedName) })
+  } catch (error) {
+    console.error('Failed to create folder:', error)
+    return NextResponse.json({ error: 'Failed to create folder' }, { status: 500 })
+  }
+}
+
+async function handleRename(request: NextRequest) {
+  try {
+    const { oldPath, newName } = await request.json()
+
+    if (!oldPath || !newName) {
+      return NextResponse.json({ error: 'Path and new name are required' }, { status: 400 })
+    }
+
+    // Sanitize new name
+    const sanitizedName = newName.replace(/[<>:"/\\|?*]/g, '').trim()
+    if (!sanitizedName) {
+      return NextResponse.json({ error: 'Invalid name' }, { status: 400 })
+    }
+
+    const safePath = oldPath.replace(/\.\./g, '')
+    const absoluteOldPath = path.join(process.cwd(), safePath)
+    const parentDir = path.dirname(absoluteOldPath)
+    const absoluteNewPath = path.join(parentDir, sanitizedName)
+
+    // Check path is within public folder
+    if (!absoluteOldPath.startsWith(path.join(process.cwd(), 'public'))) {
+      return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+    }
+
+    // Check if old path exists
+    try {
+      await fs.access(absoluteOldPath)
+    } catch {
+      return NextResponse.json({ error: 'File or folder not found' }, { status: 404 })
+    }
+
+    // Check if new path already exists
+    try {
+      await fs.access(absoluteNewPath)
+      return NextResponse.json({ error: 'An item with this name already exists' }, { status: 400 })
+    } catch {
+      // Good - new path doesn't exist
+    }
+
+    // Check if it's a file (for meta updates)
+    const stats = await fs.stat(absoluteOldPath)
+    const isFile = stats.isFile()
+    const isImage = isFile && isImageFile(path.basename(oldPath))
+
+    // Rename the file/folder
+    await fs.rename(absoluteOldPath, absoluteNewPath)
+
+    // Update meta if it's an image
+    if (isImage) {
+      const meta = await loadMeta()
+      const oldRelativePath = safePath.replace(/^public\//, '')
+      const newRelativePath = path.join(path.dirname(oldRelativePath), sanitizedName)
+
+      // Find and update meta entry
+      for (const [key, entry] of Object.entries(meta.images)) {
+        if (entry.original.path === `/${oldRelativePath}`) {
+          // Update original path
+          entry.original.path = `/${newRelativePath}`
+
+          // Rename thumbnails in public/images
+          const oldExt = path.extname(path.basename(oldPath))
+          const oldBaseName = path.basename(oldPath, oldExt)
+          const newExt = path.extname(sanitizedName)
+          const newBaseName = path.basename(sanitizedName, newExt)
+          const oldDirRelative = path.dirname(oldRelativePath)
+          const thumbnailDir = path.join(process.cwd(), 'public', 'images', oldDirRelative)
+
+          for (const [sizeName, sizeData] of Object.entries(entry.sizes)) {
+            const suffix = DEFAULT_SIZES[sizeName]?.suffix || `-${sizeName}`
+            const oldThumbName = `${oldBaseName}${suffix}${oldExt === '.png' ? '.png' : '.jpg'}`
+            const newThumbName = `${newBaseName}${suffix}${newExt === '.png' ? '.png' : '.jpg'}`
+            const oldThumbPath = path.join(thumbnailDir, oldThumbName)
+            const newThumbPath = path.join(thumbnailDir, newThumbName)
+
+            try {
+              await fs.rename(oldThumbPath, newThumbPath)
+              sizeData.path = `/images/${oldDirRelative}/${newThumbName}`.replace(/\/+/g, '/')
+            } catch {
+              // Thumbnail might not exist
+            }
+          }
+
+          // Update the key in meta
+          const newKey = `/${newRelativePath}`
+          delete meta.images[key]
+          meta.images[newKey] = entry
+          break
+        }
+      }
+
+      await saveMeta(meta)
+    }
+
+    const newPath = path.join(path.dirname(safePath), sanitizedName)
+    return NextResponse.json({ success: true, newPath })
+  } catch (error) {
+    console.error('Failed to rename:', error)
+    return NextResponse.json({ error: 'Failed to rename' }, { status: 500 })
+  }
+}
+
+async function handleMove(request: NextRequest) {
+  try {
+    const { paths, destination } = await request.json()
+
+    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+      return NextResponse.json({ error: 'Paths are required' }, { status: 400 })
+    }
+
+    if (!destination || typeof destination !== 'string') {
+      return NextResponse.json({ error: 'Destination is required' }, { status: 400 })
+    }
+
+    const safeDestination = destination.replace(/\.\./g, '')
+    const absoluteDestination = path.join(process.cwd(), safeDestination)
+
+    // Check destination is within public folder
+    if (!absoluteDestination.startsWith(path.join(process.cwd(), 'public'))) {
+      return NextResponse.json({ error: 'Invalid destination' }, { status: 400 })
+    }
+
+    // Cannot move to protected images folder
+    if (safeDestination === 'public/images' || safeDestination.startsWith('public/images/')) {
+      return NextResponse.json({ error: 'Cannot move items to the protected images folder' }, { status: 400 })
+    }
+
+    // Check destination exists and is a directory
+    try {
+      const destStats = await fs.stat(absoluteDestination)
+      if (!destStats.isDirectory()) {
+        return NextResponse.json({ error: 'Destination is not a folder' }, { status: 400 })
+      }
+    } catch {
+      return NextResponse.json({ error: 'Destination folder not found' }, { status: 404 })
+    }
+
+    const moved: string[] = []
+    const errors: string[] = []
+    const meta = await loadMeta()
+    let metaChanged = false
+
+    for (const itemPath of paths) {
+      const safePath = itemPath.replace(/\.\./g, '')
+      const absolutePath = path.join(process.cwd(), safePath)
+      const itemName = path.basename(safePath)
+      const newAbsolutePath = path.join(absoluteDestination, itemName)
+
+      // Cannot move a folder into itself
+      if (absoluteDestination.startsWith(absolutePath + path.sep)) {
+        errors.push(`Cannot move ${itemName} into itself`)
+        continue
+      }
+
+      // Check source exists
+      try {
+        await fs.access(absolutePath)
+      } catch {
+        errors.push(`${itemName} not found`)
+        continue
+      }
+
+      // Check if destination already has item with same name
+      try {
+        await fs.access(newAbsolutePath)
+        errors.push(`${itemName} already exists in destination`)
+        continue
+      } catch {
+        // Good - doesn't exist
+      }
+
+      try {
+        await fs.rename(absolutePath, newAbsolutePath)
+
+        // Update meta for images
+        const stats = await fs.stat(newAbsolutePath)
+        if (stats.isFile() && isImageFile(itemName)) {
+          const oldRelativePath = safePath.replace(/^public\//, '')
+          const newRelativePath = path.join(safeDestination.replace(/^public\//, ''), itemName)
+
+          for (const [key, entry] of Object.entries(meta.images)) {
+            if (entry.original.path === `/${oldRelativePath}`) {
+              entry.original.path = `/${newRelativePath}`
+
+              // Move thumbnails too
+              const oldDir = path.dirname(oldRelativePath)
+              const newDir = path.dirname(newRelativePath)
+              const ext = path.extname(itemName)
+              const baseName = path.basename(itemName, ext)
+              const oldThumbDir = path.join(process.cwd(), 'public', 'images', oldDir)
+              const newThumbDir = path.join(process.cwd(), 'public', 'images', newDir)
+
+              // Ensure new thumb directory exists
+              await fs.mkdir(newThumbDir, { recursive: true })
+
+              for (const [sizeName, sizeData] of Object.entries(entry.sizes)) {
+                const suffix = DEFAULT_SIZES[sizeName]?.suffix || `-${sizeName}`
+                const thumbName = `${baseName}${suffix}${ext === '.png' ? '.png' : '.jpg'}`
+                const oldThumbPath = path.join(oldThumbDir, thumbName)
+                const newThumbPath = path.join(newThumbDir, thumbName)
+
+                try {
+                  await fs.rename(oldThumbPath, newThumbPath)
+                  sizeData.path = `/images/${newDir}/${thumbName}`.replace(/\/+/g, '/')
+                } catch {
+                  // Thumbnail might not exist
+                }
+              }
+
+              // Update key
+              const newKey = `/${newRelativePath}`
+              delete meta.images[key]
+              meta.images[newKey] = entry
+              metaChanged = true
+              break
+            }
+          }
+        }
+
+        moved.push(itemPath)
+      } catch (error) {
+        errors.push(`Failed to move ${itemName}`)
+      }
+    }
+
+    if (metaChanged) {
+      await saveMeta(meta)
+    }
+
+    return NextResponse.json({
+      success: errors.length === 0,
+      moved,
+      errors: errors.length > 0 ? errors : undefined
+    })
+  } catch (error) {
+    console.error('Failed to move:', error)
+    return NextResponse.json({ error: 'Failed to move items' }, { status: 500 })
+  }
+}
+
+async function handleListFolders() {
+  try {
+    const publicDir = path.join(process.cwd(), 'public')
+    const folders: { path: string; name: string; depth: number }[] = []
+
+    async function scanDir(dir: string, relativePath: string, depth: number): Promise<void> {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          if (entry.name.startsWith('.')) continue
+          // Skip protected images folder
+          if (relativePath === '' && entry.name === 'images') continue
+
+          const folderRelativePath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+          folders.push({
+            path: `public/${folderRelativePath}`,
+            name: entry.name,
+            depth
+          })
+
+          // Recursively scan subdirectories
+          await scanDir(path.join(dir, entry.name), folderRelativePath, depth + 1)
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    // Add root public folder
+    folders.push({ path: 'public', name: 'public', depth: 0 })
+
+    await scanDir(publicDir, '', 1)
+
+    return NextResponse.json({ folders })
+  } catch (error) {
+    console.error('Failed to list folders:', error)
+    return NextResponse.json({ error: 'Failed to list folders' }, { status: 500 })
   }
 }

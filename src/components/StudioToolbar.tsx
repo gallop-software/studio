@@ -4,7 +4,8 @@
 import { useCallback, useRef, useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
-import { ConfirmModal, AlertModal, ProgressModal, type ProgressState } from './StudioModal'
+import { ConfirmModal, AlertModal, ProgressModal, InputModal, type ProgressState } from './StudioModal'
+import { StudioFolderPicker } from './StudioFolderPicker'
 import { colors, fontSize } from './tokens'
 
 // Standard button height for consistency
@@ -230,6 +231,8 @@ export function StudioToolbar() {
   const [processMode, setProcessMode] = useState<'all' | 'selected'>('all')
   const [imagesToProcess, setImagesToProcess] = useState<string[]>([])
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false)
+  const [showMoveModal, setShowMoveModal] = useState(false)
 
   // Check if we're in the images folder (uploads not allowed there)
   const isInImagesFolder = currentPath === 'public/images' || currentPath.startsWith('public/images/')
@@ -580,6 +583,73 @@ export function StudioToolbar() {
     console.log('Sync CDN clicked', selectedItems)
   }, [selectedItems])
 
+  const handleCreateFolder = useCallback(async (folderName: string) => {
+    setShowNewFolderModal(false)
+    
+    try {
+      const response = await fetch('/api/studio/create-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentPath: currentPath, name: folderName }),
+      })
+
+      if (response.ok) {
+        triggerRefresh()
+      } else {
+        const error = await response.json()
+        setAlertMessage({
+          title: 'Create Folder Failed',
+          message: error.error || 'Unknown error',
+        })
+      }
+    } catch (error) {
+      console.error('Create folder error:', error)
+      setAlertMessage({
+        title: 'Create Folder Failed',
+        message: 'Failed to create folder. Check console for details.',
+      })
+    }
+  }, [currentPath, triggerRefresh])
+
+  const handleMoveClick = useCallback(() => {
+    if (selectedItems.size === 0) return
+    setShowMoveModal(true)
+  }, [selectedItems])
+
+  const handleMoveConfirm = useCallback(async (destination: string) => {
+    try {
+      const response = await fetch('/api/studio/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: Array.from(selectedItems), destination }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        clearSelection()
+        triggerRefresh()
+        if (data.errors && data.errors.length > 0) {
+          setAlertMessage({
+            title: 'Move Completed with Errors',
+            message: data.errors.join('\n'),
+          })
+        }
+      } else {
+        setAlertMessage({
+          title: 'Move Failed',
+          message: data.error || 'Unknown error',
+        })
+      }
+    } catch (error) {
+      console.error('Move error:', error)
+      setAlertMessage({
+        title: 'Move Failed',
+        message: 'Failed to move items. Check console for details.',
+      })
+    }
+  }, [selectedItems, clearSelection, triggerRefresh])
+
   const { searchQuery, setSearchQuery } = useStudio()
   
   const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -649,6 +719,28 @@ export function StudioToolbar() {
         />
       )}
 
+      {showNewFolderModal && (
+        <InputModal
+          title="New Folder"
+          message="Enter a name for the new folder:"
+          placeholder="Folder name"
+          confirmLabel="Create"
+          onConfirm={handleCreateFolder}
+          onCancel={() => setShowNewFolderModal(false)}
+        />
+      )}
+
+      {showMoveModal && (
+        <StudioFolderPicker
+          selectedItems={selectedItems}
+          onMove={(destination) => {
+            setShowMoveModal(false)
+            handleMoveConfirm(destination)
+          }}
+          onCancel={() => setShowMoveModal(false)}
+        />
+      )}
+
       {alertMessage && (
         <AlertModal
           title={alertMessage.title}
@@ -676,6 +768,15 @@ export function StudioToolbar() {
             <UploadIcon />
             {uploading ? 'Uploading...' : 'Upload'}
           </button>
+          <button
+            css={styles.btn}
+            onClick={() => setShowNewFolderModal(true)}
+            disabled={isInImagesFolder}
+            title={isInImagesFolder ? 'Cannot create folders in protected images folder' : undefined}
+          >
+            <FolderPlusIcon />
+            New Folder
+          </button>
           
           <div css={styles.divider} />
           
@@ -696,6 +797,15 @@ export function StudioToolbar() {
           >
             <TrashIcon />
             Delete
+          </button>
+          <button
+            css={styles.btn}
+            onClick={handleMoveClick}
+            disabled={!hasSelection || hasImagesSelected}
+            title={hasImagesSelected ? 'Cannot move protected images folder items' : undefined}
+          >
+            <MoveIcon />
+            Move
           </button>
           <button
             css={styles.btn}
@@ -787,6 +897,22 @@ function TrashIcon() {
   return (
     <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  )
+}
+
+function FolderPlusIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+    </svg>
+  )
+}
+
+function MoveIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
     </svg>
   )
 }
