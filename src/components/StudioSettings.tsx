@@ -411,7 +411,8 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
       const response = await fetch('/api/studio/cdns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cdns: cdnUrls.filter(url => url.trim()) }),
+        // Preserve empty strings as placeholders to maintain indices
+        body: JSON.stringify({ cdns: cdnUrls }),
       })
       
       if (response.ok) {
