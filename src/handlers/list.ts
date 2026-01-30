@@ -126,6 +126,7 @@ export async function handleList(request: NextRequest) {
           size: fileSize,
           thumbnail,
           hasThumbnail,
+          isProcessed: entry.p === 1,
           cdnPushed: isPushedToCloud,
           dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
         })
@@ -194,6 +195,7 @@ export async function handleSearch(request: NextRequest) {
         type: 'file',
         thumbnail,
         hasThumbnail,
+        isProcessed: entry.p === 1,
         cdnPushed: isPushedToCloud,
         dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
       })

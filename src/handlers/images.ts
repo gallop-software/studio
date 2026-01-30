@@ -58,6 +58,11 @@ export async function handleSync(request: NextRequest) {
         continue
       }
 
+      if (!entry.p) {
+        errors.push(`Image not processed: ${imageKey}. Run Process Images first.`)
+        continue
+      }
+
       try {
         // Upload original file first
         const originalLocalPath = path.join(process.cwd(), 'public', imageKey)
@@ -209,23 +214,16 @@ export async function handleProcessAllStream() {
 
         // Count images in different states
         let alreadyProcessed = 0
-        let pushedToCloud = 0
 
-        // Get all images from meta that need processing (not pushed, no blur yet)
+        // Get all images from meta that need processing (no p flag = not processed yet)
         const imagesToProcess: Array<{ key: string; entry: typeof meta[string] }> = []
         
         for (const [key, entry] of Object.entries(meta)) {
           const fileName = path.basename(key)
           if (!isImageFile(fileName)) continue
           
-          // Skip pushed images - they're already processed and on CDN
-          if (entry.c) {
-            pushedToCloud++
-            continue
-          }
-          
-          // Check if needs processing (no b = not processed yet)
-          if (!entry.b) {
+          // Check if needs processing (no p = not processed yet)
+          if (!entry.p) {
             imagesToProcess.push({ key, entry })
           } else {
             alreadyProcessed++
@@ -236,8 +234,9 @@ export async function handleProcessAllStream() {
         sendEvent({ type: 'start', total })
 
         for (let i = 0; i < imagesToProcess.length; i++) {
-          const { key } = imagesToProcess[i]
+          const { key, entry } = imagesToProcess[i]
           const fullPath = path.join(process.cwd(), 'public', key)
+          const isInCloud = entry.c === 1
           
           sendEvent({ 
             type: 'progress', 
@@ -248,7 +247,19 @@ export async function handleProcessAllStream() {
           })
 
           try {
-            const buffer = await fs.readFile(fullPath)
+            let buffer: Buffer
+            
+            // If image is in cloud, download it first
+            if (isInCloud) {
+              buffer = await downloadFromCdn(key)
+              // Save to local path temporarily for processing
+              const dir = path.dirname(fullPath)
+              await fs.mkdir(dir, { recursive: true })
+              await fs.writeFile(fullPath, buffer)
+            } else {
+              buffer = await fs.readFile(fullPath)
+            }
+            
             const ext = path.extname(key).toLowerCase()
             const isSvg = ext === '.svg'
 
@@ -262,13 +273,27 @@ export async function handleProcessAllStream() {
               await fs.writeFile(destPath, buffer)
 
               meta[key] = {
+                ...entry,
                 w: 0,
                 h: 0,
                 b: '',
+                p: 1,
               }
             } else {
               const processedEntry = await processImage(buffer, key)
-              meta[key] = processedEntry
+              meta[key] = {
+                ...processedEntry,
+                p: 1,
+                ...(isInCloud ? { c: 1 } : {}),
+              }
+            }
+
+            // If image was in cloud, upload new thumbnails and clean up local files
+            if (isInCloud) {
+              await uploadToCdn(key)
+              await deleteLocalThumbnails(key)
+              // Delete local original
+              try { await fs.unlink(fullPath) } catch { /* ignore */ }
             }
 
             processed.push(key.slice(1))
@@ -363,7 +388,6 @@ export async function handleProcessAllStream() {
           type: 'complete', 
           processed: processed.length, 
           alreadyProcessed,
-          pushedToCloud,
           orphansRemoved: orphansRemoved.length,
           errors: errors.length,
         })

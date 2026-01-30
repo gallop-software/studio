@@ -7,6 +7,7 @@ export interface MetaEntry {
   w?: number     // original width (images only)
   h?: number     // original height (images only)
   b?: string     // blurhash (images only, after processing)
+  p?: 1          // processed (has thumbnails and blurhash)
   c?: 1          // pushed to CDN (omit if not pushed)
 }
 
@@ -28,6 +29,7 @@ export interface FileItem {
   type: 'file' | 'folder'
   size?: number
   dimensions?: { width: number; height: number }
+  isProcessed?: boolean
   cdnPushed?: boolean
   // Folder-specific properties
   fileCount?: number

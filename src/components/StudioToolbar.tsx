@@ -595,7 +595,6 @@ export function StudioToolbar() {
                     status: 'complete',
                     processed: data.processed,
                     alreadyProcessed: data.alreadyProcessed,
-                    pushedToCloud: data.pushedToCloud,
                     orphansRemoved: data.orphansRemoved,
                     errors: data.errors,
                   })
