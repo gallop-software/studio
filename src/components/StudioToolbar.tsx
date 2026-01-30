@@ -1194,7 +1194,8 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleSyncClick}
-            disabled={!hasSelection}
+            disabled={!hasSelection || hasCloudOnlySelection}
+            title={hasCloudOnlySelection ? 'Selected files are already in the cloud' : undefined}
           >
             <CloudIcon />
             Push CDN
