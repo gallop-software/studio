@@ -120,6 +120,7 @@ const styles = {
     flex-shrink: 0;
   `,
   copyBtn: css`
+    position: relative;
     flex-shrink: 0;
     height: 32px;
     width: 32px;
