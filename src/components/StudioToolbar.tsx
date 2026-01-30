@@ -164,18 +164,18 @@ const styles = {
   `,
   searchClearBtn: css`
     position: absolute;
-    right: 4px;
-    top: 50%;
-    transform: translateY(-50%);
+    right: 5px;
+    top: 5px;
+    bottom: 5px;
     background: ${colors.primary};
     border: none;
-    padding: 4px;
+    padding: 0 6px;
     cursor: pointer;
     color: white;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
+    border-radius: 4px;
     transition: all 0.15s ease;
     
     &:hover {
@@ -588,6 +588,7 @@ export function StudioToolbar() {
 
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
+      e.stopPropagation() // Prevent closing the studio
       setSearchQuery('')
       ;(e.target as HTMLInputElement).blur()
     }
