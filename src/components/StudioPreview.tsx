@@ -286,12 +286,13 @@ export function StudioPreview() {
   const isImage = isImageFile(filename)
   const isVideo = isVideoFile(filename)
   
-  const imageKey = selectedPath
+  // Build the meta key (with leading slash)
+  const imageKey = '/' + selectedPath
     .replace(/^public\/images\//, '')
     .replace(/^public\/originals\//, '')
     .replace(/^public\//, '')
 
-  const imageData = meta?.images?.[imageKey]
+  const imageData = meta?.[imageKey]
 
   const renderPreview = () => {
     if (isFolder) {
@@ -351,22 +352,11 @@ export function StudioPreview() {
         {imageData && (
           <>
             <InfoRow
-              label="Original"
-              value={`${imageData.original.width}x${imageData.original.height}`}
-            />
-            <InfoRow
-              label="File size"
-              value={formatFileSize(imageData.original.fileSize)}
+              label="Dimensions"
+              value={`${imageData.w}x${imageData.h}`}
             />
 
-            <div css={styles.section}>
-              <p css={styles.sectionTitle}>Generated sizes</p>
-              {Object.entries(imageData.sizes).map(([size, data]) => (
-                <InfoRow key={size} label={size} value={`${data.width}x${data.height}`} />
-              ))}
-            </div>
-
-            {imageData.cdn?.synced && (
+            {imageData.s && (
               <div css={styles.section}>
                 <p css={styles.sectionTitle}>CDN</p>
                 <div css={styles.cdnStatus}>
@@ -375,25 +365,12 @@ export function StudioPreview() {
                   </svg>
                   Synced to CDN
                 </div>
-                <button
-                  css={styles.copyBtn}
-                  onClick={() => {
-                    navigator.clipboard.writeText(`${imageData.cdn?.baseUrl}${imageData.sizes.full.path}`)
-                  }}
-                >
-                  Copy CDN URL
-                </button>
               </div>
             )}
 
-            {imageData.blurhash && (
+            {imageData.blur && (
               <div css={styles.section}>
-                <InfoRow label="Blurhash" value={imageData.blurhash} truncate />
-                <div
-                  css={styles.colorSwatch}
-                  style={{ backgroundColor: imageData.dominantColor }}
-                  title={`Dominant color: ${imageData.dominantColor}`}
-                />
+                <InfoRow label="Blurhash" value={imageData.blur} truncate />
               </div>
             )}
           </>
@@ -420,8 +397,3 @@ function InfoRow({ label, value, truncate }: { label: string; value: string; tru
   )
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}

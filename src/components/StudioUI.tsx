@@ -10,7 +10,7 @@ import { StudioFileList } from './StudioFileList'
 import { StudioDetailView } from './StudioDetailView'
 import { StudioSettings } from './StudioSettings'
 import { colors, fontSize, baseReset } from './tokens'
-import type { FileItem, StudioMeta } from '../types'
+import type { FileItem, LeanMeta } from '../types'
 
 interface StudioUIProps {
   onClose: () => void
@@ -168,7 +168,7 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
   const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [focusedItem, setFocusedItem] = useState<FileItem | null>(null)
-  const [meta, setMeta] = useState<StudioMeta | null>(null)
+  const [meta, setMeta] = useState<LeanMeta | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')

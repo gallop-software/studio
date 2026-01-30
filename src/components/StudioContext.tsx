@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext } from 'react'
-import type { FileItem, StudioMeta } from '../types'
+import type { FileItem, LeanMeta } from '../types'
 
 /**
  * Studio state interface
@@ -35,8 +35,8 @@ export interface StudioState {
   setFocusedItem: (item: FileItem | null) => void
 
   // Meta
-  meta: StudioMeta | null
-  setMeta: (meta: StudioMeta) => void
+  meta: LeanMeta | null
+  setMeta: (meta: LeanMeta) => void
 
   // Loading
   isLoading: boolean
