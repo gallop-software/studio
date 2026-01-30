@@ -83,29 +83,12 @@ const styles = {
     height: 20px;
     color: ${colors.textSecondary};
   `,
-  tooltip: css`
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1a1f36;
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    white-space: nowrap;
-    margin-bottom: 6px;
-    pointer-events: none;
-    z-index: 100;
+  copyBtnFlash: css`
+    background: ${colors.successLight};
+    border-color: ${colors.success};
     
-    &::after {
-      content: '';
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      border: 4px solid transparent;
-      border-top-color: #1a1f36;
+    svg {
+      color: ${colors.success};
     }
   `,
   mainCloseBtn: css`
@@ -379,8 +362,7 @@ export function StudioDetailView() {
         <div css={styles.container} onClick={(e) => e.stopPropagation()}>
           <div css={styles.main}>
             <div css={styles.headerButtons}>
-              <button css={styles.copyBtn} onClick={handleCopyPath} title="Copy file path">
-                {showCopied && <span css={styles.tooltip}>Copied!</span>}
+              <button css={[styles.copyBtn, showCopied && styles.copyBtnFlash]} onClick={handleCopyPath} title="Copy file path">
                 <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>

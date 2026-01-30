@@ -133,29 +133,12 @@ const styles = {
       border-color: ${colors.borderHover};
     }
   `,
-  tooltip: css`
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1a1f36;
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    white-space: nowrap;
-    margin-bottom: 6px;
-    pointer-events: none;
-    z-index: 100;
+  copyBtnFlash: css`
+    background: ${colors.successLight};
+    border-color: ${colors.success};
     
-    &::after {
-      content: '';
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      border: 4px solid transparent;
-      border-top-color: #1a1f36;
+    svg {
+      color: ${colors.success};
     }
   `,
   copyIcon: css`
@@ -302,8 +285,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
             <h3 css={styles.sectionTitle}>Cloudflare R2</h3>
             <p css={styles.description}>Configure in .env.local file:</p>
             <div css={styles.codeWrapper}>
-              <button css={styles.copyBtn} onClick={handleCopy} title="Copy to clipboard">
-                {copied && <span css={styles.tooltip}>Copied!</span>}
+              <button css={[styles.copyBtn, copied && styles.copyBtnFlash]} onClick={handleCopy} title="Copy to clipboard">
                 {copied ? (
                   <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
