@@ -74,6 +74,10 @@ const styles = {
     &:hover {
       border-color: #d0d5dd;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+      
+      button[title="Rename"] {
+        opacity: 1;
+      }
     }
   `,
   itemSelected: css`
@@ -211,15 +215,11 @@ const styles = {
     flex: 1;
     min-width: 0;
   `,
-  actionBtns: css`
+  copyBtn: css`
     position: absolute;
     top: 4px;
     right: 4px;
     z-index: 10;
-    display: flex;
-    gap: 2px;
-  `,
-  copyBtn: css`
     height: 28px;
     width: 28px;
     color: ${colors.textMuted};
@@ -232,11 +232,39 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: center;
-    position: relative;
     
     &:hover {
       color: ${colors.text};
     }
+  `,
+  nameRow: css`
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  `,
+  renameBtn: css`
+    flex-shrink: 0;
+    height: 20px;
+    width: 20px;
+    color: ${colors.textMuted};
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    
+    &:hover {
+      color: ${colors.text};
+    }
+  `,
+  renameIcon: css`
+    width: 14px;
+    height: 14px;
   `,
   copyIcon: css`
     width: 18px;
@@ -568,28 +596,17 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail, onRe
       {item.cdnSynced && <span css={styles.cdnBadge}>CDN</span>}
 
       <div css={styles.content}>
-        {/* Action buttons - top right of image box */}
-        <div css={styles.actionBtns}>
-          <button
-            css={styles.copyBtn}
-            onClick={handleCopyPath}
-            title="Copy file path"
-          >
-            {showCopied && <span css={styles.tooltip}>Copied!</span>}
-            <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          </button>
-          <button
-            css={styles.copyBtn}
-            onClick={(e) => { e.stopPropagation(); onRename(); }}
-            title="Rename"
-          >
-            <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          </button>
-        </div>
+        {/* Copy button - top right of image box */}
+        <button
+          css={styles.copyBtn}
+          onClick={handleCopyPath}
+          title="Copy file path"
+        >
+          {showCopied && <span css={styles.tooltip}>Copied!</span>}
+          <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+        </button>
 
         {/* Open button - bottom right of image box */}
         <button
@@ -645,7 +662,18 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail, onRe
       <div css={styles.label}>
         <div css={styles.labelRow}>
           <div css={styles.labelText}>
-            <p css={styles.name} title={item.name}>{truncateMiddle(item.name)}</p>
+            <div css={styles.nameRow}>
+              <p css={styles.name} title={item.name}>{truncateMiddle(item.name)}</p>
+              <button
+                css={styles.renameBtn}
+                onClick={(e) => { e.stopPropagation(); onRename(); }}
+                title="Rename"
+              >
+                <svg css={styles.renameIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            </div>
             {isFolder ? (
               <p css={styles.size}>
                 {item.fileCount !== undefined ? `${item.fileCount} files` : ''}
