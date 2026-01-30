@@ -427,8 +427,8 @@ export function ProgressModal({
             <>
               <p css={styles.message}>
                 {progress.status === 'cleanup' 
-                  ? 'Cleaning up orphaned files...' 
-                  : `Processing images...`}
+                  ? (progress.message || 'Cleaning up...')
+                  : (progress.message || 'Processing...')}
               </p>
               <div css={progressStyles.progressContainer}>
                 <div css={progressStyles.progressBar}>
