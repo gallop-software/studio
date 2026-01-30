@@ -24,6 +24,11 @@ export async function GET(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const route = pathname.replace(/^\/api\/studio\/?/, '')
 
+  // Route: /api/studio/list-folders (must come before 'list' check)
+  if (route === 'list-folders') {
+    return handleListFolders()
+  }
+
   // Route: /api/studio/list
   if (route === 'list' || route.startsWith('list')) {
     return handleList(request)
@@ -47,11 +52,6 @@ export async function GET(request: NextRequest) {
   // Route: /api/studio/search
   if (route === 'search') {
     return handleSearch(request)
-  }
-
-  // Route: /api/studio/list-folders
-  if (route === 'list-folders') {
-    return handleListFolders()
   }
 
   return NextResponse.json({ error: 'Not found' }, { status: 404 })
