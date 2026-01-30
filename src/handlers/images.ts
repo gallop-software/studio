@@ -325,9 +325,6 @@ export async function handleUnprocessStream(request: NextRequest) {
             message: `Removing thumbnails for ${imageKey.slice(1)}...`
           })
 
-          // TEST DELAY - remove after testing
-          await new Promise(resolve => setTimeout(resolve, 1000))
-
           try {
             const entry = getMetaEntry(meta, imageKey)
             if (!entry) {
