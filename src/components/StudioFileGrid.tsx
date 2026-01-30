@@ -342,7 +342,7 @@ export function StudioFileGrid() {
               </svg>
             </div>
             <div css={styles.label}>
-              <p css={styles.name} title={getParentPath(currentPath)}>{truncateMiddle(getParentPath(currentPath), 20)}</p>
+              <p css={styles.name}>{getParentPath(currentPath)}</p>
               <p css={styles.size}>Parent folder</p>
             </div>
           </div>
