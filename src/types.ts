@@ -1,18 +1,23 @@
 /**
- * Lean meta entry - minimal data per image
+ * Meta entry - works for images and non-images
+ * Images have w, h, blur (after processing)
+ * Non-images just have s (if synced)
  */
-export interface LeanImageEntry {
-  w: number      // original width
-  h: number      // original height
-  blur: string   // blurhash
+export interface MetaEntry {
+  w?: number     // original width (images only)
+  h?: number     // original height (images only)
+  blur?: string  // blurhash (images only, after processing)
   s?: 1          // synced to CDN (omit if not synced)
 }
 
 /**
- * Lean meta schema - keyed by path from public folder
+ * Meta schema - keyed by path from public folder
  * Example: { "/portfolio/photo.jpg": { w: 2400, h: 1600, blur: "..." } }
  */
-export type LeanMeta = Record<string, LeanImageEntry>
+export type LeanMeta = Record<string, MetaEntry>
+
+// Legacy alias for compatibility
+export type LeanImageEntry = MetaEntry
 
 /**
  * File/folder item for browser

@@ -27,6 +27,7 @@ export function useFileList() {
 
   const [items, setItems] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [metaEmpty, setMetaEmpty] = useState(false)
   const isInitialLoad = useRef(true)
   const lastPath = useRef(currentPath)
 
@@ -44,10 +45,12 @@ export function useFileList() {
           ? await studioApi.search(searchQuery)
           : await studioApi.list(currentPath)
         setItems(data.items || [])
+        setMetaEmpty(data.isEmpty === true)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to load items'
         showError('Load Error', message)
         setItems([])
+        setMetaEmpty(false)
       }
 
       setLoading(false)
@@ -112,6 +115,7 @@ export function useFileList() {
     items,
     loading,
     sortedItems,
+    metaEmpty,
 
     // Computed
     isAtRoot,

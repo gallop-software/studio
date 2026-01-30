@@ -49,7 +49,7 @@ export async function handleSync(request: NextRequest) {
     for (const imageKey of imageKeys) {
       const entry = meta[imageKey]
       if (!entry) {
-        errors.push(`Image not found in meta: ${imageKey}`)
+        errors.push(`Image not found in meta: ${imageKey}. Run Scan first.`)
         continue
       }
 
@@ -59,6 +59,24 @@ export async function handleSync(request: NextRequest) {
       }
 
       try {
+        // Upload original file first
+        const originalLocalPath = path.join(process.cwd(), 'public', imageKey)
+        try {
+          const originalBuffer = await fs.readFile(originalLocalPath)
+          await r2.send(
+            new PutObjectCommand({
+              Bucket: bucketName,
+              Key: imageKey.replace(/^\//, ''),
+              Body: originalBuffer,
+              ContentType: getContentType(imageKey),
+            })
+          )
+        } catch (err) {
+          errors.push(`Original file not found: ${imageKey}`)
+          continue
+        }
+
+        // Upload thumbnails
         for (const thumbPath of getAllThumbnailPaths(imageKey)) {
           const localPath = path.join(process.cwd(), 'public', thumbPath)
           try {
@@ -72,21 +90,25 @@ export async function handleSync(request: NextRequest) {
               })
             )
           } catch {
-            // File might not exist
+            // Thumbnail might not exist (not processed yet)
           }
         }
 
         entry.s = 1
 
+        // Delete local thumbnails
         for (const thumbPath of getAllThumbnailPaths(imageKey)) {
           const localPath = path.join(process.cwd(), 'public', thumbPath)
           try { await fs.unlink(localPath) } catch { /* ignore */ }
         }
 
+        // Delete local original
+        try { await fs.unlink(originalLocalPath) } catch { /* ignore */ }
+
         synced.push(imageKey)
       } catch (error) {
         console.error(`Failed to sync ${imageKey}:`, error)
-        errors.push(imageKey)
+        errors.push(`Failed to sync: ${imageKey}`)
       }
     }
 
@@ -119,14 +141,20 @@ export async function handleReprocess(request: NextRequest) {
       try {
         let buffer: Buffer
         const entry = meta[imageKey]
+        const isSynced = entry?.s === 1
         
         const originalPath = path.join(process.cwd(), 'public', imageKey)
         
         try {
           buffer = await fs.readFile(originalPath)
         } catch {
-          if (entry?.s) {
+          if (isSynced) {
+            // Download original from CDN to local path
             buffer = await downloadFromCdn(imageKey)
+            // Save to local path for processing
+            const dir = path.dirname(originalPath)
+            await fs.mkdir(dir, { recursive: true })
+            await fs.writeFile(originalPath, buffer)
           } else {
             throw new Error(`File not found: ${imageKey}`)
           }
@@ -134,10 +162,13 @@ export async function handleReprocess(request: NextRequest) {
 
         const updatedEntry = await processImage(buffer, imageKey)
         
-        if (entry?.s) {
+        if (isSynced) {
+          // Re-upload to CDN and clean up local files
           updatedEntry.s = 1
           await uploadToCdn(imageKey)
           await deleteLocalThumbnails(imageKey)
+          // Delete local original
+          try { await fs.unlink(originalPath) } catch { /* ignore */ }
         }
         
         meta[imageKey] = updatedEntry
@@ -176,47 +207,36 @@ export async function handleProcessAllStream() {
         const errors: string[] = []
         const orphansRemoved: string[] = []
 
-        const allImages: Array<{ key: string; fullPath: string }> = []
-
-        async function scanPublicFolder(dir: string, relativePath: string = ''): Promise<void> {
-          try {
-            const entries = await fs.readdir(dir, { withFileTypes: true })
-            
-            for (const entry of entries) {
-              if (entry.name.startsWith('.')) continue
-              
-              const fullPath = path.join(dir, entry.name)
-              const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
-
-              if (relPath === 'images' || relPath.startsWith('images/')) continue
-
-              if (entry.isDirectory()) {
-                await scanPublicFolder(fullPath, relPath)
-              } else if (isImageFile(entry.name)) {
-                allImages.push({ key: relPath, fullPath })
-              }
-            }
-          } catch {
-            // Directory might not exist
+        // Get all images from meta that need processing (not synced, no blur yet)
+        const imagesToProcess: Array<{ key: string; entry: typeof meta[string] }> = []
+        
+        for (const [key, entry] of Object.entries(meta)) {
+          // Skip synced images - they're already processed and on CDN
+          if (entry.s) continue
+          
+          // Skip non-images (no w/h means it was added as non-image or SVG)
+          const fileName = path.basename(key)
+          if (!isImageFile(fileName)) continue
+          
+          // Check if needs processing (no blur = not processed yet)
+          if (!entry.blur) {
+            imagesToProcess.push({ key, entry })
           }
         }
 
-        const publicDir = path.join(process.cwd(), 'public')
-        await scanPublicFolder(publicDir)
-
-        const total = allImages.length
+        const total = imagesToProcess.length
         sendEvent({ type: 'start', total })
 
-        for (let i = 0; i < allImages.length; i++) {
-          const { key, fullPath } = allImages[i]
-          const imageKey = '/' + key
+        for (let i = 0; i < imagesToProcess.length; i++) {
+          const { key } = imagesToProcess[i]
+          const fullPath = path.join(process.cwd(), 'public', key)
           
           sendEvent({ 
             type: 'progress', 
             current: i + 1, 
             total, 
             percent: Math.round(((i + 1) / total) * 100),
-            currentFile: key 
+            currentFile: key.slice(1) // Remove leading /
           })
 
           try {
@@ -225,7 +245,7 @@ export async function handleProcessAllStream() {
             const isSvg = ext === '.svg'
 
             if (isSvg) {
-              const imageDir = path.dirname(key)
+              const imageDir = path.dirname(key.slice(1))
               const imagesPath = path.join(process.cwd(), 'public', 'images', imageDir === '.' ? '' : imageDir)
               await fs.mkdir(imagesPath, { recursive: true })
               
@@ -233,35 +253,33 @@ export async function handleProcessAllStream() {
               const destPath = path.join(imagesPath, fileName)
               await fs.writeFile(destPath, buffer)
 
-              meta[imageKey] = {
+              meta[key] = {
                 w: 0,
                 h: 0,
                 blur: '',
               }
             } else {
-              const existingEntry = meta[imageKey]
-              const processedEntry = await processImage(buffer, imageKey)
-              
-              if (existingEntry?.s) {
-                processedEntry.s = 1
-              }
-              
-              meta[imageKey] = processedEntry
+              const processedEntry = await processImage(buffer, key)
+              meta[key] = processedEntry
             }
 
-            processed.push(key)
+            processed.push(key.slice(1))
           } catch (error) {
             console.error(`Failed to process ${key}:`, error)
-            errors.push(key)
+            errors.push(key.slice(1))
           }
         }
 
         sendEvent({ type: 'cleanup', message: 'Removing orphaned thumbnails...' })
         
+        // Build set of expected thumbnail paths
         const trackedPaths = new Set<string>()
         for (const imageKey of Object.keys(meta)) {
-          for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-            trackedPaths.add(thumbPath)
+          // Only track local thumbnails (not synced)
+          if (!meta[imageKey].s) {
+            for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+              trackedPaths.add(thumbPath)
+            }
           }
         }
 
@@ -295,7 +313,11 @@ export async function handleProcessAllStream() {
         }
 
         const imagesDir = path.join(process.cwd(), 'public', 'images')
-        await findOrphans(imagesDir)
+        try {
+          await findOrphans(imagesDir)
+        } catch {
+          // images dir might not exist
+        }
 
         async function removeEmptyDirs(dir: string): Promise<boolean> {
           try {
@@ -321,7 +343,12 @@ export async function handleProcessAllStream() {
           }
         }
 
-        await removeEmptyDirs(imagesDir)
+        try {
+          await removeEmptyDirs(imagesDir)
+        } catch {
+          // images dir might not exist
+        }
+        
         await saveMeta(meta)
 
         sendEvent({ 

@@ -217,7 +217,7 @@ export function StudioToolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
+  const [scanning, setScanning] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showProcessConfirm, setShowProcessConfirm] = useState(false)
@@ -247,10 +247,87 @@ export function StudioToolbar() {
     fileInputRef.current?.click()
   }, [])
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true)
-    triggerRefresh()
-    setTimeout(() => setRefreshing(false), 600)
+  const handleScan = useCallback(async () => {
+    setScanning(true)
+    setShowProgress(true)
+    setProgressState({
+      current: 0,
+      total: 0,
+      percent: 0,
+      status: 'processing',
+      message: 'Scanning for files...',
+    })
+
+    try {
+      const response = await fetch('/api/studio/scan', { method: 'POST' })
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('No reader')
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = JSON.parse(line.slice(6))
+
+          if (data.type === 'start') {
+            setProgressState({
+              current: 0,
+              total: data.total,
+              percent: 0,
+              status: 'processing',
+              message: `Scanning ${data.total} files...`,
+            })
+          } else if (data.type === 'progress') {
+            setProgressState({
+              current: data.current,
+              total: data.total,
+              percent: data.percent,
+              status: 'processing',
+              currentFile: data.currentFile,
+            })
+          } else if (data.type === 'complete') {
+            setProgressState({
+              current: data.total || 0,
+              total: data.total || 0,
+              percent: 100,
+              status: 'complete',
+              processed: data.added,
+              errors: data.errors,
+              message: data.renamed > 0 ? `${data.renamed} file(s) renamed due to conflicts` : undefined,
+            })
+            triggerRefresh()
+          } else if (data.type === 'error') {
+            setProgressState({
+              current: 0,
+              total: 0,
+              percent: 0,
+              status: 'error',
+              message: data.message || 'Scan failed',
+            })
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Scan error:', error)
+      setProgressState({
+        current: 0,
+        total: 0,
+        percent: 0,
+        status: 'error',
+        message: 'Scan failed',
+      })
+    } finally {
+      setScanning(false)
+    }
   }, [triggerRefresh])
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1121,10 +1198,12 @@ export function StudioToolbar() {
           )}
 
           <button
-            css={[styles.btn, styles.btnIconOnly]}
-            onClick={handleRefresh}
+            css={styles.btn}
+            onClick={handleScan}
+            disabled={scanning}
           >
-            <RefreshIcon spinning={refreshing} />
+            <ScanIcon spinning={scanning} />
+            Scan
           </button>
 
           <div css={styles.viewToggle}>
@@ -1157,7 +1236,7 @@ function UploadIcon() {
   )
 }
 
-function RefreshIcon({ spinning }: { spinning?: boolean }) {
+function ScanIcon({ spinning }: { spinning?: boolean }) {
   return (
     <svg css={[styles.icon, spinning && styles.iconSpin]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

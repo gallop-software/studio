@@ -8,6 +8,7 @@ import type { FileItem, LeanMeta, LeanImageEntry } from '../types'
 // Response types
 interface ListResponse {
   items: FileItem[]
+  isEmpty?: boolean
 }
 
 interface FoldersResponse {

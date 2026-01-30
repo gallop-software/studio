@@ -34,6 +34,32 @@ const styles = {
     height: 256px;
     color: ${colors.textSecondary};
   `,
+  emptyHint: css`
+    font-size: ${fontSize.sm};
+    color: ${colors.textMuted};
+    margin-top: 4px;
+  `,
+  scanButton: css`
+    margin-top: 16px;
+    padding: 10px 24px;
+    font-size: ${fontSize.base};
+    font-weight: 500;
+    background: ${colors.primary};
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    
+    &:hover:not(:disabled) {
+      background: ${colors.primaryHover};
+    }
+    
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  `,
   tableWrapper: css`
     background: ${colors.surface};
     border-radius: 8px;
@@ -321,6 +347,7 @@ export function StudioFileList() {
   const {
     loading,
     sortedItems,
+    metaEmpty,
     isAtRoot,
     isSearching,
     allItemsSelected,
@@ -332,6 +359,20 @@ export function StudioFileList() {
     handleGenerateThumbnail,
     handleSelectAll,
   } = useFileList()
+  
+  const [scanning, setScanning] = useState(false)
+  
+  const handleScan = async () => {
+    setScanning(true)
+    try {
+      await fetch('/api/studio/scan', { method: 'POST' })
+      window.location.reload()
+    } catch (error) {
+      console.error('Scan failed:', error)
+    } finally {
+      setScanning(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -341,10 +382,27 @@ export function StudioFileList() {
     )
   }
 
+  if (metaEmpty && isAtRoot) {
+    return (
+      <div css={styles.empty}>
+        <p>No files tracked yet</p>
+        <p css={styles.emptyHint}>Click Scan to discover files in your public folder</p>
+        <button 
+          css={styles.scanButton}
+          onClick={handleScan}
+          disabled={scanning}
+        >
+          {scanning ? 'Scanning...' : 'Scan for Files'}
+        </button>
+      </div>
+    )
+  }
+
   if (sortedItems.length === 0 && isAtRoot) {
     return (
       <div css={styles.empty}>
         <p>No files in this folder</p>
+        <p css={styles.emptyHint}>Upload images or click Scan in the toolbar</p>
       </div>
     )
   }

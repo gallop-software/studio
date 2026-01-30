@@ -49,6 +49,27 @@ const styles = {
       font-size: ${fontSize.sm};
     }
   `,
+  scanButton: css`
+    margin-top: 16px;
+    padding: 10px 24px;
+    font-size: ${fontSize.base};
+    font-weight: 500;
+    background: ${colors.primary};
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    
+    &:hover:not(:disabled) {
+      background: ${colors.primaryHover};
+    }
+    
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  `,
   grid: css`
     display: grid;
     grid-template-columns: 1fr;
@@ -333,6 +354,7 @@ export function StudioFileGrid() {
   const {
     loading,
     sortedItems,
+    metaEmpty,
     isAtRoot,
     isSearching,
     allItemsSelected,
@@ -344,11 +366,46 @@ export function StudioFileGrid() {
     handleGenerateThumbnail,
     handleSelectAll,
   } = useFileList()
+  
+  const [scanning, setScanning] = useState(false)
+  
+  const handleScan = async () => {
+    setScanning(true)
+    try {
+      await fetch('/api/studio/scan', { method: 'POST' })
+      // Trigger refresh after scan completes
+      window.location.reload()
+    } catch (error) {
+      console.error('Scan failed:', error)
+    } finally {
+      setScanning(false)
+    }
+  }
 
   if (loading) {
     return (
       <div css={styles.loading}>
         <div css={styles.spinner} />
+      </div>
+    )
+  }
+
+  // Show scan prompt when meta is empty
+  if (metaEmpty && isAtRoot) {
+    return (
+      <div css={styles.empty}>
+        <svg css={styles.emptyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <p css={styles.emptyText}>No files tracked yet</p>
+        <p css={styles.emptyText}>Click Scan to discover files in your public folder</p>
+        <button 
+          css={styles.scanButton}
+          onClick={handleScan}
+          disabled={scanning}
+        >
+          {scanning ? 'Scanning...' : 'Scan for Files'}
+        </button>
       </div>
     )
   }
@@ -360,7 +417,7 @@ export function StudioFileGrid() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
         <p css={styles.emptyText}>No files in this folder</p>
-        <p css={styles.emptyText}>Upload images to get started</p>
+        <p css={styles.emptyText}>Upload images or click Scan in the toolbar</p>
       </div>
     )
   }

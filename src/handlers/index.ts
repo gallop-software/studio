@@ -9,6 +9,9 @@ import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleMov
 // Image handlers
 import { handleSync, handleReprocess, handleProcessAllStream } from './images'
 
+// Scan handler
+import { handleScanStream } from './scan'
+
 /**
  * Unified GET handler for all Studio API routes
  */
@@ -97,6 +100,11 @@ export async function POST(request: NextRequest) {
   // Route: /api/studio/move
   if (route === 'move') {
     return handleMove(request)
+  }
+
+  // Route: /api/studio/scan (streaming)
+  if (route === 'scan') {
+    return handleScanStream()
   }
 
   return NextResponse.json({ error: 'Not found' }, { status: 404 })

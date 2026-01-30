@@ -1,91 +1,133 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
-import sharp from 'sharp'
 import type { FileItem } from '../types'
-import { isImageFile, isMediaFile, getFolderStats } from './utils'
+import { loadMeta, isImageFile } from './utils'
+import { getThumbnailPath } from '../types'
 
+/**
+ * List files and folders from meta
+ * Folders are derived from file paths in meta
+ */
 export async function handleList(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const requestedPath = searchParams.get('path') || 'public'
 
   try {
-    const safePath = requestedPath.replace(/\.\./g, '')
-    const absolutePath = path.join(process.cwd(), safePath)
-
-    if (!absolutePath.startsWith(process.cwd())) {
-      return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+    const meta = await loadMeta()
+    const metaKeys = Object.keys(meta)
+    
+    // If meta is empty, return empty with a flag
+    if (metaKeys.length === 0) {
+      return NextResponse.json({ items: [], isEmpty: true })
     }
 
+    // Normalize the requested path to match meta keys
+    // requestedPath is like "public" or "public/photos"
+    // meta keys are like "/photos/image.jpg"
+    const relativePath = requestedPath.replace(/^public\/?/, '')
+    const pathPrefix = relativePath ? `/${relativePath}/` : '/'
+
     const items: FileItem[] = []
-    const entries = await fs.readdir(absolutePath, { withFileTypes: true })
+    const seenFolders = new Set<string>()
 
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue
+    for (const key of metaKeys) {
+      const entry = meta[key]
+      
+      // Check if this file is under the current path
+      if (!key.startsWith(pathPrefix) && pathPrefix !== '/') continue
+      if (pathPrefix === '/' && !key.startsWith('/')) continue
 
-      const itemPath = path.join(safePath, entry.name)
+      // Get the part after the current path
+      const remaining = pathPrefix === '/' ? key.slice(1) : key.slice(pathPrefix.length)
+      
+      // Skip if empty (shouldn't happen)
+      if (!remaining) continue
 
-      if (entry.isDirectory()) {
-        const folderStats = await getFolderStats(path.join(absolutePath, entry.name))
-        items.push({
-          name: entry.name,
-          path: itemPath,
-          type: 'folder',
-          fileCount: folderStats.fileCount,
-          totalSize: folderStats.totalSize,
-        })
-      } else if (isMediaFile(entry.name)) {
-        const filePath = path.join(absolutePath, entry.name)
-        const stats = await fs.stat(filePath)
-        const isImage = isImageFile(entry.name)
+      // Check if there's a subfolder
+      const slashIndex = remaining.indexOf('/')
+      
+      if (slashIndex !== -1) {
+        // This is in a subfolder - show the folder
+        const folderName = remaining.slice(0, slashIndex)
+        
+        if (!seenFolders.has(folderName)) {
+          seenFolders.add(folderName)
+          
+          // Count files in this folder from meta
+          const folderPrefix = pathPrefix === '/' ? `/${folderName}/` : `${pathPrefix}${folderName}/`
+          let fileCount = 0
+          for (const k of metaKeys) {
+            if (k.startsWith(folderPrefix)) fileCount++
+          }
+          
+          items.push({
+            name: folderName,
+            path: relativePath ? `public/${relativePath}/${folderName}` : `public/${folderName}`,
+            type: 'folder',
+            fileCount,
+          })
+        }
+      } else {
+        // This is a file in the current folder
+        const fileName = remaining
+        const isImage = isImageFile(fileName)
+        const isSynced = entry.s === 1
         
         let thumbnail: string | undefined
         let hasThumbnail = false
-        let dimensions: { width: number; height: number } | undefined
+        let fileSize: number | undefined
         
-        if (isImage) {
-          const relativePath = safePath.replace(/^public\/?/, '')
+        if (isImage && (entry.w || entry.blur)) {
+          // Has been processed - use thumbnail
+          const thumbPath = getThumbnailPath(key, 'sm')
           
-          if (relativePath === 'images' || relativePath.startsWith('images/')) {
-            thumbnail = itemPath.replace('public', '')
-            hasThumbnail = true
+          if (isSynced) {
+            // CDN thumbnail
+            const cdnUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL
+            if (cdnUrl) {
+              thumbnail = `${cdnUrl}${thumbPath}`
+              hasThumbnail = true
+            }
           } else {
-            const ext = path.extname(entry.name).toLowerCase()
-            const baseName = path.basename(entry.name, ext)
-            const thumbnailDir = relativePath ? `images/${relativePath}` : 'images'
-            const thumbnailName = `${baseName}-sm${ext === '.png' ? '.png' : '.jpg'}`
-            const thumbnailPath = path.join(process.cwd(), 'public', thumbnailDir, thumbnailName)
-            
+            // Local thumbnail - check if exists
+            const localThumbPath = path.join(process.cwd(), 'public', thumbPath)
             try {
-              await fs.access(thumbnailPath)
-              thumbnail = `/${thumbnailDir}/${thumbnailName}`
+              await fs.access(localThumbPath)
+              thumbnail = thumbPath
               hasThumbnail = true
             } catch {
-              thumbnail = itemPath.replace('public', '')
+              // Thumbnail doesn't exist yet
+              thumbnail = key
               hasThumbnail = false
             }
           }
-          
-          if (!entry.name.toLowerCase().endsWith('.svg')) {
-            try {
-              const metadata = await sharp(filePath).metadata()
-              if (metadata.width && metadata.height) {
-                dimensions = { width: metadata.width, height: metadata.height }
-              }
-            } catch {
-              // Ignore dimension errors
-            }
+        } else if (isImage) {
+          // Not processed yet - use original
+          thumbnail = key
+          hasThumbnail = false
+        }
+        
+        // Try to get file size if file exists locally
+        if (!isSynced) {
+          try {
+            const filePath = path.join(process.cwd(), 'public', key)
+            const stats = await fs.stat(filePath)
+            fileSize = stats.size
+          } catch {
+            // File might not exist locally (synced)
           }
         }
         
         items.push({
-          name: entry.name,
-          path: itemPath,
+          name: fileName,
+          path: relativePath ? `public/${relativePath}/${fileName}` : `public/${fileName}`,
           type: 'file',
-          size: stats.size,
+          size: fileSize,
           thumbnail,
           hasThumbnail,
-          dimensions,
+          cdnSynced: isSynced,
+          dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
         })
       }
     }
@@ -106,74 +148,56 @@ export async function handleSearch(request: NextRequest) {
   }
 
   try {
+    const meta = await loadMeta()
     const items: FileItem[] = []
-    const publicDir = path.join(process.cwd(), 'public')
 
-    async function searchDir(dir: string, relativePath: string): Promise<void> {
-      try {
-        const entries = await fs.readdir(dir, { withFileTypes: true })
-
-        for (const entry of entries) {
-          if (entry.name.startsWith('.')) continue
-
-          const fullPath = path.join(dir, entry.name)
-          const itemPath = relativePath ? `public/${relativePath}/${entry.name}` : `public/${entry.name}`
-          const itemRelPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
-
-          if (entry.isDirectory()) {
-            await searchDir(fullPath, itemRelPath)
-          } else if (isImageFile(entry.name)) {
-            if (itemPath.toLowerCase().includes(query)) {
-              const stats = await fs.stat(fullPath)
-              
-              let thumbnail: string | undefined
-              let hasThumbnail = false
-              let dimensions: { width: number; height: number } | undefined
-
-              const ext = path.extname(entry.name).toLowerCase()
-              const baseName = path.basename(entry.name, ext)
-              const thumbnailDir = relativePath ? `images/${relativePath}` : 'images'
-              const thumbnailName = `${baseName}-sm${ext === '.png' ? '.png' : '.jpg'}`
-              const thumbnailPath = path.join(process.cwd(), 'public', thumbnailDir, thumbnailName)
-
-              try {
-                await fs.access(thumbnailPath)
-                thumbnail = `/${thumbnailDir}/${thumbnailName}`
-                hasThumbnail = true
-              } catch {
-                thumbnail = `/${itemRelPath}`
-                hasThumbnail = false
-              }
-
-              if (!entry.name.toLowerCase().endsWith('.svg')) {
-                try {
-                  const metadata = await sharp(fullPath).metadata()
-                  if (metadata.width && metadata.height) {
-                    dimensions = { width: metadata.width, height: metadata.height }
-                  }
-                } catch {
-                  // Ignore dimension errors
-                }
-              }
-
-              items.push({
-                name: entry.name,
-                path: itemPath,
-                type: 'file',
-                size: stats.size,
-                thumbnail,
-                hasThumbnail,
-                dimensions,
-              })
-            }
+    for (const [key, entry] of Object.entries(meta)) {
+      // Check if the path matches the query
+      if (!key.toLowerCase().includes(query)) continue
+      
+      const fileName = path.basename(key)
+      const relativePath = key.slice(1) // Remove leading /
+      const isImage = isImageFile(fileName)
+      const isSynced = entry.s === 1
+      
+      let thumbnail: string | undefined
+      let hasThumbnail = false
+      
+      if (isImage && (entry.w || entry.blur)) {
+        const thumbPath = getThumbnailPath(key, 'sm')
+        
+        if (isSynced) {
+          const cdnUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL
+          if (cdnUrl) {
+            thumbnail = `${cdnUrl}${thumbPath}`
+            hasThumbnail = true
+          }
+        } else {
+          const localThumbPath = path.join(process.cwd(), 'public', thumbPath)
+          try {
+            await fs.access(localThumbPath)
+            thumbnail = thumbPath
+            hasThumbnail = true
+          } catch {
+            thumbnail = key
+            hasThumbnail = false
           }
         }
-      } catch {
-        // Ignore directory access errors
+      } else if (isImage) {
+        thumbnail = key
+        hasThumbnail = false
       }
+      
+      items.push({
+        name: fileName,
+        path: `public/${relativePath}`,
+        type: 'file',
+        thumbnail,
+        hasThumbnail,
+        cdnSynced: isSynced,
+        dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
+      })
     }
-
-    await searchDir(publicDir, '')
 
     return NextResponse.json({ items })
   } catch (error) {
@@ -184,33 +208,33 @@ export async function handleSearch(request: NextRequest) {
 
 export async function handleListFolders() {
   try {
-    const publicDir = path.join(process.cwd(), 'public')
-    const folders: { path: string; name: string; depth: number }[] = []
-
-    async function scanDir(dir: string, relativePath: string, depth: number): Promise<void> {
-      try {
-        const entries = await fs.readdir(dir, { withFileTypes: true })
-
-        for (const entry of entries) {
-          if (!entry.isDirectory()) continue
-          if (entry.name.startsWith('.')) continue
-
-          const folderRelativePath = relativePath ? `${relativePath}/${entry.name}` : entry.name
-          folders.push({
-            path: `public/${folderRelativePath}`,
-            name: entry.name,
-            depth
-          })
-
-          await scanDir(path.join(dir, entry.name), folderRelativePath, depth + 1)
-        }
-      } catch {
-        // Ignore errors
+    const meta = await loadMeta()
+    const folderSet = new Set<string>()
+    
+    // Extract all folder paths from meta keys
+    for (const key of Object.keys(meta)) {
+      const parts = key.split('/')
+      // Build up folder paths: /photos/2024/image.jpg -> photos, photos/2024
+      let current = ''
+      for (let i = 1; i < parts.length - 1; i++) {
+        current = current ? `${current}/${parts[i]}` : parts[i]
+        folderSet.add(current)
       }
     }
-
+    
+    const folders: { path: string; name: string; depth: number }[] = []
     folders.push({ path: 'public', name: 'public', depth: 0 })
-    await scanDir(publicDir, '', 1)
+    
+    const sortedFolders = Array.from(folderSet).sort()
+    for (const folderPath of sortedFolders) {
+      const depth = folderPath.split('/').length
+      const name = folderPath.split('/').pop() || folderPath
+      folders.push({
+        path: `public/${folderPath}`,
+        name,
+        depth
+      })
+    }
 
     return NextResponse.json({ folders })
   } catch (error) {
@@ -221,33 +245,15 @@ export async function handleListFolders() {
 
 export async function handleCountImages() {
   try {
+    const meta = await loadMeta()
     const allImages: string[] = []
 
-    async function scanPublicFolder(dir: string, relativePath: string = ''): Promise<void> {
-      try {
-        const entries = await fs.readdir(dir, { withFileTypes: true })
-        
-        for (const entry of entries) {
-          if (entry.name.startsWith('.')) continue
-          
-          const fullPath = path.join(dir, entry.name)
-          const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
-
-          if (relPath === 'images' || relPath.startsWith('images/')) continue
-
-          if (entry.isDirectory()) {
-            await scanPublicFolder(fullPath, relPath)
-          } else if (isImageFile(entry.name)) {
-            allImages.push(relPath)
-          }
-        }
-      } catch {
-        // Directory might not exist
+    for (const key of Object.keys(meta)) {
+      const fileName = path.basename(key)
+      if (isImageFile(fileName)) {
+        allImages.push(key.slice(1)) // Remove leading /
       }
     }
-
-    const publicDir = path.join(process.cwd(), 'public')
-    await scanPublicFolder(publicDir)
 
     return NextResponse.json({
       count: allImages.length,
@@ -269,36 +275,26 @@ export async function handleFolderImages(request: NextRequest) {
     }
 
     const folders = foldersParam.split(',')
+    const meta = await loadMeta()
     const allImages: string[] = []
 
-    async function scanFolder(dir: string, relativePath: string = ''): Promise<void> {
-      try {
-        const entries = await fs.readdir(dir, { withFileTypes: true })
-        
-        for (const entry of entries) {
-          if (entry.name.startsWith('.')) continue
-          
-          const fullPath = path.join(dir, entry.name)
-          const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+    // Convert folder paths to prefixes for matching
+    const prefixes = folders.map(f => {
+      const rel = f.replace(/^public\/?/, '')
+      return rel ? `/${rel}/` : '/'
+    })
 
-          if (entry.isDirectory()) {
-            await scanFolder(fullPath, relPath)
-          } else if (isImageFile(entry.name)) {
-            allImages.push(relPath)
-          }
+    for (const key of Object.keys(meta)) {
+      const fileName = path.basename(key)
+      if (!isImageFile(fileName)) continue
+      
+      // Check if this image is in one of the requested folders
+      for (const prefix of prefixes) {
+        if (key.startsWith(prefix) || (prefix === '/' && key.startsWith('/'))) {
+          allImages.push(key.slice(1)) // Remove leading /
+          break
         }
-      } catch {
-        // Directory might not exist
       }
-    }
-
-    for (const folder of folders) {
-      const relativePath = folder.replace(/^public\/?/, '')
-      
-      if (relativePath === 'images' || relativePath.startsWith('images/')) continue
-      
-      const folderPath = path.join(process.cwd(), folder)
-      await scanFolder(folderPath, relativePath)
     }
 
     return NextResponse.json({
