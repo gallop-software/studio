@@ -79,6 +79,13 @@ export async function handleList(request: NextRequest) {
         // We need to check if it's under the current images path
         const thumbRelative = thumb.path.replace(/^\/images\/?/, '')
         
+        // Get the original entry to check if it's on CDN
+        const originalEntry = fileEntries.find(([k]) => k === thumb.originalKey)?.[1]
+        const cdnIndex = originalEntry?.c
+        const cdnBaseUrl = cdnIndex !== undefined ? cdnUrls[cdnIndex] : undefined
+        // Build the full thumbnail URL (with CDN base if applicable)
+        const thumbnailUrl = cdnBaseUrl ? `${cdnBaseUrl}${thumb.path}` : thumb.path
+        
         // Check if this is directly in the current folder or in a subfolder
         if (imagesSubPath === '') {
           // We're at /images root
@@ -90,7 +97,7 @@ export async function handleList(request: NextRequest) {
               name: fileName,
               path: `public/images/${fileName}`,
               type: 'file',
-              thumbnail: thumb.path,
+              thumbnail: thumbnailUrl,
               hasThumbnail: false,
               isProtected: true,
             })
@@ -127,7 +134,7 @@ export async function handleList(request: NextRequest) {
               name: remaining,
               path: `public/images/${imagesSubPath}/${remaining}`,
               type: 'file',
-              thumbnail: thumb.path,
+              thumbnail: thumbnailUrl,
               hasThumbnail: false,
               isProtected: true,
             })
