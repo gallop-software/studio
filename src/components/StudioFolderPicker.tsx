@@ -114,7 +114,7 @@ const styles = {
       top: 0;
       bottom: 50%;
       width: 0;
-      border-left: 1px dashed ${colors.border};
+      border-left: 1px dashed ${colors.textSecondary};
     }
     
     &::after {
@@ -124,7 +124,7 @@ const styles = {
       top: 50%;
       width: 8px;
       height: 0;
-      border-top: 1px dashed ${colors.border};
+      border-top: 1px dashed ${colors.textSecondary};
     }
   `,
   folderItemSelected: css`
