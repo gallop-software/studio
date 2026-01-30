@@ -277,7 +277,7 @@ export function StudioDetailView() {
   const [processProgress, setProcessProgress] = useState<ProgressState | null>(null)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showCopied, setShowCopied] = useState(false)
-  const [syncing, setSyncing] = useState(false)
+  const [pushing, setPushing] = useState(false)
 
   if (!focusedItem) return null
 
@@ -361,7 +361,7 @@ export function StudioDetailView() {
   const handleSync = async () => {
     const imageKey = '/' + focusedItem.path.replace(/^public\//, '')
     
-    setSyncing(true)
+    setPushing(true)
     
     try {
       const response = await fetch('/api/studio/sync', {
@@ -374,8 +374,8 @@ export function StudioDetailView() {
 
       if (response.ok) {
         setAlertMessage({
-          title: 'Sync Complete',
-          message: 'Successfully synced to CDN.',
+          title: 'Push Complete',
+          message: 'Successfully pushed to CDN.',
         })
         triggerRefresh()
       } else {
@@ -396,7 +396,7 @@ export function StudioDetailView() {
         message: 'Failed to sync to CDN. Check console for details.',
       })
     } finally {
-      setSyncing(false)
+      setPushing(false)
     }
   }
 
@@ -588,7 +588,7 @@ export function StudioDetailView() {
               )}
               <div css={styles.infoRow}>
                 <span css={styles.infoLabel}>CDN Status</span>
-                <span css={styles.infoValue}>{focusedItem.cdnSynced ? 'Synced' : 'Not synced'}</span>
+                <span css={styles.infoValue}>{focusedItem.cdnPushed ? 'Pushed' : 'Not pushed'}</span>
               </div>
             </div>
 
@@ -599,7 +599,7 @@ export function StudioDetailView() {
                 </svg>
                 Rename
               </button>
-              <button css={styles.actionBtn} onClick={handleSync} disabled={syncing}>
+              <button css={styles.actionBtn} onClick={handleSync} disabled={pushing}>
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>

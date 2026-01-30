@@ -35,9 +35,9 @@ interface DeleteResponse {
   errors?: string[]
 }
 
-interface SyncResponse {
+interface PushResponse {
   success: boolean
-  synced: string[]
+  pushed: string[]
   errors?: string[]
 }
 
@@ -145,7 +145,7 @@ class StudioApiClient {
   }
 
   // Image handlers
-  async sync(imageKeys: string[]): Promise<SyncResponse> {
+  async push(imageKeys: string[]): Promise<PushResponse> {
     return this.post('/api/studio/sync', { imageKeys })
   }
 
@@ -168,7 +168,7 @@ export type {
   CountImagesResponse,
   UploadResponse,
   DeleteResponse,
-  SyncResponse,
+  PushResponse,
   ReprocessResponse,
   CreateFolderResponse,
   RenameResponse,

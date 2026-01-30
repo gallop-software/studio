@@ -28,7 +28,7 @@ export interface FileItem {
   type: 'file' | 'folder'
   size?: number
   dimensions?: { width: number; height: number }
-  cdnSynced?: boolean
+  cdnPushed?: boolean
   // Folder-specific properties
   fileCount?: number
   totalSize?: number

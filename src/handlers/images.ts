@@ -43,7 +43,7 @@ export async function handleSync(request: NextRequest) {
       credentials: { accessKeyId, secretAccessKey },
     })
 
-    const synced: string[] = []
+    const pushed: string[] = []
     const errors: string[] = []
 
     for (const imageKey of imageKeys) {
@@ -54,7 +54,7 @@ export async function handleSync(request: NextRequest) {
       }
 
       if (entry.c) {
-        synced.push(imageKey)
+        pushed.push(imageKey)
         continue
       }
 
@@ -105,10 +105,10 @@ export async function handleSync(request: NextRequest) {
         // Delete local original
         try { await fs.unlink(originalLocalPath) } catch { /* ignore */ }
 
-        synced.push(imageKey)
+        pushed.push(imageKey)
       } catch (error) {
-        console.error(`Failed to sync ${imageKey}:`, error)
-        errors.push(`Failed to sync: ${imageKey}`)
+        console.error(`Failed to push ${imageKey}:`, error)
+        errors.push(`Failed to push: ${imageKey}`)
       }
     }
 
@@ -116,7 +116,7 @@ export async function handleSync(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      synced,
+      pushed,
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (error) {
@@ -141,14 +141,14 @@ export async function handleReprocess(request: NextRequest) {
       try {
         let buffer: Buffer
         const entry = meta[imageKey]
-        const isSynced = entry?.c === 1
+        const isPushedToCloud = entry?.c === 1
         
         const originalPath = path.join(process.cwd(), 'public', imageKey)
         
         try {
           buffer = await fs.readFile(originalPath)
         } catch {
-          if (isSynced) {
+          if (isPushedToCloud) {
             // Download original from CDN to local path
             buffer = await downloadFromCdn(imageKey)
             // Save to local path for processing
@@ -162,7 +162,7 @@ export async function handleReprocess(request: NextRequest) {
 
         const updatedEntry = await processImage(buffer, imageKey)
         
-        if (isSynced) {
+        if (isPushedToCloud) {
           // Re-upload to CDN and clean up local files
           updatedEntry.c = 1
           await uploadToCdn(imageKey)
@@ -207,20 +207,28 @@ export async function handleProcessAllStream() {
         const errors: string[] = []
         const orphansRemoved: string[] = []
 
-        // Get all images from meta that need processing (not synced, no blur yet)
+        // Count images in different states
+        let alreadyProcessed = 0
+        let pushedToCloud = 0
+
+        // Get all images from meta that need processing (not pushed, no blur yet)
         const imagesToProcess: Array<{ key: string; entry: typeof meta[string] }> = []
         
         for (const [key, entry] of Object.entries(meta)) {
-          // Skip pushed images - they're already processed and on CDN
-          if (entry.c) continue
-          
-          // Skip non-images (no w/h means it was added as non-image or SVG)
           const fileName = path.basename(key)
           if (!isImageFile(fileName)) continue
+          
+          // Skip pushed images - they're already processed and on CDN
+          if (entry.c) {
+            pushedToCloud++
+            continue
+          }
           
           // Check if needs processing (no b = not processed yet)
           if (!entry.b) {
             imagesToProcess.push({ key, entry })
+          } else {
+            alreadyProcessed++
           }
         }
 
@@ -354,6 +362,8 @@ export async function handleProcessAllStream() {
         sendEvent({ 
           type: 'complete', 
           processed: processed.length, 
+          alreadyProcessed,
+          pushedToCloud,
           orphansRemoved: orphansRemoved.length,
           errors: errors.length,
         })

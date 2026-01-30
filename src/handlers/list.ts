@@ -72,7 +72,7 @@ export async function handleList(request: NextRequest) {
         // This is a file in the current folder
         const fileName = remaining
         const isImage = isImageFile(fileName)
-        const isSynced = entry.c === 1
+        const isPushedToCloud = entry.c === 1
         
         let thumbnail: string | undefined
         let hasThumbnail = false
@@ -82,7 +82,7 @@ export async function handleList(request: NextRequest) {
           // Has been processed - use thumbnail
           const thumbPath = getThumbnailPath(key, 'sm')
           
-          if (isSynced) {
+          if (isPushedToCloud) {
             // CDN thumbnail
             const cdnUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL
             if (cdnUrl) {
@@ -109,7 +109,7 @@ export async function handleList(request: NextRequest) {
         }
         
         // Try to get file size if file exists locally
-        if (!isSynced) {
+        if (!isPushedToCloud) {
           try {
             const filePath = path.join(process.cwd(), 'public', key)
             const stats = await fs.stat(filePath)
@@ -126,7 +126,7 @@ export async function handleList(request: NextRequest) {
           size: fileSize,
           thumbnail,
           hasThumbnail,
-          cdnSynced: isSynced,
+          cdnPushed: isPushedToCloud,
           dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
         })
       }
@@ -158,7 +158,7 @@ export async function handleSearch(request: NextRequest) {
       const fileName = path.basename(key)
       const relativePath = key.slice(1) // Remove leading /
       const isImage = isImageFile(fileName)
-      const isSynced = entry.c === 1
+      const isPushedToCloud = entry.c === 1
       
       let thumbnail: string | undefined
       let hasThumbnail = false
@@ -166,7 +166,7 @@ export async function handleSearch(request: NextRequest) {
       if (isImage && (entry.w || entry.b)) {
         const thumbPath = getThumbnailPath(key, 'sm')
         
-        if (isSynced) {
+        if (isPushedToCloud) {
           const cdnUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL
           if (cdnUrl) {
             thumbnail = `${cdnUrl}${thumbPath}`
@@ -194,7 +194,7 @@ export async function handleSearch(request: NextRequest) {
         type: 'file',
         thumbnail,
         hasThumbnail,
-        cdnSynced: isSynced,
+        cdnPushed: isPushedToCloud,
         dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
       })
     }

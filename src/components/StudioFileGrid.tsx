@@ -500,7 +500,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
         />
       </div>
 
-      {item.cdnSynced && <span css={styles.cdnBadge}>CDN</span>}
+      {item.cdnPushed && <span css={styles.cdnBadge}>CDN</span>}
 
       <div css={styles.content}>
         {/* Copy button - top right of image box */}

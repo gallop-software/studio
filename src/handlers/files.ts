@@ -130,7 +130,7 @@ export async function handleDelete(request: NextRequest) {
         
         // Check if this is in meta (could be synced with no local file)
         const entry = meta[imageKey]
-        const isSynced = entry?.c === 1
+        const isPushedToCloud = entry?.c === 1
         
         // Try to delete local file/folder
         try {
@@ -160,7 +160,7 @@ export async function handleDelete(request: NextRequest) {
             
             if (!isInImagesFolder && entry) {
               // Delete local thumbnails if not synced
-              if (!isSynced) {
+              if (!isPushedToCloud) {
                 for (const thumbPath of getAllThumbnailPaths(imageKey)) {
                   const absoluteThumbPath = path.join(process.cwd(), 'public', thumbPath)
                   try { await fs.unlink(absoluteThumbPath) } catch { /* ignore */ }

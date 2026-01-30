@@ -338,6 +338,8 @@ export interface ProgressState {
   status: 'processing' | 'cleanup' | 'complete' | 'error' | 'stopped'
   message?: string
   processed?: number
+  alreadyProcessed?: number
+  pushedToCloud?: number
   orphansRemoved?: number
   errors?: number
   errorMessages?: string[]
@@ -378,7 +380,13 @@ export function ProgressModal({
           ) : isComplete ? (
             <>
               <p css={styles.message}>
-                Processed {progress.processed} image{progress.processed !== 1 ? 's' : ''}.
+                Processed {progress.processed} new image{progress.processed !== 1 ? 's' : ''}.
+                {progress.alreadyProcessed !== undefined && progress.alreadyProcessed > 0 ? (
+                  <> {progress.alreadyProcessed} already processed.</>
+                ) : null}
+                {progress.pushedToCloud !== undefined && progress.pushedToCloud > 0 ? (
+                  <> {progress.pushedToCloud} pushed to CDN.</>
+                ) : null}
                 {progress.orphansRemoved !== undefined && progress.orphansRemoved > 0 ? (
                   <> Removed {progress.orphansRemoved} orphaned thumbnail{progress.orphansRemoved !== 1 ? 's' : ''}.</>
                 ) : null}

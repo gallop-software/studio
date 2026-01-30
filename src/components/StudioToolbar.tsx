@@ -238,7 +238,7 @@ export function StudioToolbar() {
   const [showRenameFolderModal, setShowRenameFolderModal] = useState(false)
   const [showMoveModal, setShowMoveModal] = useState(false)
   const [showR2SetupModal, setShowR2SetupModal] = useState(false)
-  const [syncing, setSyncing] = useState(false)
+  const [pushing, setPushing] = useState(false)
 
   // Check if we're in the images folder (uploads not allowed there)
   const isInImagesFolder = currentPath === 'public/images' || currentPath.startsWith('public/images/')
@@ -594,6 +594,8 @@ export function StudioToolbar() {
                     percent: 100,
                     status: 'complete',
                     processed: data.processed,
+                    alreadyProcessed: data.alreadyProcessed,
+                    pushedToCloud: data.pushedToCloud,
                     orphansRemoved: data.orphansRemoved,
                     errors: data.errors,
                   })
@@ -817,16 +819,16 @@ export function StudioToolbar() {
       total: imageKeys.length,
       percent: 0,
       status: 'processing',
-      message: 'Syncing to CDN...',
+      message: 'Pushing to CDN...',
     })
     setShowProgress(true)
 
-    let synced = 0
+    let pushed = 0
     let errors = 0
     const errorMessages: string[] = []
 
     try {
-      // Sync images one by one for progress tracking
+      // Push images one by one for progress tracking
       for (let i = 0; i < imageKeys.length; i++) {
         const imageKey = imageKeys[i]
         
@@ -856,8 +858,8 @@ export function StudioToolbar() {
             }
             errors++
             errorMessages.push(data.error || `Failed: ${imageKey}`)
-          } else if (data.synced?.length > 0) {
-            synced++
+          } else if (data.pushed?.length > 0) {
+            pushed++
           } else if (data.errors?.length > 0) {
             errors++
             // data.errors contains the actual error messages from the handler
@@ -876,7 +878,7 @@ export function StudioToolbar() {
         total: imageKeys.length,
         percent: 100,
         status: 'complete',
-        processed: synced,
+        processed: pushed,
         errors: errors,
         errorMessages: errorMessages.length > 0 ? errorMessages : undefined,
       })
@@ -884,13 +886,13 @@ export function StudioToolbar() {
       clearSelection()
       triggerRefresh()
     } catch (error) {
-      console.error('Sync error:', error)
+      console.error('Push error:', error)
       setProgressState({
         current: 0,
         total: 0,
         percent: 0,
         status: 'error',
-        message: 'Failed to sync to CDN.',
+        message: 'Failed to push to CDN.',
       })
     }
   }, [selectedItems, clearSelection, triggerRefresh])
