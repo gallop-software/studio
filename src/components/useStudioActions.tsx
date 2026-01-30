@@ -163,7 +163,7 @@ export function useStudioActions({
     }))
 
     try {
-      const response = await fetch('/api/studio/move-stream', {
+      const response = await fetch('/api/studio/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paths, destination }),
@@ -310,7 +310,10 @@ export function useStudioActions({
   // Confirm process
   const confirmProcess = useCallback(async () => {
     const paths = actionState.actionPaths
-    const imageKeys = paths.map(p => '/' + p.replace(/^public\//, ''))
+    const imageKeys = paths.map(p => {
+      const key = p.replace(/^public\//, '')
+      return key.startsWith('/') ? key : `/${key}`
+    })
     
     setActionState(prev => ({
       ...prev,
@@ -326,102 +329,47 @@ export function useStudioActions({
       },
     }))
 
-    abortControllerRef.current = new AbortController()
-    const signal = abortControllerRef.current.signal
-
     try {
-      const response = await fetch('/api/studio/process-stream', {
+      const response = await fetch('/api/studio/reprocess', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageKeys }),
-        signal,
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        const error = await response.json()
         setProgressState({
+          current: 0,
+          total: imageKeys.length,
+          percent: 0,
           status: 'error',
-          message: error.error || 'Processing failed',
+          message: data.error || 'Processing failed',
         })
         return
       }
 
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (reader) {
-        let buffer = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6))
-                
-                if (data.type === 'start') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    total: data.total,
-                  }))
-                } else if (data.type === 'progress') {
-                  setProgressState({
-                    current: data.current,
-                    total: data.total,
-                    percent: Math.round((data.current / data.total) * 100),
-                    status: 'processing',
-                    message: data.message,
-                  })
-                } else if (data.type === 'cleanup') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    status: 'cleanup',
-                    message: data.message,
-                  }))
-                } else if (data.type === 'complete') {
-                  setProgressState({
-                    current: data.processed,
-                    total: data.processed,
-                    percent: 100,
-                    status: 'complete',
-                    message: `Processed ${data.processed} image${data.processed !== 1 ? 's' : ''}${data.errors > 0 ? `, ${data.errors} error${data.errors !== 1 ? 's' : ''}` : ''}`,
-                  })
-                  triggerRefresh()
-                } else if (data.type === 'error') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    status: 'error',
-                    message: data.message,
-                  }))
-                }
-              } catch { /* ignore parse errors */ }
-            }
-          }
-        }
-      }
+      const processed = data.processed?.length || 0
+      const errors = data.errors?.length || 0
+      
+      setProgressState({
+        current: processed,
+        total: imageKeys.length,
+        percent: 100,
+        status: errors > 0 ? 'error' : 'complete',
+        message: `Processed ${processed} image${processed !== 1 ? 's' : ''}${errors > 0 ? `, ${errors} error${errors !== 1 ? 's' : ''}` : ''}`,
+      })
+      
+      triggerRefresh()
     } catch (error) {
-      if (signal.aborted) {
-        setProgressState(prev => ({
-          ...prev,
-          status: 'stopped',
-          message: 'Processing stopped by user',
-        }))
-      } else {
-        console.error('Processing error:', error)
-        setProgressState({
-          current: 0,
-          total: 0,
-          status: 'error',
-          message: 'Processing failed. Check console for details.',
-        })
-      }
-    } finally {
-      abortControllerRef.current = null
+      console.error('Processing error:', error)
+      setProgressState({
+        current: 0,
+        total: imageKeys.length,
+        percent: 0,
+        status: 'error',
+        message: 'Processing failed. Check console for details.',
+      })
     }
   }, [actionState.actionPaths, triggerRefresh, setProgressState])
 
