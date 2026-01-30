@@ -42,6 +42,7 @@ export const colors = {
   shadowDark: 'rgba(50, 50, 93, 0.2)',
   
   // Special folders
+  folder: '#64748b',
   imagesFolder: '#8b5cf6',
   imagesFolderLight: '#f3f0ff',
 }

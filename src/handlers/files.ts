@@ -94,11 +94,10 @@ export async function handleUpload(request: NextRequest) {
       try {
         const metadata = await sharp(buffer).metadata()
         meta[imageKey] = {
-          w: metadata.width || 0,
-          h: metadata.height || 0,
+          o: { w: metadata.width || 0, h: metadata.height || 0 },
         }
       } catch {
-        meta[imageKey] = { w: 0, h: 0 }
+        meta[imageKey] = { o: { w: 0, h: 0 } }
       }
     } else {
       // Non-image media or SVG
@@ -142,8 +141,8 @@ export async function handleDelete(request: NextRequest) {
         const imageKey = '/' + itemPath.replace(/^public\//, '')
         
         // Check if this is in meta (could be synced with no local file)
-        const entry = meta[imageKey]
-        const isPushedToCloud = entry?.c === 1
+        const entry = meta[imageKey] as MetaEntry | undefined
+        const isPushedToCloud = entry?.c !== undefined
         
         // Try to delete local file/folder
         try {
@@ -156,8 +155,9 @@ export async function handleDelete(request: NextRequest) {
             const prefix = imageKey + '/'
             for (const key of Object.keys(meta)) {
               if (key.startsWith(prefix) || key === imageKey) {
+                const keyEntry = meta[key] as MetaEntry | undefined
                 // Also delete local thumbnails if not synced
-                if (!meta[key].c) {
+                if (keyEntry && keyEntry.c === undefined) {
                   for (const thumbPath of getAllThumbnailPaths(key)) {
                     const absoluteThumbPath = path.join(process.cwd(), 'public', thumbPath)
                     try { await fs.unlink(absoluteThumbPath) } catch { /* ignore */ }
