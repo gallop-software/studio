@@ -214,7 +214,7 @@ const styles = {
 }
 
 export function StudioToolbar() {
-  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest } = useStudio()
+  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest, fileItems } = useStudio()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [showAddNewModal, setShowAddNewModal] = useState(false)
@@ -987,6 +987,12 @@ export function StudioToolbar() {
 
   const hasSelection = selectedItems.size > 0
   
+  // Check if any selected items are cloud-only (can't be moved)
+  const hasCloudOnlySelection = hasSelection && Array.from(selectedItems).some(path => {
+    const item = fileItems.find(f => f.path === path)
+    return item && item.cdnPushed
+  })
+  
   // Check if exactly one folder is selected (for rename)
   const selectedPaths = Array.from(selectedItems)
   const singleFolderSelected = selectedPaths.length === 1 && !selectedPaths[0].includes('.')
@@ -1179,7 +1185,8 @@ export function StudioToolbar() {
           <button
             css={styles.btn}
             onClick={handleMoveClick}
-            disabled={!hasSelection}
+            disabled={!hasSelection || hasCloudOnlySelection}
+            title={hasCloudOnlySelection ? 'Cannot move files that are in the cloud' : undefined}
           >
             <MoveIcon />
             Move

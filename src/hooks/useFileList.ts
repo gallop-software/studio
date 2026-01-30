@@ -24,6 +24,7 @@ export function useFileList() {
     triggerScan,
     searchQuery,
     showError,
+    setFileItems,
   } = useStudio()
 
   const [items, setItems] = useState<FileItem[]>([])
@@ -45,12 +46,15 @@ export function useFileList() {
         const data = searchQuery && searchQuery.length >= 2
           ? await studioApi.search(searchQuery)
           : await studioApi.list(currentPath)
-        setItems(data.items || [])
+        const loadedItems = data.items || []
+        setItems(loadedItems)
+        setFileItems(loadedItems)
         setMetaEmpty(data.isEmpty === true)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to load items'
         showError('Load Error', message)
         setItems([])
+        setFileItems([])
         setMetaEmpty(false)
       }
 
@@ -59,7 +63,7 @@ export function useFileList() {
     }
 
     loadItems()
-  }, [currentPath, refreshKey, searchQuery, showError])
+  }, [currentPath, refreshKey, searchQuery, showError, setFileItems])
 
   // Computed values
   const isAtRoot = currentPath === 'public'

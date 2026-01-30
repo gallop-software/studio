@@ -177,6 +177,7 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
   const [scanRequested, setScanRequested] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [error, setError] = useState<{ title: string; message: string } | null>(null)
+  const [fileItems, setFileItems] = useState<FileItem[]>([])
   const [isDragging, setIsDragging] = useState(false)
 
   const triggerRefresh = useCallback(() => {
@@ -357,6 +358,8 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
     error,
     showError,
     clearError,
+    fileItems,
+    setFileItems,
   }
 
   return (

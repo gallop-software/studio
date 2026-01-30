@@ -67,6 +67,10 @@ export interface StudioState {
   error: ErrorMessage | null
   showError: (title: string, message: string) => void
   clearError: () => void
+
+  // File items (for toolbar to check cloud status)
+  fileItems: FileItem[]
+  setFileItems: (items: FileItem[]) => void
 }
 
 const defaultState: StudioState = {
@@ -101,6 +105,8 @@ const defaultState: StudioState = {
   error: null,
   showError: () => {},
   clearError: () => {},
+  fileItems: [],
+  setFileItems: () => {},
 }
 
 export const StudioContext = createContext<StudioState>(defaultState)
