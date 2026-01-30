@@ -128,18 +128,6 @@ const styles = {
     accent-color: ${colors.primary};
     cursor: pointer;
   `,
-  cdnBadge: css`
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 10;
-    background-color: ${colors.successLight};
-    color: ${colors.success};
-    font-size: 11px;
-    font-weight: 500;
-    padding: 2px 8px;
-    border-radius: 4px;
-  `,
   content: css`
     position: relative;
     aspect-ratio: 1;
@@ -258,6 +246,30 @@ const styles = {
   copyIcon: css`
     width: 18px;
     height: 18px;
+  `,
+  statusBtn: css`
+    position: absolute;
+    top: 4px;
+    right: 36px;
+    z-index: 10;
+    height: 28px;
+    width: 28px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `,
+  cloudIcon: css`
+    width: 18px;
+    height: 18px;
+    color: #f59e0b;
+  `,
+  globeIcon: css`
+    width: 18px;
+    height: 18px;
+    color: #ef4444;
   `,
   tooltip: css`
     position: absolute;
@@ -500,9 +512,24 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
         />
       </div>
 
-      {item.cdnPushed && <span css={styles.cdnBadge}>CDN</span>}
 
       <div css={styles.content}>
+        {/* Cloud status icon - to the left of copy button */}
+        {item.cdnPushed && !item.isRemote && (
+          <span css={styles.statusBtn} title="Pushed to CDN">
+            <svg css={styles.cloudIcon} fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+            </svg>
+          </span>
+        )}
+        {item.isRemote && (
+          <span css={styles.statusBtn} title="Remote image">
+            <svg css={styles.globeIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+            </svg>
+          </span>
+        )}
+
         {/* Copy button - top right of image box */}
         <button
           css={styles.copyBtn}

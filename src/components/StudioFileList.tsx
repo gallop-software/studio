@@ -176,6 +176,28 @@ const styles = {
     width: 16px;
     height: 16px;
   `,
+  statusBtn: css`
+    flex-shrink: 0;
+    height: 32px;
+    width: 32px;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    padding: 0;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  `,
+  cloudIcon: css`
+    width: 16px;
+    height: 16px;
+    color: #f59e0b;
+  `,
+  globeIcon: css`
+    width: 16px;
+    height: 16px;
+    color: #ef4444;
+  `,
   tooltip: css`
     position: absolute;
     top: 50%;
@@ -315,6 +337,13 @@ const styles = {
     font-size: ${fontSize.xs};
     font-weight: 500;
     color: ${colors.success};
+  `,
+  cdnBadgeRemote: css`
+    display: inline-flex;
+    align-items: center;
+    font-size: ${fontSize.xs};
+    font-weight: 500;
+    color: #ef4444;
   `,
   cdnIcon: css`
     width: 12px;
@@ -524,6 +553,21 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Lis
           )}
           <span css={styles.name} title={item.name}>{truncateMiddle(item.name)}</span>
           <div css={styles.actionsCell}>
+            {/* Cloud status icon */}
+            {item.cdnPushed && !item.isRemote && (
+              <span css={styles.statusBtn} title="Pushed to CDN">
+                <svg css={styles.cloudIcon} fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                </svg>
+              </span>
+            )}
+            {item.isRemote && (
+              <span css={styles.statusBtn} title="Remote image">
+                <svg css={styles.globeIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                </svg>
+              </span>
+            )}
             <button
               css={styles.copyBtn}
               onClick={handleCopyPath}
@@ -560,12 +604,16 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Lis
       </td>
       <td css={styles.td}>
         {item.cdnPushed ? (
-          <span css={styles.cdnBadge}>
-            <svg css={styles.cdnIcon} fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-            </svg>
-            Synced
-          </span>
+          item.isRemote ? (
+            <span css={styles.cdnBadgeRemote}>Remote</span>
+          ) : (
+            <span css={styles.cdnBadge}>
+              <svg css={styles.cdnIcon} fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+              Pushed
+            </span>
+          )
         ) : (
           <span css={styles.cdnEmpty}>--</span>
         )}
