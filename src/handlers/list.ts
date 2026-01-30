@@ -72,13 +72,13 @@ export async function handleList(request: NextRequest) {
         // This is a file in the current folder
         const fileName = remaining
         const isImage = isImageFile(fileName)
-        const isSynced = entry.s === 1
+        const isSynced = entry.c === 1
         
         let thumbnail: string | undefined
         let hasThumbnail = false
         let fileSize: number | undefined
         
-        if (isImage && (entry.w || entry.blur)) {
+        if (isImage && (entry.w || entry.b)) {
           // Has been processed - use thumbnail
           const thumbPath = getThumbnailPath(key, 'sm')
           
@@ -158,12 +158,12 @@ export async function handleSearch(request: NextRequest) {
       const fileName = path.basename(key)
       const relativePath = key.slice(1) // Remove leading /
       const isImage = isImageFile(fileName)
-      const isSynced = entry.s === 1
+      const isSynced = entry.c === 1
       
       let thumbnail: string | undefined
       let hasThumbnail = false
       
-      if (isImage && (entry.w || entry.blur)) {
+      if (isImage && (entry.w || entry.b)) {
         const thumbPath = getThumbnailPath(key, 'sm')
         
         if (isSynced) {

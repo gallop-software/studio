@@ -16,7 +16,8 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 256px;
+    flex: 1;
+    min-height: 300px;
   `,
   spinner: css`
     width: 32px;
@@ -31,7 +32,8 @@ const styles = {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 256px;
+    flex: 1;
+    min-height: 300px;
     color: ${colors.textSecondary};
   `,
   emptyIcon: css`
@@ -365,22 +367,8 @@ export function StudioFileGrid() {
     handleOpen,
     handleGenerateThumbnail,
     handleSelectAll,
+    triggerScan,
   } = useFileList()
-  
-  const [scanning, setScanning] = useState(false)
-  
-  const handleScan = async () => {
-    setScanning(true)
-    try {
-      await fetch('/api/studio/scan', { method: 'POST' })
-      // Trigger refresh after scan completes
-      window.location.reload()
-    } catch (error) {
-      console.error('Scan failed:', error)
-    } finally {
-      setScanning(false)
-    }
-  }
 
   if (loading) {
     return (
@@ -401,10 +389,9 @@ export function StudioFileGrid() {
         <p css={styles.emptyText}>Click Scan to discover files in your public folder</p>
         <button 
           css={styles.scanButton}
-          onClick={handleScan}
-          disabled={scanning}
+          onClick={triggerScan}
         >
-          {scanning ? 'Scanning...' : 'Scan for Files'}
+          Scan for Files
         </button>
       </div>
     )

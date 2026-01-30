@@ -128,6 +128,8 @@ const styles = {
     min-width: 0;
     overflow: auto;
     padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
   `,
   dropOverlay: css`
     position: absolute;
@@ -172,12 +174,21 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
   const [meta, setMeta] = useState<LeanMeta | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [scanRequested, setScanRequested] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [error, setError] = useState<{ title: string; message: string } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
+  }, [])
+
+  const triggerScan = useCallback(() => {
+    setScanRequested(true)
+  }, [])
+
+  const clearScanRequest = useCallback(() => {
+    setScanRequested(false)
   }, [])
 
   const showError = useCallback((title: string, message: string) => {
@@ -338,6 +349,9 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
     setIsLoading,
     refreshKey,
     triggerRefresh,
+    scanRequested,
+    triggerScan,
+    clearScanRequest,
     searchQuery,
     setSearchQuery,
     error,

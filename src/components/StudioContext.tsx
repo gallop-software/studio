@@ -54,6 +54,11 @@ export interface StudioState {
   refreshKey: number
   triggerRefresh: () => void
 
+  // Scan trigger
+  scanRequested: boolean
+  triggerScan: () => void
+  clearScanRequest: () => void
+
   // Search
   searchQuery: string
   setSearchQuery: (query: string) => void
@@ -88,6 +93,9 @@ const defaultState: StudioState = {
   setIsLoading: () => {},
   refreshKey: 0,
   triggerRefresh: () => {},
+  scanRequested: false,
+  triggerScan: () => {},
+  clearScanRequest: () => {},
   searchQuery: '',
   setSearchQuery: () => {},
   error: null,

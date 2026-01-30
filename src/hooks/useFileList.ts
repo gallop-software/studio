@@ -21,6 +21,7 @@ export function useFileList() {
     refreshKey,
     setFocusedItem,
     triggerRefresh,
+    triggerScan,
     searchQuery,
     showError,
   } = useStudio()
@@ -133,5 +134,6 @@ export function useFileList() {
     handleOpen,
     handleGenerateThumbnail,
     handleSelectAll,
+    triggerScan,
   }
 }

@@ -53,7 +53,7 @@ export async function handleSync(request: NextRequest) {
         continue
       }
 
-      if (entry.s) {
+      if (entry.c) {
         synced.push(imageKey)
         continue
       }
@@ -94,7 +94,7 @@ export async function handleSync(request: NextRequest) {
           }
         }
 
-        entry.s = 1
+        entry.c = 1
 
         // Delete local thumbnails
         for (const thumbPath of getAllThumbnailPaths(imageKey)) {
@@ -141,7 +141,7 @@ export async function handleReprocess(request: NextRequest) {
       try {
         let buffer: Buffer
         const entry = meta[imageKey]
-        const isSynced = entry?.s === 1
+        const isSynced = entry?.c === 1
         
         const originalPath = path.join(process.cwd(), 'public', imageKey)
         
@@ -164,7 +164,7 @@ export async function handleReprocess(request: NextRequest) {
         
         if (isSynced) {
           // Re-upload to CDN and clean up local files
-          updatedEntry.s = 1
+          updatedEntry.c = 1
           await uploadToCdn(imageKey)
           await deleteLocalThumbnails(imageKey)
           // Delete local original
@@ -211,15 +211,15 @@ export async function handleProcessAllStream() {
         const imagesToProcess: Array<{ key: string; entry: typeof meta[string] }> = []
         
         for (const [key, entry] of Object.entries(meta)) {
-          // Skip synced images - they're already processed and on CDN
-          if (entry.s) continue
+          // Skip pushed images - they're already processed and on CDN
+          if (entry.c) continue
           
           // Skip non-images (no w/h means it was added as non-image or SVG)
           const fileName = path.basename(key)
           if (!isImageFile(fileName)) continue
           
-          // Check if needs processing (no blur = not processed yet)
-          if (!entry.blur) {
+          // Check if needs processing (no b = not processed yet)
+          if (!entry.b) {
             imagesToProcess.push({ key, entry })
           }
         }
@@ -256,7 +256,7 @@ export async function handleProcessAllStream() {
               meta[key] = {
                 w: 0,
                 h: 0,
-                blur: '',
+                b: '',
               }
             } else {
               const processedEntry = await processImage(buffer, key)
@@ -275,8 +275,8 @@ export async function handleProcessAllStream() {
         // Build set of expected thumbnail paths
         const trackedPaths = new Set<string>()
         for (const imageKey of Object.keys(meta)) {
-          // Only track local thumbnails (not synced)
-          if (!meta[imageKey].s) {
+          // Only track local thumbnails (not pushed to CDN)
+          if (!meta[imageKey].c) {
             for (const thumbPath of getAllThumbnailPaths(imageKey)) {
               trackedPaths.add(thumbPath)
             }

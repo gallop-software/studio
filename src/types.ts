@@ -1,13 +1,13 @@
 /**
  * Meta entry - works for images and non-images
- * Images have w, h, blur (after processing)
- * Non-images just have s (if synced)
+ * Images have w, h, b (after processing)
+ * Non-images just have c (if pushed to CDN)
  */
 export interface MetaEntry {
   w?: number     // original width (images only)
   h?: number     // original height (images only)
-  blur?: string  // blurhash (images only, after processing)
-  s?: 1          // synced to CDN (omit if not synced)
+  b?: string     // blurhash (images only, after processing)
+  c?: 1          // pushed to CDN (omit if not pushed)
 }
 
 /**

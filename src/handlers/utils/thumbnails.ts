@@ -2,7 +2,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import sharp from 'sharp'
 import { encode } from 'blurhash'
-import type { LeanImageEntry } from '../../types'
+import type { MetaEntry } from '../../types'
 
 export const DEFAULT_SIZES: Record<string, { width: number; suffix: string }> = {
   small: { width: 300, suffix: '-sm' },
@@ -13,7 +13,7 @@ export const DEFAULT_SIZES: Record<string, { width: number; suffix: string }> = 
 export async function processImage(
   buffer: Buffer,
   imageKey: string
-): Promise<LeanImageEntry> {
+): Promise<MetaEntry> {
   const sharpInstance = sharp(buffer)
   const metadata = await sharpInstance.metadata()
   const originalWidth = metadata.width || 0
@@ -73,6 +73,6 @@ export async function processImage(
   return {
     w: originalWidth,
     h: originalHeight,
-    blur: blurhash,
+    b: blurhash,
   }
 }

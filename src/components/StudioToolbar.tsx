@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal, ProgressModal, InputModal, type ProgressState } from './StudioModal'
@@ -213,7 +213,7 @@ const styles = {
 }
 
 export function StudioToolbar() {
-  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem } = useStudio()
+  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest } = useStudio()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -329,6 +329,14 @@ export function StudioToolbar() {
       setScanning(false)
     }
   }, [triggerRefresh])
+
+  // Handle scan request from file pane
+  useEffect(() => {
+    if (scanRequested && !scanning) {
+      clearScanRequest()
+      handleScan()
+    }
+  }, [scanRequested, scanning, clearScanRequest, handleScan])
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -1014,8 +1022,8 @@ export function StudioToolbar() {
 
       {showSyncConfirm && (
         <ConfirmModal
-          title="Sync to CDN"
-          message={`Sync ${syncImageCount} image${syncImageCount !== 1 ? 's' : ''} to Cloudflare R2? Images must be processed first. After syncing, local thumbnails will be deleted.`}
+          title="Push to CDN"
+          message={`Push ${syncImageCount} image${syncImageCount !== 1 ? 's' : ''} to Cloudflare R2? Images must be processed first. After pushing, local files will be deleted.`}
           confirmLabel="Sync"
           onConfirm={handleSyncConfirm}
           onCancel={() => setShowSyncConfirm(false)}
@@ -1162,7 +1170,7 @@ export function StudioToolbar() {
             disabled={!hasSelection}
           >
             <CloudIcon />
-            Sync CDN
+            Push CDN
           </button>
           <div css={styles.searchWrapper}>
             <input
