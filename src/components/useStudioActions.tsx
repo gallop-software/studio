@@ -329,47 +329,106 @@ export function useStudioActions({
       },
     }))
 
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
+
     try {
-      const response = await fetch('/api/studio/reprocess', {
+      const response = await fetch('/api/studio/reprocess-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageKeys }),
+        signal,
       })
 
-      const data = await response.json()
-
       if (!response.ok) {
+        const error = await response.json()
         setProgressState({
           current: 0,
           total: imageKeys.length,
           percent: 0,
           status: 'error',
-          message: data.error || 'Processing failed',
+          message: error.error || 'Processing failed',
         })
         return
       }
 
-      const processed = data.processed?.length || 0
-      const errors = data.errors?.length || 0
-      
-      setProgressState({
-        current: processed,
-        total: imageKeys.length,
-        percent: 100,
-        status: errors > 0 ? 'error' : 'complete',
-        message: `Processed ${processed} image${processed !== 1 ? 's' : ''}${errors > 0 ? `, ${errors} error${errors !== 1 ? 's' : ''}` : ''}`,
-      })
-      
-      triggerRefresh()
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (reader) {
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                
+                if (data.type === 'start') {
+                  setProgressState(prev => ({
+                    ...prev,
+                    total: data.total,
+                  }))
+                } else if (data.type === 'progress') {
+                  setProgressState({
+                    current: data.current,
+                    total: data.total,
+                    percent: data.percent,
+                    status: 'processing',
+                    message: data.message,
+                  })
+                } else if (data.type === 'cleanup') {
+                  setProgressState(prev => ({
+                    ...prev,
+                    status: 'cleanup',
+                    message: data.message,
+                  }))
+                } else if (data.type === 'complete') {
+                  setProgressState({
+                    current: data.processed,
+                    total: data.processed,
+                    percent: 100,
+                    status: data.errors > 0 ? 'error' : 'complete',
+                    message: data.message,
+                  })
+                  triggerRefresh()
+                } else if (data.type === 'error') {
+                  setProgressState(prev => ({
+                    ...prev,
+                    status: 'error',
+                    message: data.message,
+                  }))
+                }
+              } catch { /* ignore parse errors */ }
+            }
+          }
+        }
+      }
     } catch (error) {
-      console.error('Processing error:', error)
-      setProgressState({
-        current: 0,
-        total: imageKeys.length,
-        percent: 0,
-        status: 'error',
-        message: 'Processing failed. Check console for details.',
-      })
+      if (signal.aborted) {
+        setProgressState(prev => ({
+          ...prev,
+          status: 'stopped',
+          message: 'Processing stopped by user',
+        }))
+      } else {
+        console.error('Processing error:', error)
+        setProgressState({
+          current: 0,
+          total: imageKeys.length,
+          percent: 0,
+          status: 'error',
+          message: 'Processing failed. Check console for details.',
+        })
+      }
+    } finally {
+      abortControllerRef.current = null
     }
   }, [actionState.actionPaths, triggerRefresh, setProgressState])
 

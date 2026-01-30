@@ -274,6 +274,166 @@ export async function handleReprocess(request: NextRequest) {
   }
 }
 
+export async function handleReprocessStream(request: NextRequest) {
+  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
+  const encoder = new TextEncoder()
+  
+  // Parse the request body before creating the stream
+  let imageKeys: string[]
+  try {
+    const body = await request.json() as { imageKeys: string[] }
+    imageKeys = body.imageKeys
+    
+    if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
+      return NextResponse.json({ error: 'No image keys provided' }, { status: 400 })
+    }
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+  
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendEvent = (data: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      try {
+        const meta = await loadMeta()
+        const cdnUrls = getCdnUrls(meta)
+        const processed: string[] = []
+        const errors: string[] = []
+        const urlsToPurge: string[] = []
+
+        const total = imageKeys.length
+        sendEvent({ type: 'start', total })
+
+        for (let i = 0; i < imageKeys.length; i++) {
+          let imageKey = imageKeys[i]
+          
+          // Normalize key to have leading /
+          if (!imageKey.startsWith('/')) {
+            imageKey = `/${imageKey}`
+          }
+          
+          sendEvent({ 
+            type: 'progress', 
+            current: i + 1, 
+            total, 
+            percent: Math.round(((i + 1) / total) * 100),
+            message: `Processing ${imageKey.slice(1)}...`
+          })
+
+          try {
+            let buffer: Buffer
+            const entry = getMetaEntry(meta, imageKey)
+            const existingCdnIndex = entry?.c
+            const existingCdnUrl = existingCdnIndex !== undefined ? cdnUrls[existingCdnIndex] : undefined
+            
+            // Determine if this is our R2 or a remote CDN
+            const isInOurR2 = existingCdnUrl === publicUrl
+            const isRemote = existingCdnIndex !== undefined && !isInOurR2
+            
+            const originalPath = path.join(process.cwd(), 'public', imageKey)
+            
+            try {
+              buffer = await fs.readFile(originalPath)
+            } catch {
+              if (isInOurR2) {
+                buffer = await downloadFromCdn(imageKey)
+                const dir = path.dirname(originalPath)
+                await fs.mkdir(dir, { recursive: true })
+                await fs.writeFile(originalPath, buffer)
+              } else if (isRemote && existingCdnUrl) {
+                const remoteUrl = `${existingCdnUrl}${imageKey}`
+                buffer = await downloadFromRemoteUrl(remoteUrl)
+                const dir = path.dirname(originalPath)
+                await fs.mkdir(dir, { recursive: true })
+                await fs.writeFile(originalPath, buffer)
+              } else {
+                throw new Error(`File not found: ${imageKey}`)
+              }
+            }
+
+            const ext = path.extname(imageKey).toLowerCase()
+            const isSvg = ext === '.svg'
+
+            if (isSvg) {
+              const imageDir = path.dirname(imageKey.slice(1))
+              const imagesPath = path.join(process.cwd(), 'public', 'images', imageDir === '.' ? '' : imageDir)
+              await fs.mkdir(imagesPath, { recursive: true })
+              
+              const fileName = path.basename(imageKey)
+              const destPath = path.join(imagesPath, fileName)
+              await fs.writeFile(destPath, buffer)
+
+              meta[imageKey] = {
+                ...entry,
+                o: { w: 0, h: 0 },
+                b: '',
+                f: { w: 0, h: 0 },
+              }
+              
+              if (isRemote) {
+                delete (meta[imageKey] as import('../types').MetaEntry).c
+              }
+            } else {
+              const updatedEntry = await processImage(buffer, imageKey)
+              
+              if (isInOurR2) {
+                updatedEntry.c = existingCdnIndex
+                await uploadToCdn(imageKey)
+                
+                for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+                  urlsToPurge.push(`${publicUrl}${thumbPath}`)
+                }
+                
+                await deleteLocalThumbnails(imageKey)
+                try { await fs.unlink(originalPath) } catch { /* ignore */ }
+              }
+              
+              meta[imageKey] = updatedEntry
+            }
+            
+            processed.push(imageKey)
+          } catch (error) {
+            console.error(`Failed to reprocess ${imageKey}:`, error)
+            errors.push(imageKey)
+          }
+        }
+
+        sendEvent({ type: 'cleanup', message: 'Saving metadata...' })
+        await saveMeta(meta)
+        
+        if (urlsToPurge.length > 0) {
+          sendEvent({ type: 'cleanup', message: 'Purging CDN cache...' })
+          await purgeCloudflareCache(urlsToPurge)
+        }
+
+        sendEvent({ 
+          type: 'complete', 
+          processed: processed.length,
+          errors: errors.length,
+          message: `Processed ${processed.length} image${processed.length !== 1 ? 's' : ''}${errors.length > 0 ? `, ${errors.length} error${errors.length !== 1 ? 's' : ''}` : ''}`
+        })
+        
+        controller.close()
+      } catch (error) {
+        console.error('Reprocess stream error:', error)
+        sendEvent({ type: 'error', message: 'Failed to process images' })
+        controller.close()
+      }
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  })
+}
+
 export async function handleProcessAllStream() {
   const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
   const encoder = new TextEncoder()

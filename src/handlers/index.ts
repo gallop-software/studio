@@ -7,7 +7,7 @@ import { handleList, handleSearch, handleListFolders, handleCountImages, handleF
 import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleMove, handleMoveStream } from './files'
 
 // Image handlers
-import { handleSync, handleReprocess, handleProcessAllStream } from './images'
+import { handleSync, handleReprocess, handleReprocessStream, handleProcessAllStream } from './images'
 
 // Scan handler
 import { handleScanStream, handleDeleteOrphans } from './scan'
@@ -88,6 +88,11 @@ export async function POST(request: NextRequest) {
   // Route: /api/studio/reprocess
   if (route === 'reprocess') {
     return handleReprocess(request)
+  }
+
+  // Route: /api/studio/reprocess-stream (streaming)
+  if (route === 'reprocess-stream') {
+    return handleReprocessStream(request)
   }
 
   // Route: /api/studio/process-all (streaming)
