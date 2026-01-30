@@ -42,6 +42,7 @@ export interface FileItem {
   isProcessed?: boolean
   cdnPushed?: boolean
   cdnBaseUrl?: string  // CDN base URL when pushed to cloud
+  isRemote?: boolean   // true if CDN URL doesn't match R2 (external import)
   // Folder-specific properties
   fileCount?: number
   totalSize?: number

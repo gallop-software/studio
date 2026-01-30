@@ -17,6 +17,7 @@ export async function handleList(request: NextRequest) {
     const meta = await loadMeta()
     const fileEntries = getFileEntries(meta)
     const cdnUrls = getCdnUrls(meta)
+    const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '') || ''
     
     // If meta is empty, return empty with a flag
     if (fileEntries.length === 0) {
@@ -73,6 +74,10 @@ export async function handleList(request: NextRequest) {
         const fileName = remaining
         const isImage = isImageFile(fileName)
         const isPushedToCloud = entry.c !== undefined
+        
+        // Determine if this is a remote import vs pushed to our R2
+        const fileCdnUrl = isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
+        const isRemote = isPushedToCloud && (!r2PublicUrl || fileCdnUrl !== r2PublicUrl)
         
         let thumbnail: string | undefined
         let hasThumbnail = false
@@ -133,7 +138,8 @@ export async function handleList(request: NextRequest) {
           hasThumbnail,
           isProcessed: entry.p === 1,
           cdnPushed: isPushedToCloud,
-          cdnBaseUrl: isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined,
+          cdnBaseUrl: fileCdnUrl,
+          isRemote,
           dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
         })
       }
@@ -158,6 +164,7 @@ export async function handleSearch(request: NextRequest) {
     const meta = await loadMeta()
     const fileEntries = getFileEntries(meta)
     const cdnUrls = getCdnUrls(meta)
+    const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '') || ''
     const items: FileItem[] = []
 
     for (const [key, entry] of fileEntries) {
@@ -168,6 +175,10 @@ export async function handleSearch(request: NextRequest) {
       const relativePath = key.slice(1) // Remove leading /
       const isImage = isImageFile(fileName)
       const isPushedToCloud = entry.c !== undefined
+      
+      // Determine if this is a remote import vs pushed to our R2
+      const fileCdnUrl = isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
+      const isRemote = isPushedToCloud && (!r2PublicUrl || fileCdnUrl !== r2PublicUrl)
       
       let thumbnail: string | undefined
       let hasThumbnail = false
@@ -212,7 +223,8 @@ export async function handleSearch(request: NextRequest) {
         hasThumbnail,
         isProcessed: entry.p === 1,
         cdnPushed: isPushedToCloud,
-        cdnBaseUrl: isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined,
+        cdnBaseUrl: fileCdnUrl,
+        isRemote,
         dimensions: entry.w && entry.h ? { width: entry.w, height: entry.h } : undefined,
       })
     }
