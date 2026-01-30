@@ -250,7 +250,7 @@ const styles = {
   statusBtn: css`
     position: absolute;
     top: 4px;
-    right: 36px;
+    right: 28px;
     z-index: 10;
     height: 28px;
     width: 28px;
