@@ -81,6 +81,7 @@ const styles = {
     
     &:hover {
       border-color: ${colors.primary};
+      box-shadow: 0 0 0 1px ${colors.primary};
     }
   `,
   parentItem: css`
@@ -128,7 +129,7 @@ const styles = {
   folderIcon: css`
     width: 56px;
     height: 56px;
-    color: #697386;
+    color: #5469d4;
   `,
   imagesFolderIcon: css`
     width: 56px;
@@ -214,12 +215,11 @@ const styles = {
     top: 8px;
     right: 8px;
     z-index: 10;
-    height: 24px;
-    width: 24px;
-    font-size: ${fontSize.xs};
-    color: ${colors.textSecondary};
-    background: ${colors.surface};
-    border: 1px solid ${colors.border};
+    height: 28px;
+    width: 28px;
+    color: ${colors.textMuted};
+    background: transparent;
+    border: none;
     padding: 0;
     cursor: pointer;
     border-radius: 4px;
@@ -227,21 +227,16 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
     
     &:hover {
-      background: ${colors.surfaceHover};
-      border-color: ${colors.borderHover};
       color: ${colors.text};
     }
   `,
   copyIcon: css`
-    width: 12px;
-    height: 12px;
+    width: 18px;
+    height: 18px;
   `,
   copyBtnFlash: css`
-    background: ${colors.successLight};
-    border-color: ${colors.success};
     color: ${colors.success};
   `,
   openBtn: css`
@@ -523,7 +518,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
           title="Copy file path"
         >
           <svg css={styles.copyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
         </button>
 
