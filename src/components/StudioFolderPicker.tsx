@@ -103,6 +103,14 @@ const styles = {
       background-color: ${colors.primaryLight};
     }
   `,
+  folderItemDisabled: css`
+    opacity: 0.5;
+    cursor: not-allowed;
+    
+    &:hover {
+      background-color: transparent;
+    }
+  `,
   folderIcon: css`
     width: 20px;
     height: 20px;
@@ -210,17 +218,18 @@ export function StudioFolderPicker({ selectedItems, currentPath, onMove, onCance
   }, [])
 
   // Filter out folders that are being moved (can't move to themselves or their children)
-  // Also filter out the current folder (can't move to the same location)
+  // Mark current folder as disabled but still show it
   const selectedPaths = Array.from(selectedItems)
   const availableFolders = folders.filter(folder => {
-    // Can't move to current location
-    if (folder.path === currentPath) return false
     // Can't move a folder into itself or its children
     return !selectedPaths.some(selected => 
       folder.path === selected || 
       folder.path.startsWith(selected + '/')
     )
   })
+  
+  // Check if a folder is the current location (disabled)
+  const isCurrentFolder = (folderPath: string) => folderPath === currentPath
 
   const handleConfirm = () => {
     if (selectedFolder) {
@@ -249,22 +258,29 @@ export function StudioFolderPicker({ selectedItems, currentPath, onMove, onCance
             </div>
           ) : (
             <div css={styles.folderList}>
-              {availableFolders.map((folder) => (
-                <div
-                  key={folder.path}
-                  css={[
-                    styles.folderItem,
-                    selectedFolder === folder.path && styles.folderItemSelected
-                  ]}
-                  style={{ paddingLeft: 12 + (folder.depth * 16) }}
-                  onClick={() => setSelectedFolder(folder.path)}
-                >
-                  <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
-                  </svg>
-                  <span css={styles.folderName}>{folder.name}</span>
-                </div>
-              ))}
+              {availableFolders.map((folder) => {
+                const disabled = isCurrentFolder(folder.path)
+                return (
+                  <div
+                    key={folder.path}
+                    css={[
+                      styles.folderItem,
+                      selectedFolder === folder.path && styles.folderItemSelected,
+                      disabled && styles.folderItemDisabled
+                    ]}
+                    style={{ paddingLeft: 12 + (folder.depth * 16) }}
+                    onClick={() => !disabled && setSelectedFolder(folder.path)}
+                  >
+                    <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
+                    </svg>
+                    <span css={styles.folderName}>
+                      {folder.name}
+                      {disabled && ' (current)'}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
