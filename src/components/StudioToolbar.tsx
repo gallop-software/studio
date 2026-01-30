@@ -136,9 +136,14 @@ const styles = {
     border-radius: 6px;
     overflow: hidden;
   `,
+  searchWrapper: css`
+    position: relative;
+    display: flex;
+    align-items: center;
+  `,
   searchInput: css`
     height: ${btnHeight};
-    padding: 0 12px;
+    padding: 0 32px 0 12px;
     border: 1px solid ${colors.border};
     border-radius: 6px;
     font-size: ${fontSize.base};
@@ -155,6 +160,27 @@ const styles = {
     
     &::placeholder {
       color: ${colors.textMuted};
+    }
+  `,
+  searchClearBtn: css`
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: ${colors.textMuted};
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    
+    &:hover {
+      color: ${colors.text};
+      background: ${colors.surfaceHover};
     }
   `,
   viewBtn: css`
@@ -672,13 +698,26 @@ export function StudioToolbar() {
             <CloudIcon />
             Sync CDN
           </button>
-          <input
-            css={styles.searchInput}
-            type="text"
-            placeholder="Search images..."
-            value={searchQuery}
-            onChange={handleSearch}
-          />
+          <div css={styles.searchWrapper}>
+            <input
+              css={styles.searchInput}
+              type="text"
+              placeholder="Search images..."
+              value={searchQuery}
+              onChange={handleSearch}
+            />
+            {searchQuery && (
+              <button
+                css={styles.searchClearBtn}
+                onClick={() => setSearchQuery('')}
+                title="Clear search"
+              >
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
         <div css={styles.right}>

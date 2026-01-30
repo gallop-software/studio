@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 'use client'
 
+import React from 'react'
 import { css, keyframes } from '@emotion/react'
 import { colors, fontSize, fontStack, baseReset } from './tokens'
 
@@ -150,6 +151,95 @@ export function ConfirmModal({
             {confirmLabel}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+interface InputModalProps {
+  title: string
+  message?: string
+  inputLabel?: string
+  defaultValue?: string
+  placeholder?: string
+  confirmLabel?: string
+  cancelLabel?: string
+  onConfirm: (value: string) => void
+  onCancel: () => void
+}
+
+const inputStyles = {
+  input: css`
+    width: 100%;
+    padding: 10px 12px;
+    font-size: ${fontSize.base};
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
+    background: ${colors.surface};
+    color: ${colors.text};
+    margin-top: 12px;
+    transition: all 0.15s ease;
+    
+    &:focus {
+      outline: none;
+      border-color: ${colors.primary};
+      box-shadow: 0 0 0 2px ${colors.primaryLight};
+    }
+    
+    &::placeholder {
+      color: ${colors.textMuted};
+    }
+  `,
+}
+
+export function InputModal({
+  title,
+  message,
+  inputLabel,
+  defaultValue = '',
+  placeholder,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  onConfirm,
+  onCancel,
+}: InputModalProps) {
+  const [value, setValue] = React.useState(defaultValue)
+  
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (value.trim()) {
+      onConfirm(value.trim())
+    }
+  }
+  
+  return (
+    <div css={styles.overlay} onClick={onCancel}>
+      <div css={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <form onSubmit={handleSubmit}>
+          <div css={styles.header}>
+            <h3 css={styles.title}>{title}</h3>
+          </div>
+          <div css={styles.body}>
+            {message && <p css={styles.message}>{message}</p>}
+            {inputLabel && <label css={styles.message}>{inputLabel}</label>}
+            <input
+              css={inputStyles.input}
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={placeholder}
+              autoFocus
+            />
+          </div>
+          <div css={styles.footer}>
+            <button type="button" css={[styles.btn, styles.btnCancel]} onClick={onCancel}>
+              {cancelLabel}
+            </button>
+            <button type="submit" css={[styles.btn, styles.btnConfirm]} disabled={!value.trim()}>
+              {confirmLabel}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

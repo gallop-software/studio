@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
-import { ConfirmModal, AlertModal } from './StudioModal'
+import { ConfirmModal, AlertModal, InputModal, ProgressModal, type ProgressState } from './StudioModal'
 import { colors, fontSize } from './tokens'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif']
@@ -270,6 +270,9 @@ const styles = {
 export function StudioDetailView() {
   const { focusedItem, setFocusedItem, triggerRefresh, clearSelection } = useStudio()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showRenameModal, setShowRenameModal] = useState(false)
+  const [showProcessConfirm, setShowProcessConfirm] = useState(false)
+  const [processProgress, setProcessProgress] = useState<ProgressState | null>(null)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showCopied, setShowCopied] = useState(false)
 
@@ -290,11 +293,36 @@ export function StudioDetailView() {
     setTimeout(() => setShowCopied(false), 1500)
   }
 
-  const handleRename = () => {
-    const newName = prompt('Enter new name:', focusedItem.name)
+  const handleRename = async (newName: string) => {
+    setShowRenameModal(false)
     if (newName && newName !== focusedItem.name) {
-      console.log('Rename to:', newName)
-      // TODO: Implement rename API
+      try {
+        const response = await fetch('/api/studio/rename', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            oldPath: focusedItem.path,
+            newName: newName,
+          }),
+        })
+        
+        if (response.ok) {
+          triggerRefresh()
+          setFocusedItem(null)
+        } else {
+          const data = await response.json()
+          setAlertMessage({
+            title: 'Rename Failed',
+            message: data.error || 'Failed to rename file',
+          })
+        }
+      } catch (error) {
+        console.error('Rename error:', error)
+        setAlertMessage({
+          title: 'Rename Failed',
+          message: 'An error occurred while renaming the file',
+        })
+      }
     }
   }
 
@@ -332,9 +360,69 @@ export function StudioDetailView() {
     // TODO: Implement sync API
   }
 
-  const handleRegenerate = () => {
-    console.log('Regenerate:', focusedItem.path)
-    // TODO: Implement regenerate API
+  const handleProcessImage = async () => {
+    setShowProcessConfirm(false)
+    
+    setProcessProgress({
+      current: 0,
+      total: 1,
+      percent: 0,
+      status: 'processing',
+      currentFile: focusedItem.name,
+    })
+
+    try {
+      const response = await fetch('/api/studio/reprocess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paths: [focusedItem.path],
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Processing failed')
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('No response body')
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              setProcessProgress(data)
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+
+      triggerRefresh()
+    } catch (error) {
+      console.error('Process error:', error)
+      setProcessProgress({
+        current: 0,
+        total: 1,
+        percent: 0,
+        status: 'error',
+        message: 'Failed to process image',
+      })
+    }
   }
 
   const renderMedia = () => {
@@ -372,6 +460,36 @@ export function StudioDetailView() {
           title={alertMessage.title}
           message={alertMessage.message}
           onClose={() => setAlertMessage(null)}
+        />
+      )}
+
+      {showRenameModal && (
+        <InputModal
+          title="Rename File"
+          message="Enter a new name for the file:"
+          defaultValue={focusedItem.name}
+          placeholder="Enter new filename"
+          confirmLabel="Rename"
+          onConfirm={handleRename}
+          onCancel={() => setShowRenameModal(false)}
+        />
+      )}
+
+      {showProcessConfirm && (
+        <ConfirmModal
+          title="Process Image"
+          message={`Generate thumbnails for "${focusedItem.name}"?`}
+          confirmLabel="Process"
+          onConfirm={handleProcessImage}
+          onCancel={() => setShowProcessConfirm(false)}
+        />
+      )}
+
+      {processProgress && (
+        <ProgressModal
+          title="Processing Image"
+          progress={processProgress}
+          onClose={() => setProcessProgress(null)}
         />
       )}
 
@@ -430,7 +548,7 @@ export function StudioDetailView() {
             </div>
 
             <div css={styles.actions}>
-              <button css={styles.actionBtn} onClick={handleRename}>
+              <button css={styles.actionBtn} onClick={() => setShowRenameModal(true)}>
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
@@ -442,11 +560,11 @@ export function StudioDetailView() {
                 </svg>
                 Sync to CDN
               </button>
-              <button css={styles.actionBtn} onClick={handleRegenerate}>
+              <button css={styles.actionBtn} onClick={() => setShowProcessConfirm(true)}>
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                Regenerate
+                Process Image
               </button>
               <button css={[styles.actionBtn, styles.actionBtnDanger]} onClick={() => setShowDeleteConfirm(true)}>
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
