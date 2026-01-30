@@ -14,6 +14,7 @@ import type { FileItem, StudioMeta } from '../types'
 
 interface StudioUIProps {
   onClose: () => void
+  isVisible?: boolean
 }
 
 // Standard button height for consistency
@@ -86,7 +87,7 @@ const styles = {
  * Main Studio UI - contains all panels and manages internal state
  * Rendered inside the modal via lazy loading
  */
-export function StudioUI({ onClose }: StudioUIProps) {
+export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
   const [currentPath, setCurrentPathInternal] = useState('public')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null)
@@ -168,13 +169,15 @@ export function StudioUI({ onClose }: StudioUIProps) {
   )
 
   useEffect(() => {
-    document.addEventListener('keydown', handleKeyDown)
-    document.body.style.overflow = 'hidden'
+    if (isVisible) {
+      document.addEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = 'hidden'
+    }
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = ''
     }
-  }, [handleKeyDown])
+  }, [handleKeyDown, isVisible])
 
   const contextValue = {
     isOpen: true,

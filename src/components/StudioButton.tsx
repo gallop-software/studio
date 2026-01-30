@@ -160,7 +160,7 @@ export function StudioButton() {
           <div css={styles.backdrop} onClick={() => setIsOpen(false)} />
           <div css={styles.modal}>
             <Suspense fallback={<LoadingState />}>
-              <StudioUI onClose={() => setIsOpen(false)} />
+              <StudioUI onClose={() => setIsOpen(false)} isVisible={isOpen} />
             </Suspense>
           </div>
         </div>
