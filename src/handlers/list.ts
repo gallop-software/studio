@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
-import type { FileItem } from '../types'
-import { loadMeta, isImageFile } from './utils'
+import type { FileItem, MetaEntry } from '../types'
+import { loadMeta, isImageFile, getCdnUrls, getFileEntries } from './utils'
 import { getThumbnailPath } from '../types'
 
 /**
@@ -15,10 +15,11 @@ export async function handleList(request: NextRequest) {
 
   try {
     const meta = await loadMeta()
-    const metaKeys = Object.keys(meta)
+    const fileEntries = getFileEntries(meta)
+    const cdnUrls = getCdnUrls(meta)
     
     // If meta is empty, return empty with a flag
-    if (metaKeys.length === 0) {
+    if (fileEntries.length === 0) {
       return NextResponse.json({ items: [], isEmpty: true })
     }
 
@@ -30,10 +31,9 @@ export async function handleList(request: NextRequest) {
 
     const items: FileItem[] = []
     const seenFolders = new Set<string>()
+    const metaKeys = fileEntries.map(([key]) => key)
 
-    for (const key of metaKeys) {
-      const entry = meta[key]
-      
+    for (const [key, entry] of fileEntries) {
       // Check if this file is under the current path
       if (!key.startsWith(pathPrefix) && pathPrefix !== '/') continue
       if (pathPrefix === '/' && !key.startsWith('/')) continue
@@ -72,7 +72,7 @@ export async function handleList(request: NextRequest) {
         // This is a file in the current folder
         const fileName = remaining
         const isImage = isImageFile(fileName)
-        const isPushedToCloud = entry.c === 1
+        const isPushedToCloud = entry.c !== undefined
         
         let thumbnail: string | undefined
         let hasThumbnail = false
@@ -82,9 +82,9 @@ export async function handleList(request: NextRequest) {
           // Has been processed - use thumbnail
           const thumbPath = getThumbnailPath(key, 'sm')
           
-          if (isPushedToCloud) {
-            // CDN thumbnail
-            const cdnUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL
+          if (isPushedToCloud && entry.c !== undefined) {
+            // CDN thumbnail - get URL from _cdns array
+            const cdnUrl = cdnUrls[entry.c]
             if (cdnUrl) {
               thumbnail = `${cdnUrl}${thumbPath}`
               hasThumbnail = true
@@ -150,16 +150,18 @@ export async function handleSearch(request: NextRequest) {
 
   try {
     const meta = await loadMeta()
+    const fileEntries = getFileEntries(meta)
+    const cdnUrls = getCdnUrls(meta)
     const items: FileItem[] = []
 
-    for (const [key, entry] of Object.entries(meta)) {
+    for (const [key, entry] of fileEntries) {
       // Check if the path matches the query
       if (!key.toLowerCase().includes(query)) continue
       
       const fileName = path.basename(key)
       const relativePath = key.slice(1) // Remove leading /
       const isImage = isImageFile(fileName)
-      const isPushedToCloud = entry.c === 1
+      const isPushedToCloud = entry.c !== undefined
       
       let thumbnail: string | undefined
       let hasThumbnail = false
@@ -167,8 +169,8 @@ export async function handleSearch(request: NextRequest) {
       if (isImage && (entry.w || entry.b)) {
         const thumbPath = getThumbnailPath(key, 'sm')
         
-        if (isPushedToCloud) {
-          const cdnUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL
+        if (isPushedToCloud && entry.c !== undefined) {
+          const cdnUrl = cdnUrls[entry.c]
           if (cdnUrl) {
             thumbnail = `${cdnUrl}${thumbPath}`
             hasThumbnail = true
@@ -211,10 +213,11 @@ export async function handleSearch(request: NextRequest) {
 export async function handleListFolders() {
   try {
     const meta = await loadMeta()
+    const fileEntries = getFileEntries(meta)
     const folderSet = new Set<string>()
     
     // Extract all folder paths from meta keys
-    for (const key of Object.keys(meta)) {
+    for (const [key] of fileEntries) {
       const parts = key.split('/')
       // Build up folder paths: /photos/2024/image.jpg -> photos, photos/2024
       let current = ''
@@ -248,9 +251,10 @@ export async function handleListFolders() {
 export async function handleCountImages() {
   try {
     const meta = await loadMeta()
+    const fileEntries = getFileEntries(meta)
     const allImages: string[] = []
 
-    for (const key of Object.keys(meta)) {
+    for (const [key] of fileEntries) {
       const fileName = path.basename(key)
       if (isImageFile(fileName)) {
         allImages.push(key.slice(1)) // Remove leading /
@@ -278,6 +282,7 @@ export async function handleFolderImages(request: NextRequest) {
 
     const folders = foldersParam.split(',')
     const meta = await loadMeta()
+    const fileEntries = getFileEntries(meta)
     const allImages: string[] = []
 
     // Convert folder paths to prefixes for matching
@@ -286,7 +291,7 @@ export async function handleFolderImages(request: NextRequest) {
       return rel ? `/${rel}/` : '/'
     })
 
-    for (const key of Object.keys(meta)) {
+    for (const [key] of fileEntries) {
       const fileName = path.basename(key)
       if (!isImageFile(fileName)) continue
       

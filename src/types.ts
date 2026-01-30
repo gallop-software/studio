@@ -1,19 +1,29 @@
 /**
  * Meta entry - works for images and non-images
  * Images have w, h, b (after processing)
- * Non-images just have c (if pushed to CDN)
+ * c is the index into _cdns array (omit if not on CDN)
  */
 export interface MetaEntry {
   w?: number     // original width (images only)
   h?: number     // original height (images only)
   b?: string     // blurhash (images only, after processing)
   p?: 1          // processed (has thumbnails and blurhash)
-  c?: 1          // pushed to CDN (omit if not pushed)
+  c?: number     // CDN index - index into _cdns array (omit if not on CDN)
 }
 
 /**
- * Meta schema - keyed by path from public folder
- * Example: { "/portfolio/photo.jpg": { w: 2400, h: 1600, blur: "..." } }
+ * Full meta schema including special keys
+ * _cdns: Array of CDN base URLs
+ * Other keys: file paths from public folder
+ */
+export interface FullMeta {
+  _cdns?: string[]  // Array of CDN base URLs
+  [key: string]: MetaEntry | string[] | undefined
+}
+
+/**
+ * Meta schema - keyed by path from public folder (legacy type)
+ * Example: { "/portfolio/photo.jpg": { w: 2400, h: 1600, b: "..." } }
  */
 export type LeanMeta = Record<string, MetaEntry>
 

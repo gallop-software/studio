@@ -12,6 +12,9 @@ import {
   downloadFromCdn,
   uploadToCdn,
   deleteLocalThumbnails,
+  getOrAddCdnIndex,
+  getFileEntries,
+  getMetaEntry,
 } from './utils'
 
 export async function handleSync(request: NextRequest) {
@@ -36,6 +39,9 @@ export async function handleSync(request: NextRequest) {
     }
 
     const meta = await loadMeta()
+    
+    // Get or add CDN URL to the _cdns array
+    const cdnIndex = getOrAddCdnIndex(meta, publicUrl)
 
     const r2 = new S3Client({
       region: 'auto',
@@ -47,13 +53,13 @@ export async function handleSync(request: NextRequest) {
     const errors: string[] = []
 
     for (const imageKey of imageKeys) {
-      const entry = meta[imageKey]
+      const entry = getMetaEntry(meta, imageKey)
       if (!entry) {
         errors.push(`Image not found in meta: ${imageKey}. Run Scan first.`)
         continue
       }
 
-      if (entry.c) {
+      if (entry.c !== undefined) {
         pushed.push(imageKey)
         continue
       }
@@ -99,7 +105,7 @@ export async function handleSync(request: NextRequest) {
           }
         }
 
-        entry.c = 1
+        entry.c = cdnIndex
 
         // Delete local thumbnails
         for (const thumbPath of getAllThumbnailPaths(imageKey)) {
@@ -145,8 +151,9 @@ export async function handleReprocess(request: NextRequest) {
     for (const imageKey of imageKeys) {
       try {
         let buffer: Buffer
-        const entry = meta[imageKey]
-        const isPushedToCloud = entry?.c === 1
+        const entry = getMetaEntry(meta, imageKey)
+        const isPushedToCloud = entry?.c !== undefined
+        const existingCdnIndex = entry?.c
         
         const originalPath = path.join(process.cwd(), 'public', imageKey)
         
@@ -169,7 +176,7 @@ export async function handleReprocess(request: NextRequest) {
         
         if (isPushedToCloud) {
           // Re-upload to CDN and clean up local files
-          updatedEntry.c = 1
+          updatedEntry.c = existingCdnIndex
           await uploadToCdn(imageKey)
           await deleteLocalThumbnails(imageKey)
           // Delete local original
@@ -216,9 +223,9 @@ export async function handleProcessAllStream() {
         let alreadyProcessed = 0
 
         // Get all images from meta that need processing (no p flag = not processed yet)
-        const imagesToProcess: Array<{ key: string; entry: typeof meta[string] }> = []
+        const imagesToProcess: Array<{ key: string; entry: import('../types').MetaEntry }> = []
         
-        for (const [key, entry] of Object.entries(meta)) {
+        for (const [key, entry] of getFileEntries(meta)) {
           const fileName = path.basename(key)
           if (!isImageFile(fileName)) continue
           
@@ -236,7 +243,8 @@ export async function handleProcessAllStream() {
         for (let i = 0; i < imagesToProcess.length; i++) {
           const { key, entry } = imagesToProcess[i]
           const fullPath = path.join(process.cwd(), 'public', key)
-          const isInCloud = entry.c === 1
+          const isInCloud = entry.c !== undefined
+          const existingCdnIndex = entry.c
           
           sendEvent({ 
             type: 'progress', 
@@ -284,7 +292,7 @@ export async function handleProcessAllStream() {
               meta[key] = {
                 ...processedEntry,
                 p: 1,
-                ...(isInCloud ? { c: 1 } : {}),
+                ...(isInCloud ? { c: existingCdnIndex } : {}),
               }
             }
 
@@ -307,9 +315,9 @@ export async function handleProcessAllStream() {
         
         // Build set of expected thumbnail paths
         const trackedPaths = new Set<string>()
-        for (const imageKey of Object.keys(meta)) {
+        for (const [imageKey, entry] of getFileEntries(meta)) {
           // Only track local thumbnails (not pushed to CDN)
-          if (!meta[imageKey].c) {
+          if (entry.c === undefined) {
             for (const thumbPath of getAllThumbnailPaths(imageKey)) {
               trackedPaths.add(thumbPath)
             }

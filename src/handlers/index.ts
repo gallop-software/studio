@@ -12,6 +12,9 @@ import { handleSync, handleReprocess, handleProcessAllStream } from './images'
 // Scan handler
 import { handleScanStream } from './scan'
 
+// Import handlers
+import { handleImportUrls, handleGetCdns, handleUpdateCdns } from './import'
+
 /**
  * Unified GET handler for all Studio API routes
  */
@@ -46,6 +49,11 @@ export async function GET(request: NextRequest) {
   // Route: /api/studio/search
   if (route === 'search') {
     return handleSearch(request)
+  }
+
+  // Route: /api/studio/cdns
+  if (route === 'cdns') {
+    return handleGetCdns()
   }
 
   return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -105,6 +113,16 @@ export async function POST(request: NextRequest) {
   // Route: /api/studio/scan (streaming)
   if (route === 'scan') {
     return handleScanStream()
+  }
+
+  // Route: /api/studio/import (streaming)
+  if (route === 'import') {
+    return handleImportUrls(request)
+  }
+
+  // Route: /api/studio/cdns (update)
+  if (route === 'cdns') {
+    return handleUpdateCdns(request)
   }
 
   return NextResponse.json({ error: 'Not found' }, { status: 404 })

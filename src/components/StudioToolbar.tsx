@@ -7,6 +7,7 @@ import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal, ProgressModal, InputModal, type ProgressState } from './StudioModal'
 import { StudioFolderPicker } from './StudioFolderPicker'
 import { R2SetupModal } from './R2SetupModal'
+import { AddNewModal } from './AddNewModal'
 import { colors, fontSize } from './tokens'
 
 // Standard button height for consistency
@@ -216,6 +217,7 @@ export function StudioToolbar() {
   const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest } = useStudio()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const [showAddNewModal, setShowAddNewModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [processing, setProcessing] = useState(false)
@@ -1115,6 +1117,17 @@ export function StudioToolbar() {
         onClose={() => setShowR2SetupModal(false)}
       />
 
+      {showAddNewModal && (
+        <AddNewModal
+          currentPath={currentPath}
+          onClose={() => setShowAddNewModal(false)}
+          onUploadComplete={() => {
+            setShowAddNewModal(false)
+            triggerRefresh()
+          }}
+        />
+      )}
+
       <div css={styles.toolbar}>
         <input
           ref={fileInputRef}
@@ -1128,11 +1141,11 @@ export function StudioToolbar() {
         <div css={styles.left}>
           <button
             css={[styles.btn, styles.btnPrimary]}
-            onClick={handleUpload}
+            onClick={() => setShowAddNewModal(true)}
             disabled={uploading || isInImagesFolder}
           >
             <UploadIcon />
-            {uploading ? 'Uploading...' : 'Upload'}
+            Add New
           </button>
           <button
             css={styles.btn}

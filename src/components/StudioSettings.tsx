@@ -1,9 +1,10 @@
 /** @jsxImportSource @emotion/react */
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { css } from '@emotion/react'
 import { colors, fontSize, baseReset } from './tokens'
+import { useStudio } from './StudioContext'
 
 // Standard button height for consistency
 const btnHeight = '36px'
@@ -241,6 +242,85 @@ const styles = {
       background-color: ${colors.primaryHover};
       border-color: ${colors.primaryHover};
     }
+    
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  `,
+  cdnList: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  cdnRow: css`
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  `,
+  cdnInput: css`
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
+    font-size: ${fontSize.sm};
+    color: ${colors.text};
+    background: ${colors.surface};
+    transition: all 0.15s ease;
+    
+    &:focus {
+      outline: none;
+      border-color: ${colors.primary};
+      box-shadow: 0 0 0 3px ${colors.primaryLight};
+    }
+  `,
+  cdnIndex: css`
+    font-size: ${fontSize.xs};
+    color: ${colors.textMuted};
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
+  `,
+  cdnDeleteBtn: css`
+    padding: 6px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: ${colors.textMuted};
+    transition: color 0.15s;
+    flex-shrink: 0;
+    
+    &:hover {
+      color: ${colors.danger};
+    }
+  `,
+  cdnAddBtn: css`
+    padding: 8px 12px;
+    font-size: ${fontSize.sm};
+    font-weight: 500;
+    color: ${colors.primary};
+    background: ${colors.primaryLight};
+    border: 1px dashed ${colors.primary};
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+    
+    &:hover {
+      background: ${colors.surface};
+    }
+  `,
+  warning: css`
+    font-size: ${fontSize.xs};
+    color: ${colors.danger};
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: ${colors.dangerLight};
+    border-radius: 6px;
   `,
 }
 
@@ -277,13 +357,74 @@ CLOUDFLARE_R2_BUCKET_NAME=my-images-bucket
 CLOUDFLARE_R2_PUBLIC_URL=https://cdn.yourdomain.com`
 
 function SettingsPanel({ onClose }: { onClose: () => void }) {
+  const { triggerRefresh } = useStudio()
   const [copied, setCopied] = useState(false)
+  const [cdnUrls, setCdnUrls] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [hasChanges, setHasChanges] = useState(false)
+
+  // Load CDN URLs on mount
+  useEffect(() => {
+    async function loadCdns() {
+      try {
+        const response = await fetch('/api/studio/cdns')
+        const data = await response.json()
+        setCdnUrls(data.cdns || [])
+      } catch (error) {
+        console.error('Failed to load CDN URLs:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadCdns()
+  }, [])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(envTemplate)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  const handleCdnChange = useCallback((index: number, value: string) => {
+    setCdnUrls(prev => {
+      const updated = [...prev]
+      updated[index] = value
+      return updated
+    })
+    setHasChanges(true)
+  }, [])
+
+  const handleAddCdn = useCallback(() => {
+    setCdnUrls(prev => [...prev, ''])
+    setHasChanges(true)
+  }, [])
+
+  const handleDeleteCdn = useCallback((index: number) => {
+    setCdnUrls(prev => prev.filter((_, i) => i !== index))
+    setHasChanges(true)
+  }, [])
+
+  const handleSave = useCallback(async () => {
+    setSaving(true)
+    try {
+      const response = await fetch('/api/studio/cdns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cdns: cdnUrls.filter(url => url.trim()) }),
+      })
+      
+      if (response.ok) {
+        setHasChanges(false)
+        triggerRefresh()
+        onClose()
+      }
+    } catch (error) {
+      console.error('Failed to save CDN URLs:', error)
+    } finally {
+      setSaving(false)
+    }
+  }, [cdnUrls, triggerRefresh, onClose])
 
   return (
     <div css={styles.overlay} onClick={onClose}>
@@ -299,7 +440,52 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
 
         <div css={styles.sections}>
           <section>
-            <h3 css={styles.sectionTitle}>Cloudflare R2</h3>
+            <h3 css={styles.sectionTitle}>CDN URLs</h3>
+            <p css={styles.description}>Manage CDN base URLs used by your images:</p>
+            {loading ? (
+              <p css={styles.description}>Loading...</p>
+            ) : (
+              <>
+                <div css={styles.cdnList}>
+                  {cdnUrls.map((url, index) => (
+                    <div key={index} css={styles.cdnRow}>
+                      <span css={styles.cdnIndex}>{index}</span>
+                      <input
+                        css={styles.cdnInput}
+                        type="text"
+                        value={url}
+                        onChange={(e) => handleCdnChange(index, e.target.value)}
+                        placeholder="https://cdn.example.com"
+                      />
+                      <button
+                        css={styles.cdnDeleteBtn}
+                        onClick={() => handleDeleteCdn(index)}
+                        title="Delete CDN URL"
+                      >
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button css={styles.cdnAddBtn} onClick={handleAddCdn}>
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add CDN URL
+                </button>
+                {cdnUrls.length > 0 && (
+                  <p css={styles.warning}>
+                    Warning: Changing CDN URLs may break image references. The index numbers correspond to image `c` values.
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+
+          <section>
+            <h3 css={styles.sectionTitle}>Cloudflare R2 Credentials</h3>
             <p css={styles.description}>Configure in .env.local file:</p>
             <div css={styles.codeWrapper}>
               <button css={styles.copyBtn} onClick={handleCopy} title="Copy to clipboard">
@@ -339,7 +525,9 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
 
         <div css={styles.footer}>
           <button css={styles.cancelBtn} onClick={onClose}>Cancel</button>
-          <button css={styles.saveBtn}>Save Changes</button>
+          <button css={styles.saveBtn} onClick={handleSave} disabled={saving || !hasChanges}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
         </div>
       </div>
     </div>
