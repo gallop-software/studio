@@ -644,7 +644,7 @@ export function StudioToolbar() {
           }
         }
       } else {
-        // Process selected images (no streaming for now)
+        // Process selected images with streaming
         setShowProgress(true)
         setProgressState({
           current: 0,
@@ -654,36 +654,88 @@ export function StudioToolbar() {
         })
 
         // Use stored imagesToProcess instead of selectedItems
-        const selectedImageKeys = imagesToProcess.map(p => p.replace(/^public\//, ''))
+        const selectedImageKeys = imagesToProcess.map(p => {
+          const key = p.replace(/^public\//, '')
+          return key.startsWith('/') ? key : `/${key}`
+        })
         
-        const response = await fetch('/api/studio/reprocess', {
+        const response = await fetch('/api/studio/reprocess-stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageKeys: selectedImageKeys }),
           signal,
         })
         
-        const data = await response.json()
-        
-        if (response.ok) {
-          setProgressState({
-            current: data.processed?.length || 0,
-            total: data.processed?.length || 0,
-            percent: 100,
-            status: 'complete',
-            processed: data.processed?.length || 0,
-            errors: data.errors?.length || 0,
-          })
-          clearSelection()
-          triggerRefresh()
-        } else {
+        if (!response.ok) {
+          const error = await response.json()
           setProgressState({
             current: 0,
             total: 0,
             percent: 0,
             status: 'error',
-            message: data.error || 'Unknown error',
+            message: error.error || 'Unknown error',
           })
+        } else {
+          const reader = response.body?.getReader()
+          const decoder = new TextDecoder()
+
+          if (reader) {
+            let buffer = ''
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+
+              buffer += decoder.decode(value, { stream: true })
+              const lines = buffer.split('\n')
+              buffer = lines.pop() || ''
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.slice(6))
+                    
+                    if (data.type === 'start') {
+                      setProgressState(prev => ({
+                        ...prev,
+                        total: data.total,
+                      }))
+                    } else if (data.type === 'progress') {
+                      setProgressState({
+                        current: data.current,
+                        total: data.total,
+                        percent: data.percent,
+                        status: 'processing',
+                        message: data.message,
+                      })
+                    } else if (data.type === 'cleanup') {
+                      setProgressState(prev => ({
+                        ...prev,
+                        status: 'cleanup',
+                        message: data.message,
+                      }))
+                    } else if (data.type === 'complete') {
+                      setProgressState({
+                        current: data.processed,
+                        total: data.processed,
+                        percent: 100,
+                        status: data.errors > 0 ? 'error' : 'complete',
+                        processed: data.processed,
+                        message: data.message,
+                      })
+                      clearSelection()
+                      triggerRefresh()
+                    } else if (data.type === 'error') {
+                      setProgressState(prev => ({
+                        ...prev,
+                        status: 'error',
+                        message: data.message,
+                      }))
+                    }
+                  } catch { /* ignore parse errors */ }
+                }
+              }
+            }
+          }
         }
       }
     } catch (error) {
