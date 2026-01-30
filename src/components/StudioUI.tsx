@@ -35,6 +35,7 @@ const styles = {
     padding: 12px 24px;
     background: ${colors.surface};
     border-bottom: 1px solid ${colors.border};
+    position: relative;
   `,
   title: css`
     font-size: ${fontSize.lg};
@@ -42,13 +43,22 @@ const styles = {
     color: ${colors.text};
     margin: 0;
     letter-spacing: -0.02em;
+    flex-shrink: 0;
   `,
   headerLeft: css`
     display: flex;
     align-items: center;
     gap: 12px;
-    min-width: 0;
     flex: 1;
+    min-width: 0;
+  `,
+  headerCenter: css`
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    max-width: 50%;
   `,
   breadcrumbs: css`
     display: flex;
@@ -56,7 +66,6 @@ const styles = {
     gap: 6px;
     font-size: ${fontSize.base};
     color: ${colors.textSecondary};
-    min-width: 0;
     overflow: hidden;
   `,
   breadcrumbSeparator: css`
@@ -329,6 +338,8 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
         <div css={styles.header}>
           <div css={styles.headerLeft}>
             <h1 css={styles.title}>Studio</h1>
+          </div>
+          <div css={styles.headerCenter}>
             <Breadcrumbs currentPath={currentPath} onNavigate={setCurrentPath} />
           </div>
           <div css={styles.headerActions}>
