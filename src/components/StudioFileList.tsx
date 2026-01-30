@@ -147,27 +147,27 @@ const styles = {
   `,
   tooltip: css`
     position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
+    top: 50%;
+    right: 100%;
+    transform: translateY(-50%);
     background: #1a1f36;
     color: white;
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 12px;
     white-space: nowrap;
-    margin-bottom: 6px;
+    margin-right: 6px;
     pointer-events: none;
     z-index: 100;
     
     &::after {
       content: '';
       position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
+      left: 100%;
+      top: 50%;
+      transform: translateY(-50%);
       border: 4px solid transparent;
-      border-top-color: #1a1f36;
+      border-left-color: #1a1f36;
     }
   `,
   nameCell: css`
