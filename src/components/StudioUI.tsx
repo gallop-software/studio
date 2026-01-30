@@ -225,14 +225,13 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
         <StudioToolbar />
 
         <div css={styles.content}>
-          {focusedItem ? (
-            <StudioDetailView />
-          ) : (
-            <div css={styles.fileBrowser}>
-              {viewMode === 'grid' ? <StudioFileGrid /> : <StudioFileList />}
-            </div>
-          )}
+          <div css={styles.fileBrowser}>
+            {viewMode === 'grid' ? <StudioFileGrid /> : <StudioFileList />}
+          </div>
         </div>
+        
+        {/* Detail view as modal overlay */}
+        {focusedItem && <StudioDetailView />}
       </div>
     </StudioContext.Provider>
   )

@@ -21,10 +21,25 @@ function isVideoFile(filename: string): boolean {
 }
 
 const styles = {
+  overlay: css`
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    display: flex;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+  `,
   container: css`
     display: flex;
     flex: 1;
+    margin: 24px;
+    background: ${colors.surface};
+    border-radius: 12px;
     overflow: hidden;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
   `,
   main: css`
     position: relative;
@@ -300,19 +315,20 @@ export function StudioDetailView() {
         />
       )}
 
-      <div css={styles.container}>
-        <div css={styles.main}>
-          <button css={styles.mainCloseBtn} onClick={handleClose} aria-label="Close">
-            <svg css={styles.mainCloseIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-          <div css={styles.mediaWrapper}>
-            {renderMedia()}
+      <div css={styles.overlay} onClick={handleClose}>
+        <div css={styles.container} onClick={(e) => e.stopPropagation()}>
+          <div css={styles.main}>
+            <button css={styles.mainCloseBtn} onClick={handleClose} aria-label="Close">
+              <svg css={styles.mainCloseIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div css={styles.mediaWrapper}>
+              {renderMedia()}
+            </div>
           </div>
-        </div>
 
-        <div css={styles.sidebar}>
+          <div css={styles.sidebar}>
           <div css={styles.sidebarHeader}>
             <h3 css={styles.sidebarTitle}>Details</h3>
           </div>
@@ -372,6 +388,7 @@ export function StudioDetailView() {
               </button>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </>
