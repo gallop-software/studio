@@ -195,7 +195,7 @@ const styles = {
   folderIcon: css`
     width: 24px;
     height: 24px;
-    color: #0a2540;
+    color: #635bff;
   `,
   imagesFolderWrapper: css`
     width: 48px;
@@ -359,12 +359,12 @@ export function StudioFileList() {
     )
   }
 
-  // Filter by search query (only images)
-  const filteredItems = searchQuery
+  // Filter by search query (only images, requires 2+ characters)
+  const filteredItems = searchQuery && searchQuery.length >= 2
     ? items.filter(item => {
-        if (item.type === 'folder') return true // Always show folders
+        if (item.type === 'folder') return false // Hide folders when searching
         const query = searchQuery.toLowerCase()
-        return item.name.toLowerCase().includes(query)
+        return item.path.toLowerCase().includes(query)
       })
     : items
 
