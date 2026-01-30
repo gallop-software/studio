@@ -141,23 +141,30 @@ async function handleList(request: NextRequest) {
         let dimensions: { width: number; height: number } | undefined
         
         if (isImage) {
-          // Check for -sm thumbnail in images folder
-          const ext = path.extname(entry.name).toLowerCase()
-          const baseName = path.basename(entry.name, ext)
           const relativePath = safePath.replace(/^public\/?/, '')
-          const thumbnailDir = relativePath ? `images/${relativePath}` : 'images'
-          const thumbnailName = `${baseName}-sm${ext === '.png' ? '.png' : '.jpg'}`
-          const thumbnailPath = path.join(process.cwd(), 'public', thumbnailDir, thumbnailName)
           
-          try {
-            await fs.access(thumbnailPath)
-            // Thumbnail exists
-            thumbnail = `/${thumbnailDir}/${thumbnailName}`
-            hasThumbnail = true
-          } catch {
-            // No thumbnail, fall back to original
+          // If we're already inside the images folder, these ARE the thumbnails
+          if (relativePath === 'images' || relativePath.startsWith('images/')) {
             thumbnail = itemPath.replace('public', '')
-            hasThumbnail = false
+            hasThumbnail = true // They are thumbnails themselves
+          } else {
+            // Check for -sm thumbnail in images folder
+            const ext = path.extname(entry.name).toLowerCase()
+            const baseName = path.basename(entry.name, ext)
+            const thumbnailDir = relativePath ? `images/${relativePath}` : 'images'
+            const thumbnailName = `${baseName}-sm${ext === '.png' ? '.png' : '.jpg'}`
+            const thumbnailPath = path.join(process.cwd(), 'public', thumbnailDir, thumbnailName)
+            
+            try {
+              await fs.access(thumbnailPath)
+              // Thumbnail exists
+              thumbnail = `/${thumbnailDir}/${thumbnailName}`
+              hasThumbnail = true
+            } catch {
+              // No thumbnail, fall back to original
+              thumbnail = itemPath.replace('public', '')
+              hasThumbnail = false
+            }
           }
           
           // Get dimensions
