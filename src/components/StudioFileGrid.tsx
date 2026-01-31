@@ -464,6 +464,7 @@ export function StudioFileGrid() {
     handleGenerateThumbnail,
     handleSelectAll,
     triggerScan,
+    refreshKey,
   } = useFileList()
 
   if (loading) {
@@ -549,6 +550,7 @@ export function StudioFileGrid() {
             isSelected={selectedItems.has(item.path)}
             onClick={(e) => handleItemClick(item, e)}
             onOpen={() => handleOpen(item)}
+            cacheKey={refreshKey}
             onGenerateThumbnail={() => handleGenerateThumbnail(item)}
           />
         ))}
@@ -563,9 +565,10 @@ interface GridItemProps {
   onClick: (e: React.MouseEvent) => void
   onOpen: () => void
   onGenerateThumbnail: () => void
+  cacheKey: number
 }
 
-function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: GridItemProps) {
+function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail, cacheKey }: GridItemProps) {
   const [showCopied, setShowCopied] = useState(false)
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
@@ -651,7 +654,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
         ) : isImage && item.thumbnail ? (
           <img
             css={styles.image}
-            src={item.thumbnail}
+            src={`${item.thumbnail}${item.thumbnail.includes('?') ? '&' : '?'}v=${cacheKey}`}
             alt={item.name}
             loading="lazy"
           />

@@ -29,7 +29,10 @@ export {
   handleReprocessStream, 
   handleUnprocessStream, 
   handleProcessAllStream, 
-  handleDownloadStream 
+  handleDownloadStream,
+  handlePushUpdatesStream,
+  handleCancelUpdates,
+  handleClearCache
 } from './images'
 
 // Scan handler

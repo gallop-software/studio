@@ -104,6 +104,70 @@ const styles = {
       border-color: #f59e0b;
     }
   `,
+  btnCloud: css`
+    color: #f59e0b;
+    
+    &:hover:not(:disabled) {
+      background-color: rgba(245, 158, 11, 0.1);
+      border-color: #f59e0b;
+    }
+  `,
+  cloudDropdownWrapper: css`
+    position: relative;
+  `,
+  dropdownArrow: css`
+    width: 12px;
+    height: 12px;
+    margin-left: 4px;
+  `,
+  cloudDropdown: css`
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 1000;
+    min-width: 160px;
+    margin-top: 4px;
+    background: white;
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+  `,
+  cloudDropdownItem: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 14px;
+    border: none;
+    background: none;
+    font-size: ${fontSize.sm};
+    color: ${colors.text};
+    cursor: pointer;
+    text-align: left;
+    
+    &:hover {
+      background-color: ${colors.hover};
+    }
+    
+    svg {
+      width: 16px;
+      height: 16px;
+      color: #f59e0b;
+    }
+  `,
+  cloudDropdownItemDanger: css`
+    color: ${colors.danger};
+    
+    svg {
+      color: ${colors.danger};
+    }
+  `,
+  cloudDropdownDivider: css`
+    height: 1px;
+    background-color: ${colors.border};
+    margin: 4px 0;
+  `,
   icon: css`
     width: 16px;
     height: 16px;
@@ -249,6 +313,8 @@ export function StudioToolbar() {
   const [showMoveModal, setShowMoveModal] = useState(false)
   const [showR2SetupModal, setShowR2SetupModal] = useState(false)
   const [pushing, setPushing] = useState(false)
+  const [showCloudDropdown, setShowCloudDropdown] = useState(false)
+  const cloudDropdownRef = useRef<HTMLDivElement>(null)
 
   // Check if we're in the images folder (uploads not allowed there)
   const isInImagesFolder = currentPath === 'public/images' || currentPath.startsWith('public/images/')
@@ -354,6 +420,17 @@ export function StudioToolbar() {
       setScanning(false)
     }
   }, [triggerRefresh])
+
+  // Close cloud dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (cloudDropdownRef.current && !cloudDropdownRef.current.contains(event.target as Node)) {
+        setShowCloudDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Handle scan request from file pane
   useEffect(() => {
@@ -1088,6 +1165,75 @@ export function StudioToolbar() {
     }
   }, [selectedItems, fileItems, clearSelection, triggerRefresh])
 
+  // Clear CDN cache for selected files
+  const handleClearCache = useCallback(async () => {
+    if (selectedItems.size === 0) return
+    setShowCloudDropdown(false)
+
+    const selectedPaths = Array.from(selectedItems)
+    
+    // Get files that are on CDN
+    const cdnPaths = selectedPaths.filter(p => {
+      const item = fileItems.find(f => f.path === p)
+      return item && item.cdnPushed
+    })
+
+    if (cdnPaths.length === 0) {
+      setAlertMessage({
+        title: 'No CDN Files',
+        message: 'No selected files are on CDN.',
+      })
+      return
+    }
+
+    setProgressTitle('Clearing Cache')
+    setShowProgress(true)
+    setProgressState({
+      current: 0,
+      total: cdnPaths.length,
+      percent: 0,
+      status: 'processing',
+      message: 'Clearing CDN cache...',
+    })
+
+    try {
+      const response = await fetch('/api/studio/clear-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: cdnPaths }),
+      })
+
+      const result = await response.json()
+      
+      if (response.ok) {
+        setProgressState({
+          current: cdnPaths.length,
+          total: cdnPaths.length,
+          percent: 100,
+          status: 'complete',
+          message: result.message || 'Cache cleared.',
+        })
+      } else {
+        setProgressState({
+          current: 0,
+          total: 0,
+          percent: 0,
+          status: 'error',
+          message: result.error || 'Failed to clear cache.',
+        })
+      }
+    } catch (error) {
+      console.error('Clear cache error:', error)
+      setProgressState({
+        current: 0,
+        total: 0,
+        percent: 0,
+        status: 'error',
+        message: 'Failed to clear cache. Check console for details.',
+      })
+    }
+  }, [selectedItems, fileItems])
+
   const handleCreateFolder = useCallback(async (folderName: string) => {
     setShowNewFolderModal(false)
     
@@ -1436,48 +1582,67 @@ export function StudioToolbar() {
             <MoveIcon />
             Move
           </button>
-          {hasUpdateSelection ? (
-            <>
-              <button
-                css={[styles.btn, styles.btnUpdate]}
-                onClick={handlePushUpdates}
-                disabled={!hasSelection}
-                title="Push local changes to cloud"
-              >
-                <CloudIcon />
-                <SyncIcon />
-                Push Update
-              </button>
-              <button
-                css={[styles.btn, styles.btnDanger]}
-                onClick={handleCancelUpdates}
-                disabled={!hasSelection}
-                title="Cancel update (delete local file)"
-              >
-                <CancelIcon />
-                Cancel Update
-              </button>
-            </>
-          ) : allR2Selection ? (
+          <div css={styles.cloudDropdownWrapper} ref={cloudDropdownRef}>
             <button
-              css={styles.btn}
-              onClick={handleDownloadClick}
+              css={[styles.btn, styles.btnCloud]}
+              onClick={() => setShowCloudDropdown(!showCloudDropdown)}
               disabled={!hasSelection}
             >
-              <CloudDownloadIcon />
-              Download
-            </button>
-          ) : (
-            <button
-              css={styles.btn}
-              onClick={handleSyncClick}
-              disabled={!hasSelection || hasR2Selection}
-              title={hasR2Selection ? 'Selected files are already in R2' : undefined}
-            >
               <CloudIcon />
-              Push CDN
+              Cloud
+              <svg css={styles.dropdownArrow} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
             </button>
-          )}
+            {showCloudDropdown && hasSelection && (
+              <div css={styles.cloudDropdown}>
+                {hasUpdateSelection && (
+                  <>
+                    <button
+                      css={styles.cloudDropdownItem}
+                      onClick={() => { setShowCloudDropdown(false); handlePushUpdates() }}
+                    >
+                      <SyncIcon />
+                      Push Update
+                    </button>
+                    <button
+                      css={[styles.cloudDropdownItem, styles.cloudDropdownItemDanger]}
+                      onClick={() => { setShowCloudDropdown(false); handleCancelUpdates() }}
+                    >
+                      <CancelIcon />
+                      Cancel Update
+                    </button>
+                    <div css={styles.cloudDropdownDivider} />
+                  </>
+                )}
+                {!hasR2Selection && (
+                  <button
+                    css={styles.cloudDropdownItem}
+                    onClick={() => { setShowCloudDropdown(false); handleSyncClick() }}
+                  >
+                    <CloudIcon />
+                    Push CDN
+                  </button>
+                )}
+                {allR2Selection && (
+                  <button
+                    css={styles.cloudDropdownItem}
+                    onClick={() => { setShowCloudDropdown(false); handleDownloadClick() }}
+                  >
+                    <CloudDownloadIcon />
+                    Download
+                  </button>
+                )}
+                <button
+                  css={styles.cloudDropdownItem}
+                  onClick={handleClearCache}
+                >
+                  <RefreshIcon />
+                  Clear Cache
+                </button>
+              </div>
+            )}
+          </div>
           <div css={styles.searchWrapper}>
             <input
               css={styles.searchInput}
@@ -1610,6 +1775,14 @@ function CancelIcon() {
   return (
     <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
+function RefreshIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
     </svg>
   )
 }

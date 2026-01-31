@@ -1241,3 +1241,59 @@ export async function handleCancelUpdates(request: Request) {
     return jsonResponse({ error: 'Failed to cancel updates' }, { status: 500 })
   }
 }
+
+/**
+ * Clear CDN cache for selected files
+ */
+export async function handleClearCache(request: Request) {
+  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '')
+  
+  try {
+    const { paths } = await request.json() as { paths: string[] }
+    
+    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+      return jsonResponse({ error: 'No paths provided' }, { status: 400 })
+    }
+
+    const meta = await loadMeta()
+    const cdnUrls = getCdnUrls(meta)
+    const urlsToPurge: string[] = []
+
+    for (const itemPath of paths) {
+      const key = itemPath.startsWith('public/') ? '/' + itemPath.slice(7) : itemPath
+      const entry = meta[key] as { c?: number; sm?: object; md?: object; lg?: object; f?: object } | undefined
+      
+      if (!entry || entry.c === undefined) continue
+      
+      const cdnUrl = cdnUrls[entry.c]?.replace(/\/$/, '')
+      if (!cdnUrl) continue
+      
+      // Add original URL
+      urlsToPurge.push(`${cdnUrl}${key}`)
+      
+      // Add thumbnail URLs if they exist
+      if (entry.sm || entry.md || entry.lg || entry.f) {
+        for (const thumbPath of getAllThumbnailPaths(key)) {
+          urlsToPurge.push(`${cdnUrl}${thumbPath}`)
+        }
+      }
+    }
+
+    if (urlsToPurge.length === 0) {
+      return jsonResponse({
+        success: true,
+        message: 'No CDN files to clear cache for.',
+      })
+    }
+
+    const cacheResult = await purgeCloudflareCache(urlsToPurge)
+    
+    return jsonResponse({
+      success: cacheResult.status === 'success',
+      message: cacheResult.message || `Cleared cache for ${urlsToPurge.length} URLs.`,
+    })
+  } catch (error) {
+    console.error('Clear cache error:', error)
+    return jsonResponse({ error: 'Failed to clear cache' }, { status: 500 })
+  }
+}

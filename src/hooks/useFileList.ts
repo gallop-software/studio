@@ -139,5 +139,8 @@ export function useFileList() {
     handleGenerateThumbnail,
     handleSelectAll,
     triggerScan,
+    
+    // Cache key for image refresh
+    refreshKey,
   }
 }

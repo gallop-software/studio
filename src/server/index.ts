@@ -9,7 +9,7 @@ import { createServer } from 'net'
 // Import handlers from individual modules
 import { handleList, handleSearch, handleListFolders, handleCountImages, handleFolderImages } from '../handlers/list'
 import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleMoveStream } from '../handlers/files'
-import { handleSync, handleReprocessStream, handleUnprocessStream, handleDownloadStream, handlePushUpdatesStream, handleCancelUpdates } from '../handlers/images'
+import { handleSync, handleReprocessStream, handleUnprocessStream, handleDownloadStream, handlePushUpdatesStream, handleCancelUpdates, handleClearCache } from '../handlers/images'
 import { handleScanStream, handleDeleteOrphans } from '../handlers/scan'
 import { handleImportUrls, handleGetCdns, handleUpdateCdns } from '../handlers/import'
 import { handleGenerateFavicon } from '../handlers/favicon'
@@ -111,6 +111,7 @@ export async function startServer(options: ServerOptions) {
   app.post('/api/studio/download-stream', wrapHandler(handleDownloadStream, true))
   app.post('/api/studio/push-updates-stream', wrapHandler(handlePushUpdatesStream, true))
   app.post('/api/studio/cancel-updates', wrapHandler(handleCancelUpdates))
+  app.post('/api/studio/clear-cache', wrapHandler(handleClearCache))
   app.post('/api/studio/scan', wrapHandler(handleScanStream, true))
   app.post('/api/studio/delete-orphans', wrapHandler(handleDeleteOrphans))
   app.post('/api/studio/import', wrapHandler(handleImportUrls, true))
