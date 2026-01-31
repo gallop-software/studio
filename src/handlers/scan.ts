@@ -233,6 +233,50 @@ export async function handleScanStream() {
         }
         
         await cleanEmptyFolders(getPublicPath())
+        
+        // Also clean up empty folders inside the images directory
+        function isHiddenOrSystemFile(filename: string): boolean {
+          if (filename.startsWith('.')) return true
+          const windowsFiles = ['thumbs.db', 'desktop.ini', 'ehthumbs.db', 'ehthumbs_vista.db']
+          if (windowsFiles.includes(filename.toLowerCase())) return true
+          return false
+        }
+        
+        async function cleanImagesFolders(dir: string): Promise<boolean> {
+          try {
+            const entries = await fs.readdir(dir, { withFileTypes: true })
+            let isEmpty = true
+            
+            for (const entry of entries) {
+              if (entry.isDirectory()) {
+                const subDirEmpty = await cleanImagesFolders(path.join(dir, entry.name))
+                if (!subDirEmpty) isEmpty = false
+              } else if (!isHiddenOrSystemFile(entry.name)) {
+                isEmpty = false
+              }
+            }
+            
+            if (isEmpty) {
+              // Delete hidden files first
+              for (const entry of entries) {
+                if (!entry.isDirectory() && isHiddenOrSystemFile(entry.name)) {
+                  try { await fs.unlink(path.join(dir, entry.name)) } catch { /* ignore */ }
+                }
+              }
+              await fs.rmdir(dir)
+            }
+            
+            return isEmpty
+          } catch {
+            return true
+          }
+        }
+        
+        try {
+          await cleanImagesFolders(imagesDir)
+        } catch {
+          // images dir might not exist
+        }
 
         await saveMeta(meta)
 
