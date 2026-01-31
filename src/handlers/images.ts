@@ -393,6 +393,52 @@ export async function handleUnprocessStream(request: Request) {
           await purgeCloudflareCache(urlsToPurge)
         }
 
+        // Clean up empty folders in the images directory
+        sendEvent({ type: 'cleanup', message: 'Cleaning up empty folders...' })
+        
+        function isHiddenOrSystemFile(filename: string): boolean {
+          if (filename.startsWith('.')) return true
+          const windowsFiles = ['thumbs.db', 'desktop.ini', 'ehthumbs.db', 'ehthumbs_vista.db']
+          if (windowsFiles.includes(filename.toLowerCase())) return true
+          return false
+        }
+        
+        async function cleanEmptyFolders(dir: string): Promise<boolean> {
+          try {
+            const entries = await fs.readdir(dir, { withFileTypes: true })
+            let isEmpty = true
+            
+            for (const entry of entries) {
+              if (entry.isDirectory()) {
+                const subDirEmpty = await cleanEmptyFolders(path.join(dir, entry.name))
+                if (!subDirEmpty) isEmpty = false
+              } else if (!isHiddenOrSystemFile(entry.name)) {
+                isEmpty = false
+              }
+            }
+            
+            if (isEmpty) {
+              for (const entry of entries) {
+                if (!entry.isDirectory() && isHiddenOrSystemFile(entry.name)) {
+                  try { await fs.unlink(path.join(dir, entry.name)) } catch { /* ignore */ }
+                }
+              }
+              await fs.rmdir(dir)
+            }
+            
+            return isEmpty
+          } catch {
+            return true
+          }
+        }
+        
+        const imagesDir = getPublicPath('images')
+        try {
+          await cleanEmptyFolders(imagesDir)
+        } catch {
+          // images dir might not exist
+        }
+
         // Build completion message
         let message = `Removed thumbnails from ${removed.length} image${removed.length !== 1 ? 's' : ''}.`
         if (skipped.length > 0) {
