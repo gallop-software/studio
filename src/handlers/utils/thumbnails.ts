@@ -3,6 +3,7 @@ import path from 'path'
 import sharp from 'sharp'
 import { encode } from 'blurhash'
 import type { MetaEntry, Dimensions } from '../../types'
+import { getPublicPath } from '../../config'
 
 export const FULL_MAX_WIDTH = 2560
 
@@ -28,7 +29,7 @@ export async function processImage(
   const ext = path.extname(keyWithoutSlash).toLowerCase()
   const imageDir = path.dirname(keyWithoutSlash)
 
-  const imagesPath = path.join(process.cwd(), 'public', 'images', imageDir === '.' ? '' : imageDir)
+  const imagesPath = getPublicPath('images', imageDir === '.' ? '' : imageDir)
   await fs.mkdir(imagesPath, { recursive: true })
 
   const isPng = ext === '.png'
@@ -41,7 +42,7 @@ export async function processImage(
 
   // Generate full size (capped at FULL_MAX_WIDTH)
   const fullFileName = imageDir === '.' ? `${baseName}${outputExt}` : `${imageDir}/${baseName}${outputExt}`
-  const fullPath = path.join(process.cwd(), 'public', 'images', fullFileName)
+  const fullPath = getPublicPath('images', fullFileName)
 
   let fullWidth = originalWidth
   let fullHeight = originalHeight
@@ -73,7 +74,7 @@ export async function processImage(
     const newHeight = Math.round(maxWidth * ratio)
     const sizeFileName = `${baseName}${suffix}${outputExt}`
     const sizeFilePath = imageDir === '.' ? sizeFileName : `${imageDir}/${sizeFileName}`
-    const sizePath = path.join(process.cwd(), 'public', 'images', sizeFilePath)
+    const sizePath = getPublicPath('images', sizeFilePath)
 
     if (isPng) {
       await sharp(buffer).resize(maxWidth, newHeight).png({ quality: 80 }).toFile(sizePath)

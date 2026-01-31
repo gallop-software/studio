@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
 import sharp from 'sharp'
 import path from 'path'
 import fs from 'fs/promises'
+import { jsonResponse } from './utils/response'
+import { getPublicPath, getSrcAppPath } from '../config'
 
 /**
  * Generate favicon variants from a source image (streaming)
@@ -20,7 +21,7 @@ const FAVICON_CONFIGS = [
   { name: 'apple-icon.png', size: 180 },
 ]
 
-export async function handleGenerateFavicon(request: NextRequest) {
+export async function handleGenerateFavicon(request: Request) {
   const encoder = new TextEncoder()
 
   let imagePath: string
@@ -29,28 +30,28 @@ export async function handleGenerateFavicon(request: NextRequest) {
     imagePath = body.imagePath
 
     if (!imagePath) {
-      return NextResponse.json({ error: 'No image path provided' }, { status: 400 })
+      return jsonResponse({ error: 'No image path provided' }, { status: 400 })
     }
   } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    return jsonResponse({ error: 'Invalid request body' }, { status: 400 })
   }
 
   // Validate filename is favicon.png or favicon.jpg
   const fileName = path.basename(imagePath).toLowerCase()
   if (fileName !== 'favicon.png' && fileName !== 'favicon.jpg') {
-    return NextResponse.json({ 
+    return jsonResponse({ 
       error: 'Source file must be named favicon.png or favicon.jpg' 
     }, { status: 400 })
   }
 
   // Build full path to source file
-  const sourcePath = path.join(process.cwd(), 'public', imagePath.replace(/^\//, ''))
+  const sourcePath = getPublicPath(imagePath.replace(/^\//, ''))
   
   // Check if source file exists
   try {
     await fs.access(sourcePath)
   } catch {
-    return NextResponse.json({ error: 'Source file not found' }, { status: 404 })
+    return jsonResponse({ error: 'Source file not found' }, { status: 404 })
   }
 
   // Verify the source is a valid image
@@ -58,17 +59,17 @@ export async function handleGenerateFavicon(request: NextRequest) {
   try {
     metadata = await sharp(sourcePath).metadata()
   } catch {
-    return NextResponse.json({ error: 'Source file is not a valid image' }, { status: 400 })
+    return jsonResponse({ error: 'Source file is not a valid image' }, { status: 400 })
   }
 
   // Output directory is src/app/
-  const outputDir = path.join(process.cwd(), 'src', 'app')
+  const outputDir = getSrcAppPath()
   
   // Check output directory exists
   try {
     await fs.access(outputDir)
   } catch {
-    return NextResponse.json({ 
+    return jsonResponse({ 
       error: 'Output directory src/app/ not found' 
     }, { status: 500 })
   }

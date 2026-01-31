@@ -1,27 +1,19 @@
 {
   "name": "@gallop.software/studio",
-  "version": "1.5.10",
-  "description": "Media manager for Gallop templates - upload, process, and sync images to CDN",
-  "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
-    },
-    "./handlers": {
-      "types": "./dist/handlers/index.d.ts",
-      "import": "./dist/handlers/index.mjs",
-      "require": "./dist/handlers/index.js"
-    }
+  "version": "2.1.0",
+  "description": "Standalone media manager - upload, process, and sync images to CDN",
+  "type": "module",
+  "bin": {
+    "studio": "./bin/studio.mjs"
   },
   "files": [
-    "dist"
+    "dist",
+    "bin"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "tsup",
+    "build:client": "vite build",
     "dev": "tsup --watch",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
@@ -31,9 +23,10 @@
     "media-manager",
     "image-processing",
     "cloudflare-r2",
-    "nextjs",
     "gallop",
-    "cdn"
+    "cdn",
+    "cli",
+    "studio"
   ],
   "author": "Gallop Software",
   "license": "MIT",
@@ -45,25 +38,28 @@
   "bugs": {
     "url": "https://github.com/gallop-software/studio/issues"
   },
-  "peerDependencies": {
-    "next": ">=14.0.0",
-    "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
-  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.705.0",
     "@emotion/react": "^11.14.0",
     "blurhash": "^2.0.5",
     "clsx": "^2.1.1",
+    "express": "^5.2.1",
+    "open": "^10.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.5",
     "sharp": "^0.33.5"
   },
   "devDependencies": {
+    "@emotion/babel-plugin": "^11.13.5",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^5.1.2",
     "eslint": "^9.17.0",
     "tsup": "^8.3.5",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^7.3.1"
   }
 }

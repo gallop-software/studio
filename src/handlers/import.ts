@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server'
 import sharp from 'sharp'
 import { encode } from 'blurhash'
 import {
@@ -53,7 +52,7 @@ async function processRemoteImage(url: string): Promise<{ o: Dimensions; b: stri
 /**
  * Streaming endpoint to import images from URLs
  */
-export async function handleImportUrls(request: NextRequest) {
+export async function handleImportUrls(request: Request) {
   const encoder = new TextEncoder()
   
   const stream = new ReadableStream({
@@ -167,7 +166,7 @@ export async function handleGetCdns() {
 /**
  * Update CDN URLs from settings
  */
-export async function handleUpdateCdns(request: NextRequest) {
+export async function handleUpdateCdns(request: Request) {
   try {
     const { cdns } = await request.json() as { cdns: string[] }
     

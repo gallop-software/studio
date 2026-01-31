@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
 import sharp from 'sharp'
+import { jsonResponse } from './utils/response'
 import { encode } from 'blurhash'
 import { loadMeta, saveMeta, isMediaFile, isImageFile, getFileEntries } from './utils'
 import { getAllThumbnailPaths, isProcessed } from '../types'
+import { getPublicPath } from '../config'
 
 /**
  * Streaming scan handler - scans filesystem for new files not in meta
@@ -57,7 +58,7 @@ export async function handleScanStream() {
           }
         }
 
-        const publicDir = path.join(process.cwd(), 'public')
+        const publicDir = getPublicPath()
         await scanDir(publicDir)
 
         const total = allFiles.length
@@ -96,7 +97,7 @@ export async function handleScanStream() {
             
             // Rename the physical file
             const newRelativePath = `${baseName}-${counter}${ext}`
-            const newFullPath = path.join(process.cwd(), 'public', newRelativePath)
+            const newFullPath = getPublicPath(newRelativePath)
             
             try {
               await fs.rename(fullPath, newFullPath)
@@ -197,7 +198,7 @@ export async function handleScanStream() {
           }
         }
 
-        const imagesDir = path.join(process.cwd(), 'public', 'images')
+        const imagesDir = getPublicPath('images')
         try {
           await findOrphans(imagesDir)
         } catch {
@@ -236,12 +237,12 @@ export async function handleScanStream() {
 /**
  * Delete orphaned files from the images folder
  */
-export async function handleDeleteOrphans(request: NextRequest) {
+export async function handleDeleteOrphans(request: Request) {
   try {
     const { paths } = await request.json() as { paths: string[] }
     
     if (!paths || !Array.isArray(paths) || paths.length === 0) {
-      return NextResponse.json({ error: 'No paths provided' }, { status: 400 })
+      return jsonResponse({ error: 'No paths provided' }, { status: 400 })
     }
     
     const deleted: string[] = []
@@ -254,7 +255,7 @@ export async function handleDeleteOrphans(request: NextRequest) {
         continue
       }
       
-      const fullPath = path.join(process.cwd(), 'public', orphanPath)
+      const fullPath = getPublicPath(orphanPath)
       
       try {
         await fs.unlink(fullPath)
@@ -266,7 +267,7 @@ export async function handleDeleteOrphans(request: NextRequest) {
     }
     
     // Clean up empty directories
-    const imagesDir = path.join(process.cwd(), 'public', 'images')
+    const imagesDir = getPublicPath('images')
     
     async function removeEmptyDirs(dir: string): Promise<boolean> {
       try {
@@ -298,13 +299,13 @@ export async function handleDeleteOrphans(request: NextRequest) {
       // images dir might not exist
     }
     
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       deleted: deleted.length,
       errors: errors.length,
     })
   } catch (error) {
     console.error('Failed to delete orphans:', error)
-    return NextResponse.json({ error: 'Failed to delete orphaned files' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to delete orphaned files' }, { status: 500 })
   }
 }

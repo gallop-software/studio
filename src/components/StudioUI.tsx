@@ -17,8 +17,10 @@ import { colors, fontSize, baseReset } from './tokens'
 import type { FileItem, LeanMeta } from '../types'
 
 interface StudioUIProps {
-  onClose: () => void
+  onClose?: () => void
   isVisible?: boolean
+  standaloneMode?: boolean
+  workspacePath?: string
 }
 
 // Standard button height for consistency
@@ -121,6 +123,15 @@ const styles = {
     height: 16px;
     color: ${colors.textSecondary};
   `,
+  workspacePath: css`
+    font-size: ${fontSize.sm};
+    color: ${colors.textMuted};
+    padding: 0 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  `,
   content: css`
     flex: 1;
     display: flex;
@@ -168,7 +179,14 @@ const styles = {
  * Main Studio UI - contains all panels and manages internal state
  * Rendered inside the modal via lazy loading
  */
-export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
+export function StudioUI({ 
+  onClose, 
+  isVisible = true,
+  standaloneMode = false,
+  workspacePath,
+}: StudioUIProps) {
+  // In standalone mode, onClose is a no-op
+  const handleClose = onClose || (() => {})
   const [currentPath, setCurrentPathInternal] = useState('public')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null)
@@ -322,12 +340,12 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
         
         if (focusedItem) {
           setFocusedItem(null)
-        } else {
-          onClose()
+        } else if (!standaloneMode) {
+          handleClose()
         }
       }
     },
-    [onClose, focusedItem]
+    [handleClose, focusedItem, standaloneMode]
   )
 
   useEffect(() => {
@@ -344,8 +362,8 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
   const contextValue = {
     isOpen: true,
     openStudio: () => {},
-    closeStudio: onClose,
-    toggleStudio: onClose,
+    closeStudio: handleClose,
+    toggleStudio: handleClose,
     currentPath,
     setCurrentPath,
     navigateUp,
@@ -404,14 +422,21 @@ export function StudioUI({ onClose, isVisible = true }: StudioUIProps) {
             <Breadcrumbs currentPath={currentPath} onNavigate={setCurrentPath} />
           </div>
           <div css={styles.headerActions}>
+            {standaloneMode && workspacePath && (
+              <span css={styles.workspacePath} title={workspacePath}>
+                {workspacePath.length > 30 ? '...' + workspacePath.slice(-27) : workspacePath}
+              </span>
+            )}
             <StudioSettings />
-            <button
-              css={styles.headerBtn}
-              onClick={onClose}
-              aria-label="Close Studio"
-            >
-              <CloseIcon />
-            </button>
+            {!standaloneMode && (
+              <button
+                css={styles.headerBtn}
+                onClick={handleClose}
+                aria-label="Close Studio"
+              >
+                <CloseIcon />
+              </button>
+            )}
           </div>
         </div>
 

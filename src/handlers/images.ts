@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { jsonResponse } from './utils/response'
 import { getAllThumbnailPaths, isProcessed } from '../types'
 import {
   loadMeta,
@@ -18,10 +18,13 @@ import {
   getMetaEntry,
   getCdnUrls,
   downloadFromRemoteUrl,
+} from './utils'
+import { getPublicPath } from '../config'
+import {
   purgeCloudflareCache,
 } from './utils'
 
-export async function handleSync(request: NextRequest) {
+export async function handleSync(request: Request) {
   const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
   const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
   const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
@@ -29,7 +32,7 @@ export async function handleSync(request: NextRequest) {
   const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
 
   if (!accountId || !accessKeyId || !secretAccessKey || !bucketName || !publicUrl) {
-    return NextResponse.json(
+    return jsonResponse(
       { error: 'R2 not configured. Set CLOUDFLARE_R2_* environment variables.' },
       { status: 400 }
     )
@@ -39,7 +42,7 @@ export async function handleSync(request: NextRequest) {
     const { imageKeys } = await request.json() as { imageKeys: string[] }
 
     if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
-      return NextResponse.json({ error: 'No image keys provided' }, { status: 400 })
+      return jsonResponse({ error: 'No image keys provided' }, { status: 400 })
     }
 
     const meta = await loadMeta()
@@ -91,7 +94,7 @@ export async function handleSync(request: NextRequest) {
           originalBuffer = await downloadFromRemoteUrl(remoteUrl)
         } else {
           // Read from local file
-          const originalLocalPath = path.join(process.cwd(), 'public', imageKey)
+          const originalLocalPath = getPublicPath(imageKey)
           try {
             originalBuffer = await fs.readFile(originalLocalPath)
           } catch {
@@ -114,7 +117,7 @@ export async function handleSync(request: NextRequest) {
         // Upload thumbnails (only if processed locally, not for remote imports)
         if (!isRemote && isProcessed(entry)) {
           for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-            const localPath = path.join(process.cwd(), 'public', thumbPath)
+            const localPath = getPublicPath(thumbPath)
             try {
               const fileBuffer = await fs.readFile(localPath)
               await r2.send(
@@ -136,11 +139,11 @@ export async function handleSync(request: NextRequest) {
 
         // Delete local files (only for non-remote, local images being pushed)
         if (!isRemote) {
-          const originalLocalPath = path.join(process.cwd(), 'public', imageKey)
+          const originalLocalPath = getPublicPath(imageKey)
           
           // Delete local thumbnails
           for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-            const localPath = path.join(process.cwd(), 'public', thumbPath)
+            const localPath = getPublicPath(thumbPath)
             try { await fs.unlink(localPath) } catch { /* ignore */ }
           }
 
@@ -162,25 +165,25 @@ export async function handleSync(request: NextRequest) {
       await purgeCloudflareCache(urlsToPurge)
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       pushed,
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (error) {
     console.error('Failed to push:', error)
-    return NextResponse.json({ error: 'Failed to push to CDN' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to push to CDN' }, { status: 500 })
   }
 }
 
-export async function handleReprocess(request: NextRequest) {
+export async function handleReprocess(request: Request) {
   const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
   
   try {
     const { imageKeys } = await request.json() as { imageKeys: string[] }
 
     if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
-      return NextResponse.json({ error: 'No image keys provided' }, { status: 400 })
+      return jsonResponse({ error: 'No image keys provided' }, { status: 400 })
     }
 
     const meta = await loadMeta()
@@ -205,7 +208,7 @@ export async function handleReprocess(request: NextRequest) {
         const isInOurR2 = existingCdnUrl === publicUrl
         const isRemote = existingCdnIndex !== undefined && !isInOurR2
         
-        const originalPath = path.join(process.cwd(), 'public', imageKey)
+        const originalPath = getPublicPath(imageKey)
         
         try {
           buffer = await fs.readFile(originalPath)
@@ -264,18 +267,18 @@ export async function handleReprocess(request: NextRequest) {
       await purgeCloudflareCache(urlsToPurge)
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       processed,
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (error) {
     console.error('Failed to reprocess:', error)
-    return NextResponse.json({ error: 'Failed to reprocess images' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to reprocess images' }, { status: 500 })
   }
 }
 
-export async function handleUnprocessStream(request: NextRequest) {
+export async function handleUnprocessStream(request: Request) {
   const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
   const encoder = new TextEncoder()
   
@@ -286,10 +289,10 @@ export async function handleUnprocessStream(request: NextRequest) {
     imageKeys = body.imageKeys
     
     if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
-      return NextResponse.json({ error: 'No image keys provided' }, { status: 400 })
+      return jsonResponse({ error: 'No image keys provided' }, { status: 400 })
     }
   } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    return jsonResponse({ error: 'Invalid request body' }, { status: 400 })
   }
   
   const stream = new ReadableStream({
@@ -413,7 +416,7 @@ export async function handleUnprocessStream(request: NextRequest) {
   })
 }
 
-export async function handleReprocessStream(request: NextRequest) {
+export async function handleReprocessStream(request: Request) {
   const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
   const encoder = new TextEncoder()
   
@@ -424,10 +427,10 @@ export async function handleReprocessStream(request: NextRequest) {
     imageKeys = body.imageKeys
     
     if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
-      return NextResponse.json({ error: 'No image keys provided' }, { status: 400 })
+      return jsonResponse({ error: 'No image keys provided' }, { status: 400 })
     }
   } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    return jsonResponse({ error: 'Invalid request body' }, { status: 400 })
   }
   
   const stream = new ReadableStream({
@@ -472,7 +475,7 @@ export async function handleReprocessStream(request: NextRequest) {
             const isInOurR2 = existingCdnUrl === publicUrl
             const isRemote = existingCdnIndex !== undefined && !isInOurR2
             
-            const originalPath = path.join(process.cwd(), 'public', imageKey)
+            const originalPath = getPublicPath(imageKey)
             
             try {
               buffer = await fs.readFile(originalPath)
@@ -498,7 +501,7 @@ export async function handleReprocessStream(request: NextRequest) {
 
             if (isSvg) {
               const imageDir = path.dirname(imageKey.slice(1))
-              const imagesPath = path.join(process.cwd(), 'public', 'images', imageDir === '.' ? '' : imageDir)
+              const imagesPath = getPublicPath('images', imageDir === '.' ? '' : imageDir)
               await fs.mkdir(imagesPath, { recursive: true })
               
               const fileName = path.basename(imageKey)
@@ -620,7 +623,7 @@ export async function handleProcessAllStream() {
 
         for (let i = 0; i < imagesToProcess.length; i++) {
           const { key, entry } = imagesToProcess[i]
-          const fullPath = path.join(process.cwd(), 'public', key)
+          const fullPath = getPublicPath(key)
           const existingCdnIndex = entry.c
           const existingCdnUrl = existingCdnIndex !== undefined ? cdnUrls[existingCdnIndex] : undefined
           
@@ -660,7 +663,7 @@ export async function handleProcessAllStream() {
 
             if (isSvg) {
               const imageDir = path.dirname(key.slice(1))
-              const imagesPath = path.join(process.cwd(), 'public', 'images', imageDir === '.' ? '' : imageDir)
+              const imagesPath = getPublicPath('images', imageDir === '.' ? '' : imageDir)
               await fs.mkdir(imagesPath, { recursive: true })
               
               const fileName = path.basename(key)
@@ -751,7 +754,7 @@ export async function handleProcessAllStream() {
           }
         }
 
-        const imagesDir = path.join(process.cwd(), 'public', 'images')
+        const imagesDir = getPublicPath('images')
         try {
           await findOrphans(imagesDir)
         } catch {
@@ -824,11 +827,11 @@ export async function handleProcessAllStream() {
  * Download images from R2 CDN to local storage (streaming)
  * This removes the images from R2 and stores them locally
  */
-export async function handleDownloadStream(request: NextRequest) {
+export async function handleDownloadStream(request: Request) {
   const { imageKeys } = await request.json() as { imageKeys: string[] }
 
   if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
-    return NextResponse.json({ error: 'No image keys provided' }, { status: 400 })
+    return jsonResponse({ error: 'No image keys provided' }, { status: 400 })
   }
 
   const stream = new ReadableStream({
@@ -867,7 +870,7 @@ export async function handleDownloadStream(request: NextRequest) {
             const imageBuffer = await downloadFromCdn(imageKey)
             
             // Ensure directory exists
-            const localPath = path.join(process.cwd(), 'public', imageKey.replace(/^\//, ''))
+            const localPath = getPublicPath(imageKey.replace(/^\//, ''))
             await fs.mkdir(path.dirname(localPath), { recursive: true })
             
             // Write to local filesystem

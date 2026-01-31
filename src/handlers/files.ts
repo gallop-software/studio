@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
 import sharp from 'sharp'
@@ -18,15 +17,17 @@ import {
   deleteLocalThumbnails,
   processImage,
 } from './utils'
+import { getPublicPath, getWorkspacePath } from '../config'
+import { jsonResponse, streamResponse, createSSEStream } from './utils/response'
 
-export async function handleUpload(request: NextRequest) {
+export async function handleUpload(request: Request) {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
     const targetPath = formData.get('path') as string || 'public'
 
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+      return jsonResponse({ error: 'No file provided' }, { status: 400 })
     }
 
     const bytes = await file.arrayBuffer()
@@ -48,7 +49,7 @@ export async function handleUpload(request: NextRequest) {
     }
     
     if (relativeDir === 'images' || relativeDir.startsWith('images/')) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: 'Cannot upload to images/ folder. Upload to public/ instead - thumbnails are generated automatically.' },
         { status: 400 }
       )
@@ -76,12 +77,12 @@ export async function handleUpload(request: NextRequest) {
     // Extract actual filename from key
     const actualFileName = path.basename(imageKey)
     
-    const uploadDir = path.join(process.cwd(), 'public', relativeDir)
+    const uploadDir = getPublicPath(relativeDir)
     await fs.mkdir(uploadDir, { recursive: true })
     await fs.writeFile(path.join(uploadDir, actualFileName), buffer)
 
     if (!isMedia) {
-      return NextResponse.json({ 
+      return jsonResponse({ 
         success: true, 
         message: 'File uploaded (not a media file)',
         path: `public/${relativeDir ? relativeDir + '/' : ''}${actualFileName}`
@@ -106,7 +107,7 @@ export async function handleUpload(request: NextRequest) {
 
     await saveMeta(meta)
 
-    return NextResponse.json({ 
+    return jsonResponse({ 
       success: true, 
       imageKey,
       message: 'File uploaded. Run "Process Images" to generate thumbnails.'
@@ -114,16 +115,16 @@ export async function handleUpload(request: NextRequest) {
   } catch (error) {
     console.error('Failed to upload:', error)
     const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json({ error: `Failed to upload file: ${message}` }, { status: 500 })
+    return jsonResponse({ error: `Failed to upload file: ${message}` }, { status: 500 })
   }
 }
 
-export async function handleDelete(request: NextRequest) {
+export async function handleDelete(request: Request) {
   try {
     const { paths } = await request.json() as { paths: string[] }
 
     if (!paths || !Array.isArray(paths) || paths.length === 0) {
-      return NextResponse.json({ error: 'No paths provided' }, { status: 400 })
+      return jsonResponse({ error: 'No paths provided' }, { status: 400 })
     }
 
     const meta = await loadMeta()
@@ -137,7 +138,7 @@ export async function handleDelete(request: NextRequest) {
           continue
         }
 
-        const absolutePath = path.join(process.cwd(), itemPath)
+        const absolutePath = getWorkspacePath(itemPath)
         const imageKey = '/' + itemPath.replace(/^public\//, '')
         
         // Check if this is in meta (could be synced with no local file)
@@ -159,7 +160,7 @@ export async function handleDelete(request: NextRequest) {
                 // Also delete local thumbnails if not synced
                 if (keyEntry && keyEntry.c === undefined) {
                   for (const thumbPath of getAllThumbnailPaths(key)) {
-                    const absoluteThumbPath = path.join(process.cwd(), 'public', thumbPath)
+                    const absoluteThumbPath = getPublicPath(thumbPath)
                     try { await fs.unlink(absoluteThumbPath) } catch { /* ignore */ }
                   }
                 }
@@ -175,7 +176,7 @@ export async function handleDelete(request: NextRequest) {
               // Delete local thumbnails if not synced
               if (!isPushedToCloud) {
                 for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-                  const absoluteThumbPath = path.join(process.cwd(), 'public', thumbPath)
+                  const absoluteThumbPath = getPublicPath(thumbPath)
                   try { await fs.unlink(absoluteThumbPath) } catch { /* ignore */ }
                 }
               }
@@ -213,84 +214,84 @@ export async function handleDelete(request: NextRequest) {
 
     await saveMeta(meta)
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       deleted,
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (error) {
     console.error('Failed to delete:', error)
-    return NextResponse.json({ error: 'Failed to delete files' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to delete files' }, { status: 500 })
   }
 }
 
-export async function handleCreateFolder(request: NextRequest) {
+export async function handleCreateFolder(request: Request) {
   try {
     const { parentPath, name } = await request.json()
 
     if (!name || typeof name !== 'string') {
-      return NextResponse.json({ error: 'Folder name is required' }, { status: 400 })
+      return jsonResponse({ error: 'Folder name is required' }, { status: 400 })
     }
 
     const sanitizedName = name.replace(/[<>:"/\\|?*]/g, '').trim()
     if (!sanitizedName) {
-      return NextResponse.json({ error: 'Invalid folder name' }, { status: 400 })
+      return jsonResponse({ error: 'Invalid folder name' }, { status: 400 })
     }
 
     const safePath = (parentPath || 'public').replace(/\.\./g, '')
-    const folderPath = path.join(process.cwd(), safePath, sanitizedName)
+    const folderPath = getWorkspacePath(safePath, sanitizedName)
 
-    if (!folderPath.startsWith(path.join(process.cwd(), 'public'))) {
-      return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+    if (!folderPath.startsWith(getPublicPath())) {
+      return jsonResponse({ error: 'Invalid path' }, { status: 400 })
     }
 
     try {
       await fs.access(folderPath)
-      return NextResponse.json({ error: 'A folder with this name already exists' }, { status: 400 })
+      return jsonResponse({ error: 'A folder with this name already exists' }, { status: 400 })
     } catch {
       // Good - folder doesn't exist
     }
 
     await fs.mkdir(folderPath, { recursive: true })
 
-    return NextResponse.json({ success: true, path: path.join(safePath, sanitizedName) })
+    return jsonResponse({ success: true, path: path.join(safePath, sanitizedName) })
   } catch (error) {
     console.error('Failed to create folder:', error)
-    return NextResponse.json({ error: 'Failed to create folder' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to create folder' }, { status: 500 })
   }
 }
 
-export async function handleRename(request: NextRequest) {
+export async function handleRename(request: Request) {
   try {
     const { oldPath, newName } = await request.json()
 
     if (!oldPath || !newName) {
-      return NextResponse.json({ error: 'Path and new name are required' }, { status: 400 })
+      return jsonResponse({ error: 'Path and new name are required' }, { status: 400 })
     }
 
     const sanitizedName = newName.replace(/[<>:"/\\|?*]/g, '').trim()
     if (!sanitizedName) {
-      return NextResponse.json({ error: 'Invalid name' }, { status: 400 })
+      return jsonResponse({ error: 'Invalid name' }, { status: 400 })
     }
 
     const safePath = oldPath.replace(/\.\./g, '')
-    const absoluteOldPath = path.join(process.cwd(), safePath)
+    const absoluteOldPath = getWorkspacePath(safePath)
     const parentDir = path.dirname(absoluteOldPath)
     const absoluteNewPath = path.join(parentDir, sanitizedName)
 
-    if (!absoluteOldPath.startsWith(path.join(process.cwd(), 'public'))) {
-      return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+    if (!absoluteOldPath.startsWith(getPublicPath())) {
+      return jsonResponse({ error: 'Invalid path' }, { status: 400 })
     }
 
     try {
       await fs.access(absoluteOldPath)
     } catch {
-      return NextResponse.json({ error: 'File or folder not found' }, { status: 404 })
+      return jsonResponse({ error: 'File or folder not found' }, { status: 404 })
     }
 
     try {
       await fs.access(absoluteNewPath)
-      return NextResponse.json({ error: 'An item with this name already exists' }, { status: 400 })
+      return jsonResponse({ error: 'An item with this name already exists' }, { status: 400 })
     } catch {
       // Good - new path doesn't exist
     }
@@ -315,8 +316,8 @@ export async function handleRename(request: NextRequest) {
         const newThumbPaths = getAllThumbnailPaths(newKey)
 
         for (let i = 0; i < oldThumbPaths.length; i++) {
-          const oldThumbPath = path.join(process.cwd(), 'public', oldThumbPaths[i])
-          const newThumbPath = path.join(process.cwd(), 'public', newThumbPaths[i])
+          const oldThumbPath = getPublicPath(oldThumbPaths[i])
+          const newThumbPath = getPublicPath(newThumbPaths[i])
           
           await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
           
@@ -335,14 +336,14 @@ export async function handleRename(request: NextRequest) {
     }
 
     const newPath = path.join(path.dirname(safePath), sanitizedName)
-    return NextResponse.json({ success: true, newPath })
+    return jsonResponse({ success: true, newPath })
   } catch (error) {
     console.error('Failed to rename:', error)
-    return NextResponse.json({ error: 'Failed to rename' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to rename' }, { status: 500 })
   }
 }
 
-export async function handleMoveStream(request: NextRequest) {
+export async function handleMoveStream(request: Request) {
   const encoder = new TextEncoder()
   
   const stream = new ReadableStream({
@@ -367,9 +368,9 @@ export async function handleMoveStream(request: NextRequest) {
         }
 
         const safeDestination = destination.replace(/\.\./g, '')
-        const absoluteDestination = path.join(process.cwd(), safeDestination)
+        const absoluteDestination = getWorkspacePath(safeDestination)
 
-        if (!absoluteDestination.startsWith(path.join(process.cwd(), 'public'))) {
+        if (!absoluteDestination.startsWith(getPublicPath())) {
           sendEvent({ type: 'error', message: 'Invalid destination' })
           controller.close()
           return
@@ -479,7 +480,7 @@ export async function handleMoveStream(request: NextRequest) {
 
             } else {
               // ===== LOCAL FILE =====
-              const absolutePath = path.join(process.cwd(), safePath)
+              const absolutePath = getWorkspacePath(safePath)
 
               if (absoluteDestination.startsWith(absolutePath + path.sep)) {
                 errors.push(`Cannot move ${itemName} into itself`)
@@ -509,8 +510,8 @@ export async function handleMoveStream(request: NextRequest) {
                 const newThumbPaths = getAllThumbnailPaths(newKey)
 
                 for (let j = 0; j < oldThumbPaths.length; j++) {
-                  const oldThumbPath = path.join(process.cwd(), 'public', oldThumbPaths[j])
-                  const newThumbPath = path.join(process.cwd(), 'public', newThumbPaths[j])
+                  const oldThumbPath = getPublicPath(oldThumbPaths[j])
+                  const newThumbPath = getPublicPath(newThumbPaths[j])
                   
                   await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
 
@@ -570,23 +571,23 @@ export async function handleMoveStream(request: NextRequest) {
   })
 }
 
-export async function handleMove(request: NextRequest) {
+export async function handleMove(request: Request) {
   try {
     const { paths, destination } = await request.json()
 
     if (!paths || !Array.isArray(paths) || paths.length === 0) {
-      return NextResponse.json({ error: 'Paths are required' }, { status: 400 })
+      return jsonResponse({ error: 'Paths are required' }, { status: 400 })
     }
 
     if (!destination || typeof destination !== 'string') {
-      return NextResponse.json({ error: 'Destination is required' }, { status: 400 })
+      return jsonResponse({ error: 'Destination is required' }, { status: 400 })
     }
 
     const safeDestination = destination.replace(/\.\./g, '')
-    const absoluteDestination = path.join(process.cwd(), safeDestination)
+    const absoluteDestination = getWorkspacePath(safeDestination)
 
-    if (!absoluteDestination.startsWith(path.join(process.cwd(), 'public'))) {
-      return NextResponse.json({ error: 'Invalid destination' }, { status: 400 })
+    if (!absoluteDestination.startsWith(getPublicPath())) {
+      return jsonResponse({ error: 'Invalid destination' }, { status: 400 })
     }
 
     // Ensure destination folder exists (create if needed)
@@ -698,7 +699,7 @@ export async function handleMove(request: NextRequest) {
 
         } else {
           // ===== LOCAL FILE: Use standard fs.rename =====
-          const absolutePath = path.join(process.cwd(), safePath)
+          const absolutePath = getWorkspacePath(safePath)
 
           if (absoluteDestination.startsWith(absolutePath + path.sep)) {
             errors.push(`Cannot move ${itemName} into itself`)
@@ -729,8 +730,8 @@ export async function handleMove(request: NextRequest) {
             const newThumbPaths = getAllThumbnailPaths(newKey)
 
             for (let i = 0; i < oldThumbPaths.length; i++) {
-              const oldThumbPath = path.join(process.cwd(), 'public', oldThumbPaths[i])
-              const newThumbPath = path.join(process.cwd(), 'public', newThumbPaths[i])
+              const oldThumbPath = getPublicPath(oldThumbPaths[i])
+              const newThumbPath = getPublicPath(newThumbPaths[i])
               
               await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
 
@@ -771,13 +772,13 @@ export async function handleMove(request: NextRequest) {
       await saveMeta(meta)
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: errors.length === 0,
       moved,
       errors: errors.length > 0 ? errors : undefined
     })
   } catch (error) {
     console.error('Failed to move:', error)
-    return NextResponse.json({ error: 'Failed to move items' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to move items' }, { status: 500 })
   }
 }

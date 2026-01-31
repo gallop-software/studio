@@ -1,8 +1,8 @@
 import { promises as fs } from 'fs'
-import path from 'path'
 import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getAllThumbnailPaths } from '../../types'
 import { getContentType } from './files'
+import { getPublicPath } from '../../config'
 
 /**
  * Purge URLs from Cloudflare cache
@@ -96,7 +96,7 @@ export async function uploadToCdn(imageKey: string): Promise<void> {
 
   // Upload all thumbnail sizes derived from imageKey
   for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-    const localPath = path.join(process.cwd(), 'public', thumbPath)
+    const localPath = getPublicPath(thumbPath)
     try {
       const fileBuffer = await fs.readFile(localPath)
       await r2.send(
@@ -115,7 +115,7 @@ export async function uploadToCdn(imageKey: string): Promise<void> {
 
 export async function deleteLocalThumbnails(imageKey: string): Promise<void> {
   for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-    const localPath = path.join(process.cwd(), 'public', thumbPath)
+    const localPath = getPublicPath(thumbPath)
     try {
       await fs.unlink(localPath)
     } catch {
@@ -159,7 +159,7 @@ export async function uploadOriginalToCdn(imageKey: string): Promise<void> {
   if (!bucketName) throw new Error('R2 bucket not configured')
 
   const r2 = getR2Client()
-  const localPath = path.join(process.cwd(), 'public', imageKey)
+  const localPath = getPublicPath(imageKey)
   const fileBuffer = await fs.readFile(localPath)
   
   await r2.send(

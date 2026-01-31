@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
 import type { FileItem, MetaEntry } from '../types'
 import { loadMeta, isImageFile, getCdnUrls, getFileEntries } from './utils'
 import { getThumbnailPath, isProcessed } from '../types'
+import { getPublicPath, getWorkspacePath } from '../config'
+import { jsonResponse } from './utils/response'
 
 /**
  * Get all thumbnail file info for a processed meta entry
@@ -64,8 +65,8 @@ function countFileTypes(
  * List files and folders from meta
  * Folders are derived from file paths in meta AND filesystem
  */
-export async function handleList(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
+export async function handleList(request: Request) {
+  const searchParams = new URL(request.url).searchParams
   const requestedPath = searchParams.get('path') || 'public'
 
   try {
@@ -206,11 +207,11 @@ export async function handleList(request: NextRequest) {
         }
       }
       
-      return NextResponse.json({ items })
+      return jsonResponse({ items })
     }
     
     // Not in images folder - check filesystem for folders (including empty ones)
-    const absoluteDir = path.join(process.cwd(), requestedPath)
+    const absoluteDir = getWorkspacePath(requestedPath)
     try {
       const dirEntries = await fs.readdir(absoluteDir, { withFileTypes: true })
       for (const entry of dirEntries) {
@@ -288,7 +289,7 @@ export async function handleList(request: NextRequest) {
     
     // If meta is empty and no folders found, return empty with a flag
     if (fileEntries.length === 0 && items.length === 0) {
-      return NextResponse.json({ items: [], isEmpty: true })
+      return jsonResponse({ items: [], isEmpty: true })
     }
 
     for (const [key, entry] of fileEntries) {
@@ -362,7 +363,7 @@ export async function handleList(request: NextRequest) {
             }
           } else {
             // Local thumbnail - check if exists
-            const localThumbPath = path.join(process.cwd(), 'public', thumbPath)
+            const localThumbPath = getPublicPath(thumbPath)
             try {
               await fs.access(localThumbPath)
               thumbnail = thumbPath
@@ -387,7 +388,7 @@ export async function handleList(request: NextRequest) {
         // Try to get file size if file exists locally
         if (!isPushedToCloud) {
           try {
-            const filePath = path.join(process.cwd(), 'public', key)
+            const filePath = getPublicPath(key)
             const stats = await fs.stat(filePath)
             fileSize = stats.size
           } catch {
@@ -412,19 +413,19 @@ export async function handleList(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ items })
+    return jsonResponse({ items })
   } catch (error) {
     console.error('Failed to list directory:', error)
-    return NextResponse.json({ error: 'Failed to list directory' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to list directory' }, { status: 500 })
   }
 }
 
-export async function handleSearch(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
+export async function handleSearch(request: Request) {
+  const searchParams = new URL(request.url).searchParams
   const query = searchParams.get('q')?.toLowerCase() || ''
   
   if (query.length < 2) {
-    return NextResponse.json({ items: [] })
+    return jsonResponse({ items: [] })
   }
 
   try {
@@ -462,7 +463,7 @@ export async function handleSearch(request: NextRequest) {
             hasThumbnail = true
           }
         } else {
-          const localThumbPath = path.join(process.cwd(), 'public', thumbPath)
+          const localThumbPath = getPublicPath(thumbPath)
           try {
             await fs.access(localThumbPath)
             thumbnail = thumbPath
@@ -497,10 +498,10 @@ export async function handleSearch(request: NextRequest) {
       })
     }
 
-    return NextResponse.json({ items })
+    return jsonResponse({ items })
   } catch (error) {
     console.error('Failed to search:', error)
-    return NextResponse.json({ error: 'Failed to search' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to search' }, { status: 500 })
   }
 }
 
@@ -538,7 +539,7 @@ export async function handleListFolders() {
       }
     }
     
-    const publicDir = path.join(process.cwd(), 'public')
+    const publicDir = getPublicPath()
     await scanDir(publicDir, '')
     
     const folders: { path: string; name: string; depth: number }[] = []
@@ -555,10 +556,10 @@ export async function handleListFolders() {
       })
     }
 
-    return NextResponse.json({ folders })
+    return jsonResponse({ folders })
   } catch (error) {
     console.error('Failed to list folders:', error)
-    return NextResponse.json({ error: 'Failed to list folders' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to list folders' }, { status: 500 })
   }
 }
 
@@ -575,23 +576,23 @@ export async function handleCountImages() {
       }
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       count: allImages.length,
       images: allImages,
     })
   } catch (error) {
     console.error('Failed to count images:', error)
-    return NextResponse.json({ error: 'Failed to count images' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to count images' }, { status: 500 })
   }
 }
 
-export async function handleFolderImages(request: NextRequest) {
+export async function handleFolderImages(request: Request) {
   try {
-    const searchParams = request.nextUrl.searchParams
+    const searchParams = new URL(request.url).searchParams
     const foldersParam = searchParams.get('folders')
     
     if (!foldersParam) {
-      return NextResponse.json({ error: 'No folders provided' }, { status: 400 })
+      return jsonResponse({ error: 'No folders provided' }, { status: 400 })
     }
 
     const folders = foldersParam.split(',')
@@ -615,12 +616,12 @@ export async function handleFolderImages(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       count: allFiles.length,
       images: allFiles, // Keep as 'images' for backwards compatibility
     })
   } catch (error) {
     console.error('Failed to get folder files:', error)
-    return NextResponse.json({ error: 'Failed to get folder files' }, { status: 500 })
+    return jsonResponse({ error: 'Failed to get folder files' }, { status: 500 })
   }
 }
