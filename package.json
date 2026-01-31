@@ -1,6 +1,6 @@
 {
   "name": "@gallop.software/studio",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "description": "Media manager for Gallop templates - upload, process, and sync images to CDN",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
