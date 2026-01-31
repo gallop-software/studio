@@ -58,20 +58,34 @@ export async function downloadFromCdn(originalPath: string): Promise<Buffer> {
   if (!bucketName) throw new Error('R2 bucket not configured')
 
   const r2 = getR2Client()
+  const maxRetries = 3
+  let lastError: Error | undefined
 
-  const response = await r2.send(
-    new GetObjectCommand({
-      Bucket: bucketName,
-      Key: originalPath.replace(/^\//, ''),
-    })
-  )
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await r2.send(
+        new GetObjectCommand({
+          Bucket: bucketName,
+          Key: originalPath.replace(/^\//, ''),
+        })
+      )
 
-  const stream = response.Body as NodeJS.ReadableStream
-  const chunks: Buffer[] = []
-  for await (const chunk of stream) {
-    chunks.push(Buffer.from(chunk))
+      const stream = response.Body as NodeJS.ReadableStream
+      const chunks: Buffer[] = []
+      for await (const chunk of stream) {
+        chunks.push(Buffer.from(chunk))
+      }
+      return Buffer.concat(chunks)
+    } catch (error) {
+      lastError = error as Error
+      // Wait before retry (exponential backoff: 500ms, 1s)
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
+      }
+    }
   }
-  return Buffer.concat(chunks)
+
+  throw lastError || new Error(`Failed to download ${originalPath} after ${maxRetries} attempts`)
 }
 
 export async function uploadToCdn(imageKey: string): Promise<void> {
@@ -114,12 +128,27 @@ export async function deleteLocalThumbnails(imageKey: string): Promise<void> {
  * Download image from a remote URL (not R2)
  */
 export async function downloadFromRemoteUrl(url: string): Promise<Buffer> {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Failed to download from ${url}: ${response.status}`)
+  const maxRetries = 3
+  let lastError: Error | undefined
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error(`Failed to download from ${url}: ${response.status}`)
+      }
+      const arrayBuffer = await response.arrayBuffer()
+      return Buffer.from(arrayBuffer)
+    } catch (error) {
+      lastError = error as Error
+      // Wait before retry (exponential backoff: 500ms, 1s)
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
+      }
+    }
   }
-  const arrayBuffer = await response.arrayBuffer()
-  return Buffer.from(arrayBuffer)
+
+  throw lastError || new Error(`Failed to download from ${url} after ${maxRetries} attempts`)
 }
 
 /**
