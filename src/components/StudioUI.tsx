@@ -21,6 +21,7 @@ interface StudioUIProps {
   isVisible?: boolean
   standaloneMode?: boolean
   workspacePath?: string
+  devUrl?: string
 }
 
 // Standard button height for consistency
@@ -95,6 +96,15 @@ const styles = {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  `,
+  devUrlLink: css`
+    display: flex;
+    align-items: center;
+    color: ${colors.textMuted};
+    transition: color 0.15s ease;
+    &:hover {
+      color: ${colors.primary};
+    }
   `,
   headerActions: css`
     display: flex;
@@ -175,6 +185,7 @@ export function StudioUI({
   isVisible = true,
   standaloneMode = false,
   workspacePath,
+  devUrl,
 }: StudioUIProps) {
   // In standalone mode, onClose is a no-op
   const handleClose = onClose || (() => {})
@@ -414,6 +425,7 @@ export function StudioUI({
               currentPath={currentPath} 
               onNavigate={setCurrentPath} 
               projectName={workspacePath ? workspacePath.split('/').pop() : undefined}
+              devUrl={devUrl}
             />
           </div>
           <div css={styles.headerActions}>
@@ -674,13 +686,14 @@ function ProcessConfirmModal({ imageCount, mode, onModeChange, onConfirm, onCanc
   )
 }
 
-function Breadcrumbs({ currentPath, onNavigate, projectName }: { currentPath: string; onNavigate: (path: string) => void; projectName?: string }) {
+function Breadcrumbs({ currentPath, onNavigate, projectName, devUrl }: { currentPath: string; onNavigate: (path: string) => void; projectName?: string; devUrl?: string }) {
   const parts = currentPath.split('/').filter(Boolean)
   
   // Build paths for each breadcrumb, replacing "public" with project name
   const breadcrumbs = parts.map((part, index) => ({
     name: index === 0 && part === 'public' && projectName ? projectName : part,
-    path: parts.slice(0, index + 1).join('/')
+    path: parts.slice(0, index + 1).join('/'),
+    isRoot: index === 0 && part === 'public',
   }))
 
   return (
@@ -688,7 +701,26 @@ function Breadcrumbs({ currentPath, onNavigate, projectName }: { currentPath: st
       {breadcrumbs.map((crumb, index) => (
         <span key={crumb.path} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {index > 0 && <span css={styles.breadcrumbSeparator}>/</span>}
-          {index === breadcrumbs.length - 1 ? (
+          {crumb.isRoot && devUrl ? (
+            // Root breadcrumb with dev URL link
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span
+                css={index === breadcrumbs.length - 1 ? styles.breadcrumbCurrent : styles.breadcrumbItem}
+                onClick={() => index < breadcrumbs.length - 1 && onNavigate(crumb.path)}
+              >
+                {crumb.name}
+              </span>
+              <a
+                href={devUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                css={styles.devUrlLink}
+                title={`Open ${devUrl}`}
+              >
+                <ExternalLinkIcon />
+              </a>
+            </span>
+          ) : index === breadcrumbs.length - 1 ? (
             <span css={styles.breadcrumbCurrent}>{crumb.name}</span>
           ) : (
             <span
@@ -701,6 +733,25 @@ function Breadcrumbs({ currentPath, onNavigate, projectName }: { currentPath: st
         </span>
       ))}
     </div>
+  )
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
   )
 }
 

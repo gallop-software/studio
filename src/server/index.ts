@@ -77,13 +77,17 @@ export async function startServer(options: ServerOptions) {
   // Serve the client app
   const clientDir = resolve(__dirname, '../client')
   
-  // Inject workspace into the HTML
+  // Inject workspace and dev URL into the HTML
   app.get('/', (req: Request, res: Response) => {
     const htmlPath = join(clientDir, 'index.html')
     if (existsSync(htmlPath)) {
       let html = readFileSync(htmlPath, 'utf-8')
-      // Inject workspace as a global variable
-      const script = `<script>window.__STUDIO_WORKSPACE__ = ${JSON.stringify(workspace)};</script>`
+      // Inject workspace and dev URL as global variables
+      const devUrl = process.env.STUDIO_DEV_URL || ''
+      const script = `<script>
+        window.__STUDIO_WORKSPACE__ = ${JSON.stringify(workspace)};
+        window.__STUDIO_DEV_URL__ = ${JSON.stringify(devUrl)};
+      </script>`
       html = html.replace('</head>', `${script}</head>`)
       res.type('html').send(html)
     } else {
