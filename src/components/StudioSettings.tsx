@@ -350,11 +350,19 @@ export function StudioSettings() {
   )
 }
 
-const envTemplate = `CLOUDFLARE_R2_ACCOUNT_ID=abc123def456ghi789
-CLOUDFLARE_R2_ACCESS_KEY_ID=your_access_key_id_here
-CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_access_key_here
-CLOUDFLARE_R2_BUCKET_NAME=my-images-bucket
-CLOUDFLARE_R2_PUBLIC_URL=https://cdn.yourdomain.com`
+const envTemplate = `# Dev site link (opens from Studio header)
+STUDIO_DEV_SITE_URL=http://localhost:3000
+
+# Cloudflare R2 Storage
+CLOUDFLARE_R2_ACCOUNT_ID=your_account_id
+CLOUDFLARE_R2_ACCESS_KEY_ID=your_access_key_id
+CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_access_key
+CLOUDFLARE_R2_BUCKET_NAME=your_bucket_name
+CLOUDFLARE_R2_PUBLIC_URL=https://your-cdn.example.com
+
+# Cloudflare Cache Purge (optional)
+CLOUDFLARE_ZONE_ID=your_zone_id
+CLOUDFLARE_API_TOKEN=your_api_token`
 
 function SettingsPanel({ onClose }: { onClose: () => void }) {
   const { triggerRefresh } = useStudio()
@@ -486,8 +494,8 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
           </section>
 
           <section>
-            <h3 css={styles.sectionTitle}>Cloudflare R2 Credentials</h3>
-            <p css={styles.description}>Configure in .env.local file:</p>
+            <h3 css={styles.sectionTitle}>Environment Variables</h3>
+            <p css={styles.description}>Configure in <code>.env.studio</code> file:</p>
             <div css={styles.codeWrapper}>
               <button css={styles.copyBtn} onClick={handleCopy} title="Copy to clipboard">
                 {copied && <span css={styles.tooltip}>Copied!</span>}
@@ -496,11 +504,18 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
                 </svg>
               </button>
               <div css={styles.code}>
-                <p css={styles.codeLine}>CLOUDFLARE_R2_ACCOUNT_ID=abc123def456ghi789</p>
-                <p css={styles.codeLine}>CLOUDFLARE_R2_ACCESS_KEY_ID=your_access_key_id_here</p>
-                <p css={styles.codeLine}>CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_access_key_here</p>
-                <p css={styles.codeLine}>CLOUDFLARE_R2_BUCKET_NAME=my-images-bucket</p>
-                <p css={styles.codeLine}>CLOUDFLARE_R2_PUBLIC_URL=https://cdn.yourdomain.com</p>
+                <p css={styles.codeLine}>STUDIO_DEV_SITE_URL=http://localhost:3000</p>
+                <p css={styles.codeLine}>&nbsp;</p>
+                <p css={styles.codeLine}># Cloudflare R2 Storage</p>
+                <p css={styles.codeLine}>CLOUDFLARE_R2_ACCOUNT_ID=your_account_id</p>
+                <p css={styles.codeLine}>CLOUDFLARE_R2_ACCESS_KEY_ID=your_access_key_id</p>
+                <p css={styles.codeLine}>CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_access_key</p>
+                <p css={styles.codeLine}>CLOUDFLARE_R2_BUCKET_NAME=your_bucket_name</p>
+                <p css={styles.codeLine}>CLOUDFLARE_R2_PUBLIC_URL=https://your-cdn.example.com</p>
+                <p css={styles.codeLine}>&nbsp;</p>
+                <p css={styles.codeLine}># Cache Purge (optional)</p>
+                <p css={styles.codeLine}>CLOUDFLARE_ZONE_ID=your_zone_id</p>
+                <p css={styles.codeLine}>CLOUDFLARE_API_TOKEN=your_api_token</p>
               </div>
             </div>
           </section>
