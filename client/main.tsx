@@ -6,16 +6,16 @@ import { StudioUI } from '../src/components/StudioUI'
 const container = document.getElementById('root')
 if (!container) throw new Error('Root element not found')
 
-// Get workspace and dev URL from the server-injected globals
+// Get workspace and site URL from the server-injected globals
 declare global {
   interface Window {
     __STUDIO_WORKSPACE__?: string
-    __STUDIO_DEV_URL__?: string
+    __STUDIO_SITE_URL__?: string
   }
 }
 
 const workspace = window.__STUDIO_WORKSPACE__ || 'Unknown'
-const devUrl = window.__STUDIO_DEV_URL__ || ''
+const siteUrl = window.__STUDIO_SITE_URL__ || ''
 
 createRoot(container).render(
   <StrictMode>
@@ -31,7 +31,7 @@ createRoot(container).render(
         isVisible={true}
         standaloneMode={true}
         workspacePath={workspace}
-        devUrl={devUrl}
+        siteUrl={siteUrl}
       />
     </div>
   </StrictMode>

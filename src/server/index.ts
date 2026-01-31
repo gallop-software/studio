@@ -82,11 +82,11 @@ export async function startServer(options: ServerOptions) {
     const htmlPath = join(clientDir, 'index.html')
     if (existsSync(htmlPath)) {
       let html = readFileSync(htmlPath, 'utf-8')
-      // Inject workspace and dev URL as global variables
-      const devUrl = process.env.STUDIO_DEV_URL || ''
+      // Inject workspace and site URL as global variables
+      const siteUrl = process.env.NEXT_PUBLIC_PRODUCTION_URL || ''
       const script = `<script>
         window.__STUDIO_WORKSPACE__ = ${JSON.stringify(workspace)};
-        window.__STUDIO_DEV_URL__ = ${JSON.stringify(devUrl)};
+        window.__STUDIO_SITE_URL__ = ${JSON.stringify(siteUrl)};
       </script>`
       html = html.replace('</head>', `${script}</head>`)
       res.type('html').send(html)
