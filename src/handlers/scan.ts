@@ -31,6 +31,7 @@ export async function handleScanStream() {
         const renamed: Array<{ from: string; to: string }> = []
         const errors: string[] = []
         const orphanedFiles: string[] = []
+        const pendingUpdates: string[] = []  // Files that override cloud files
 
         // Collect all files first
         const allFiles: Array<{ relativePath: string; fullPath: string }> = []
@@ -79,7 +80,15 @@ export async function handleScanStream() {
 
           // Check if already in meta
           if (existingKeys.has(imageKey)) {
-            // File already tracked - skip
+            // Check if this is a cloud file with a local override
+            const entry = meta[imageKey] as { c?: number; u?: 1 } | undefined
+            if (entry?.c !== undefined && !entry?.u) {
+              // This is a cloud file - local file is an override
+              // Mark as pending update
+              entry.u = 1
+              pendingUpdates.push(imageKey)
+            }
+            // File already tracked - skip adding
             continue
           }
 
@@ -251,6 +260,7 @@ export async function handleScanStream() {
           errors: errors.length,
           renamedFiles: renamed,
           orphanedFiles: orphanedFiles.length > 0 ? orphanedFiles : undefined,
+          pendingUpdates: pendingUpdates.length,
         })
       } catch (error) {
         console.error('Scan failed:', error)

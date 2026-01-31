@@ -316,6 +316,7 @@ export function StudioToolbar() {
               alreadyProcessed: data.existingCount,
               errors: data.errors,
               orphanedFiles: data.orphanedFiles,
+              pendingUpdates: data.pendingUpdates,
               message: message || undefined,
               isScan: true,
             })

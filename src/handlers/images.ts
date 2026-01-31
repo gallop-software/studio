@@ -971,3 +971,239 @@ export async function handleDownloadStream(request: Request) {
     },
   })
 }
+
+/**
+ * Push pending updates to cloud (replace cloud files with local versions)
+ * Streaming handler for progress feedback
+ */
+export async function handlePushUpdatesStream(request: Request) {
+  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
+  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
+  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME
+  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '')
+
+  const encoder = new TextEncoder()
+  
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendEvent = (data: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      try {
+        if (!accountId || !accessKeyId || !secretAccessKey || !bucketName || !publicUrl) {
+          sendEvent({ type: 'error', message: 'R2 not configured' })
+          controller.close()
+          return
+        }
+
+        const { paths } = await request.json()
+        
+        if (!paths || !Array.isArray(paths) || paths.length === 0) {
+          sendEvent({ type: 'error', message: 'No paths provided' })
+          controller.close()
+          return
+        }
+
+        const s3 = new S3Client({
+          region: 'auto',
+          endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+          credentials: { accessKeyId, secretAccessKey },
+        })
+
+        const meta = await loadMeta()
+        const cdnUrls = getCdnUrls(meta)
+        const r2PublicUrl = publicUrl.replace(/\/$/, '')
+        
+        const pushed: string[] = []
+        const skipped: string[] = []
+        const errors: string[] = []
+        const urlsToPurge: string[] = []
+        const total = paths.length
+
+        sendEvent({ type: 'start', total })
+
+        for (let i = 0; i < paths.length; i++) {
+          const itemPath = paths[i]
+          const key = itemPath.startsWith('public/') ? '/' + itemPath.slice(7) : itemPath
+          const entry = meta[key] as { c?: number; u?: 1; o?: { w: number; h: number }; b?: string; sm?: object; md?: object; lg?: object; f?: object } | undefined
+
+          sendEvent({
+            type: 'progress',
+            current: i + 1,
+            total,
+            percent: Math.round(((i + 1) / total) * 100),
+            currentFile: path.basename(key),
+          })
+
+          if (!entry || entry.u !== 1) {
+            skipped.push(key)
+            continue
+          }
+
+          // Check if this is an R2 file
+          const fileCdnUrl = entry.c !== undefined ? cdnUrls[entry.c]?.replace(/\/$/, '') : undefined
+          if (!fileCdnUrl || fileCdnUrl !== r2PublicUrl) {
+            skipped.push(key)
+            continue
+          }
+
+          try {
+            // Read the local file
+            const localPath = getPublicPath(key)
+            const buffer = await fs.readFile(localPath)
+            const contentType = getContentType(path.basename(key))
+
+            // Upload to R2 (overwrite)
+            const uploadKey = key.startsWith('/') ? key.slice(1) : key
+            await s3.send(new PutObjectCommand({
+              Bucket: bucketName,
+              Key: uploadKey,
+              Body: buffer,
+              ContentType: contentType,
+            }))
+
+            // If image is processed, also update thumbnails
+            if (isProcessed(entry)) {
+              // Re-process to generate new thumbnails from local file
+              const processedEntry = await processImage(buffer, key)
+              Object.assign(entry, processedEntry)
+              
+              // Upload thumbnails
+              await uploadToCdn(key)
+              
+              // Delete local thumbnails
+              await deleteLocalThumbnails(key)
+              
+              // Add thumbnail URLs to purge
+              for (const thumbPath of getAllThumbnailPaths(key)) {
+                urlsToPurge.push(`${publicUrl}${thumbPath}`)
+              }
+            }
+
+            // Delete local file (it's now on cloud)
+            await fs.unlink(localPath)
+
+            // Remove the update flag
+            delete entry.u
+
+            // Add original URL to purge
+            urlsToPurge.push(`${publicUrl}${key}`)
+
+            pushed.push(key)
+          } catch (error) {
+            console.error(`Failed to push update for ${key}:`, error)
+            errors.push(key)
+          }
+        }
+
+        // Clean up empty folders
+        sendEvent({ type: 'cleanup', message: 'Cleaning up...' })
+        for (const itemPath of pushed) {
+          const localPath = getPublicPath(itemPath)
+          await deleteEmptyFolders(path.dirname(localPath))
+        }
+
+        await saveMeta(meta)
+
+        if (urlsToPurge.length > 0) {
+          sendEvent({ type: 'cleanup', message: 'Purging CDN cache...' })
+          await purgeCloudflareCache(urlsToPurge)
+        }
+
+        let message = `Pushed ${pushed.length} update${pushed.length !== 1 ? 's' : ''} to cloud.`
+        if (skipped.length > 0) {
+          message += ` ${skipped.length} file${skipped.length !== 1 ? 's' : ''} skipped.`
+        }
+        if (errors.length > 0) {
+          message += ` ${errors.length} file${errors.length !== 1 ? 's' : ''} failed.`
+        }
+
+        sendEvent({
+          type: 'complete',
+          pushed: pushed.length,
+          skipped: skipped.length,
+          errors: errors.length,
+          message,
+        })
+      } catch (error) {
+        console.error('Push updates error:', error)
+        sendEvent({ type: 'error', message: 'Failed to push updates' })
+      } finally {
+        controller.close()
+      }
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
+}
+
+/**
+ * Cancel pending updates (delete local files, keep cloud versions)
+ */
+export async function handleCancelUpdates(request: Request) {
+  try {
+    const { paths } = await request.json()
+    
+    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+      return jsonResponse({ error: 'No paths provided' }, { status: 400 })
+    }
+
+    const meta = await loadMeta()
+    const cancelled: string[] = []
+    const skipped: string[] = []
+    const errors: string[] = []
+    const foldersToClean = new Set<string>()
+
+    for (const itemPath of paths) {
+      const key = itemPath.startsWith('public/') ? '/' + itemPath.slice(7) : itemPath
+      const entry = meta[key] as { u?: 1 } | undefined
+
+      if (!entry || entry.u !== 1) {
+        skipped.push(key)
+        continue
+      }
+
+      try {
+        // Delete the local file
+        const localPath = getPublicPath(key)
+        await fs.unlink(localPath)
+        
+        // Track folder for cleanup
+        foldersToClean.add(path.dirname(localPath))
+
+        // Remove the update flag
+        delete entry.u
+
+        cancelled.push(key)
+      } catch (error) {
+        console.error(`Failed to cancel update for ${key}:`, error)
+        errors.push(key)
+      }
+    }
+
+    // Clean up empty folders
+    for (const folder of foldersToClean) {
+      await deleteEmptyFolders(folder)
+    }
+
+    await saveMeta(meta)
+
+    return jsonResponse({
+      success: true,
+      cancelled: cancelled.length,
+      skipped: skipped.length,
+      errors: errors.length,
+    })
+  } catch (error) {
+    console.error('Cancel updates error:', error)
+    return jsonResponse({ error: 'Failed to cancel updates' }, { status: 500 })
+  }
+}

@@ -19,6 +19,7 @@ export interface MetaEntry {
   lg?: Dimensions  // large thumbnail (1400px width)
   f?: Dimensions   // full size (capped at 2560px width)
   c?: number       // CDN index - index into _cdns array
+  u?: 1            // update pending - local file overrides cloud file
 }
 
 /**
@@ -64,6 +65,10 @@ export interface FileItem {
   thumbnail?: string
   // Whether a processed thumbnail exists
   hasThumbnail?: boolean
+  // Update pending - local file overrides cloud file
+  hasUpdate?: boolean
+  // Number of files with pending updates in folder
+  updateCount?: number
 }
 
 /**

@@ -214,6 +214,9 @@ const styles = {
   folderStatRemote: css`
     color: #ef4444;
   `,
+  folderStatUpdate: css`
+    color: #8b5cf6;
+  `,
   folderStatIconCloud: css`
     width: 14px;
     height: 14px;
@@ -228,6 +231,23 @@ const styles = {
     width: 14px;
     height: 14px;
     color: #ef4444;
+  `,
+  folderStatIconUpdate: css`
+    width: 14px;
+    height: 14px;
+    color: #8b5cf6;
+  `,
+  updateLabel: css`
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #8b5cf6;
+    font-size: ${fontSize.xs};
+  `,
+  updateIcon: css`
+    width: 14px;
+    height: 14px;
+    color: #8b5cf6;
   `,
   storedLabel: css`
     display: flex;
@@ -664,11 +684,26 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Lis
                 {item.remoteCount}
               </span>
             )}
-            {!item.localCount && !item.cloudCount && !item.remoteCount && item.fileCount !== undefined && (
+            {item.updateCount !== undefined && item.updateCount > 0 && (
+              <span css={[styles.folderStat, styles.folderStatUpdate]} title={`${item.updateCount} pending update${item.updateCount !== 1 ? 's' : ''}`}>
+                <svg css={styles.folderStatIconUpdate} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {item.updateCount}
+              </span>
+            )}
+            {!item.localCount && !item.cloudCount && !item.remoteCount && !item.updateCount && item.fileCount !== undefined && (
               <span>{item.fileCount} files</span>
             )}
-            {!item.localCount && !item.cloudCount && !item.remoteCount && item.fileCount === undefined && '--'}
+            {!item.localCount && !item.cloudCount && !item.remoteCount && !item.updateCount && item.fileCount === undefined && '--'}
           </div>
+        ) : item.hasUpdate ? (
+          <span css={styles.updateLabel}>
+            <svg css={styles.updateIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            update
+          </span>
         ) : item.cdnPushed ? (
           <span css={styles.storedLabel}>
             <svg css={item.isRemote ? styles.storedIconRemote : styles.storedIconCloud} fill="none" stroke="currentColor" viewBox="0 0 24 24">

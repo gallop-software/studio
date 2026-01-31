@@ -37,10 +37,11 @@ function countFileTypes(
   fileEntries: [string, MetaEntry][],
   cdnUrls: string[],
   r2PublicUrl: string
-): { cloudCount: number; remoteCount: number; localCount: number } {
+): { cloudCount: number; remoteCount: number; localCount: number; updateCount: number } {
   let cloudCount = 0
   let remoteCount = 0
   let localCount = 0
+  let updateCount = 0
   
   for (const [key, entry] of fileEntries) {
     if (key.startsWith(folderPrefix)) {
@@ -55,10 +56,14 @@ function countFileTypes(
       } else {
         localCount++
       }
+      // Count pending updates
+      if (entry.u === 1) {
+        updateCount++
+      }
     }
   }
   
-  return { cloudCount, remoteCount, localCount }
+  return { cloudCount, remoteCount, localCount, updateCount }
 }
 
 /**
@@ -269,6 +274,7 @@ export async function handleList(request: Request) {
             let cloudCount = 0
             let remoteCount = 0
             let localCount = 0
+            let updateCount = 0
             
             if (isImagesFolder) {
               // Count thumbnails from meta for images folder
@@ -300,6 +306,7 @@ export async function handleList(request: Request) {
               cloudCount = counts.cloudCount
               remoteCount = counts.remoteCount
               localCount = counts.localCount
+              updateCount = counts.updateCount
             }
             
             items.push({
@@ -310,6 +317,7 @@ export async function handleList(request: Request) {
               cloudCount,
               remoteCount,
               localCount,
+              updateCount,
               isProtected: isImagesFolder,
             })
           }
@@ -400,6 +408,7 @@ export async function handleList(request: Request) {
             cloudCount: counts.cloudCount,
             remoteCount: counts.remoteCount,
             localCount: counts.localCount,
+            updateCount: counts.updateCount,
             isProtected: isInsideImagesFolder,
           })
         }
@@ -479,6 +488,7 @@ export async function handleList(request: Request) {
           isRemote,
           isProtected: isInsideImagesFolder,
           dimensions: entry.o ? { width: entry.o.w, height: entry.o.h } : undefined,
+          hasUpdate: entry.u === 1,
         })
       }
     }
@@ -566,6 +576,7 @@ export async function handleSearch(request: Request) {
         cdnBaseUrl: fileCdnUrl,
         isRemote,
         dimensions: entry.o ? { width: entry.o.w, height: entry.o.h } : undefined,
+        hasUpdate: entry.u === 1,
       })
     }
 
