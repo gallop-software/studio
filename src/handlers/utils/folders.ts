@@ -7,7 +7,7 @@ import { getPublicPath } from '../../config'
  * - Mac/Linux: files starting with .
  * - Windows: Thumbs.db, desktop.ini, etc.
  */
-function isHiddenOrSystemFile(filename: string): boolean {
+export function isHiddenOrSystemFile(filename: string): boolean {
   // Hidden files on Mac/Linux start with .
   if (filename.startsWith('.')) return true
   
@@ -80,5 +80,46 @@ export async function ensureFolderExists(folderPath: string): Promise<void> {
     await fs.mkdir(folderPath, { recursive: true })
   } catch {
     // Already exists or can't be created
+  }
+}
+
+/**
+ * Recursively clean up all empty folders within a directory
+ * Also deletes the directory itself if it becomes empty
+ * Ignores hidden/system files (deletes them if they're the only contents)
+ */
+export async function cleanupEmptyFoldersRecursive(dir: string): Promise<boolean> {
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true })
+    let isEmpty = true
+    
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const subDirEmpty = await cleanupEmptyFoldersRecursive(path.join(dir, entry.name))
+        if (!subDirEmpty) isEmpty = false
+      } else if (!isHiddenOrSystemFile(entry.name)) {
+        // Non-hidden file exists
+        isEmpty = false
+      }
+    }
+    
+    // Delete empty folder
+    if (isEmpty) {
+      // First delete any hidden/system files
+      for (const entry of entries) {
+        if (!entry.isDirectory() && isHiddenOrSystemFile(entry.name)) {
+          try {
+            await fs.unlink(path.join(dir, entry.name))
+          } catch {
+            // Ignore deletion errors
+          }
+        }
+      }
+      await fs.rmdir(dir)
+    }
+    
+    return isEmpty
+  } catch {
+    return true
   }
 }

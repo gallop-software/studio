@@ -6,7 +6,7 @@ import { encode } from 'blurhash'
 import { loadMeta, saveMeta, isMediaFile, isImageFile, getFileEntries } from './utils'
 import { getAllThumbnailPaths, isProcessed } from '../types'
 import { getPublicPath } from '../config'
-import { deleteEmptyFolders } from './utils/folders'
+import { deleteEmptyFolders, cleanupEmptyFoldersRecursive } from './utils/folders'
 
 /**
  * Streaming scan handler - scans filesystem for new files not in meta
@@ -235,45 +235,8 @@ export async function handleScanStream() {
         await cleanEmptyFolders(getPublicPath())
         
         // Also clean up empty folders inside the images directory
-        function isHiddenOrSystemFile(filename: string): boolean {
-          if (filename.startsWith('.')) return true
-          const windowsFiles = ['thumbs.db', 'desktop.ini', 'ehthumbs.db', 'ehthumbs_vista.db']
-          if (windowsFiles.includes(filename.toLowerCase())) return true
-          return false
-        }
-        
-        async function cleanImagesFolders(dir: string): Promise<boolean> {
-          try {
-            const entries = await fs.readdir(dir, { withFileTypes: true })
-            let isEmpty = true
-            
-            for (const entry of entries) {
-              if (entry.isDirectory()) {
-                const subDirEmpty = await cleanImagesFolders(path.join(dir, entry.name))
-                if (!subDirEmpty) isEmpty = false
-              } else if (!isHiddenOrSystemFile(entry.name)) {
-                isEmpty = false
-              }
-            }
-            
-            if (isEmpty) {
-              // Delete hidden files first
-              for (const entry of entries) {
-                if (!entry.isDirectory() && isHiddenOrSystemFile(entry.name)) {
-                  try { await fs.unlink(path.join(dir, entry.name)) } catch { /* ignore */ }
-                }
-              }
-              await fs.rmdir(dir)
-            }
-            
-            return isEmpty
-          } catch {
-            return true
-          }
-        }
-        
         try {
-          await cleanImagesFolders(imagesDir)
+          await cleanupEmptyFoldersRecursive(imagesDir)
         } catch {
           // images dir might not exist
         }
@@ -342,52 +305,8 @@ export async function handleDeleteOrphans(request: Request) {
     // Clean up empty directories (including images folder itself)
     const imagesDir = getPublicPath('images')
     
-    // Check if a file is hidden/system file
-    function isHiddenOrSystemFile(filename: string): boolean {
-      if (filename.startsWith('.')) return true
-      const windowsFiles = ['thumbs.db', 'desktop.ini', 'ehthumbs.db', 'ehthumbs_vista.db']
-      if (windowsFiles.includes(filename.toLowerCase())) return true
-      return false
-    }
-    
-    async function removeEmptyDirs(dir: string): Promise<boolean> {
-      try {
-        const entries = await fs.readdir(dir, { withFileTypes: true })
-        let isEmpty = true
-        
-        for (const entry of entries) {
-          if (entry.isDirectory()) {
-            const subDirEmpty = await removeEmptyDirs(path.join(dir, entry.name))
-            if (!subDirEmpty) isEmpty = false
-          } else if (!isHiddenOrSystemFile(entry.name)) {
-            // Non-hidden file exists
-            isEmpty = false
-          }
-        }
-        
-        // Delete empty folder including the images folder
-        if (isEmpty) {
-          // First delete any hidden/system files
-          for (const entry of entries) {
-            if (!entry.isDirectory() && isHiddenOrSystemFile(entry.name)) {
-              try {
-                await fs.unlink(path.join(dir, entry.name))
-              } catch {
-                // Ignore deletion errors
-              }
-            }
-          }
-          await fs.rmdir(dir)
-        }
-        
-        return isEmpty
-      } catch {
-        return true
-      }
-    }
-    
     try {
-      await removeEmptyDirs(imagesDir)
+      await cleanupEmptyFoldersRecursive(imagesDir)
     } catch {
       // images dir might not exist
     }
