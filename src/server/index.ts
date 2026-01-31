@@ -106,7 +106,7 @@ export async function startServer(options: ServerOptions) {
   app.post('/api/studio/generate-favicon', wrapHandler(handleGenerateFavicon, true))
 
   // API Routes - DELETE endpoints
-  app.delete('/api/studio/delete', wrapHandler(handleDelete))
+  app.post('/api/studio/delete', wrapHandler(handleDelete))
 
   // Serve static files from workspace's public folder
   // Files are accessed at root path (e.g., /favicon.png, /images/photo.jpg)
