@@ -67,7 +67,12 @@ interface MoveResponse {
 
 class StudioApiClient {
   private async get<T>(url: string): Promise<T> {
-    const response = await fetch(url)
+    const response = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+      },
+    })
     if (!response.ok) {
       const data = await response.json().catch(() => ({}))
       throw new Error(data.error || `Request failed: ${response.status}`)
