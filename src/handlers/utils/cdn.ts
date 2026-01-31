@@ -4,16 +4,28 @@ import { getAllThumbnailPaths } from '../../types'
 import { getContentType } from './files'
 import { getPublicPath } from '../../config'
 
+export type CachePurgeResult = {
+  status: 'success' | 'not_configured' | 'failed'
+  message?: string
+}
+
 /**
  * Purge URLs from Cloudflare cache
  * Requires CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN environment variables
  */
-export async function purgeCloudflareCache(urls: string[]): Promise<void> {
+export async function purgeCloudflareCache(urls: string[]): Promise<CachePurgeResult> {
   const zoneId = process.env.CLOUDFLARE_ZONE_ID
   const apiToken = process.env.CLOUDFLARE_API_TOKEN
   
-  if (!zoneId || !apiToken || urls.length === 0) {
-    return // Cache purge not configured or no URLs to purge
+  if (urls.length === 0) {
+    return { status: 'success' }
+  }
+  
+  if (!zoneId || !apiToken) {
+    return { 
+      status: 'not_configured',
+      message: 'Cache purge skipped. To enable, add CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to .env.studio'
+    }
   }
   
   try {
@@ -30,10 +42,21 @@ export async function purgeCloudflareCache(urls: string[]): Promise<void> {
     )
     
     if (!response.ok) {
-      console.error('Cache purge failed:', await response.text())
+      const text = await response.text()
+      console.error('Cache purge failed:', text)
+      return {
+        status: 'failed',
+        message: 'Cache purge failed. Check CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN in .env.studio'
+      }
     }
+    
+    return { status: 'success', message: 'Cache cleared successfully.' }
   } catch (error) {
     console.error('Cache purge error:', error)
+    return {
+      status: 'failed',
+      message: 'Cache purge failed. Check your network connection.'
+    }
   }
 }
 

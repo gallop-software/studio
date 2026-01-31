@@ -173,14 +173,19 @@ export async function handleSync(request: Request) {
     }
     
     // Purge Cloudflare cache for uploaded files
+    let cacheMessage: string | undefined
     if (urlsToPurge.length > 0) {
-      await purgeCloudflareCache(urlsToPurge)
+      const cacheResult = await purgeCloudflareCache(urlsToPurge)
+      if (cacheResult.message) {
+        cacheMessage = cacheResult.message
+      }
     }
 
     return jsonResponse({
       success: true,
       pushed,
       errors: errors.length > 0 ? errors : undefined,
+      cacheMessage,
     })
   } catch (error) {
     console.error('Failed to push:', error)
@@ -275,14 +280,19 @@ export async function handleReprocess(request: Request) {
     await saveMeta(meta)
     
     // Purge Cloudflare cache for re-uploaded thumbnails
+    let cacheMessage: string | undefined
     if (urlsToPurge.length > 0) {
-      await purgeCloudflareCache(urlsToPurge)
+      const cacheResult = await purgeCloudflareCache(urlsToPurge)
+      if (cacheResult.message) {
+        cacheMessage = cacheResult.message
+      }
     }
 
     return jsonResponse({
       success: true,
       processed,
       errors: errors.length > 0 ? errors : undefined,
+      cacheMessage,
     })
   } catch (error) {
     console.error('Failed to reprocess:', error)
@@ -388,9 +398,13 @@ export async function handleUnprocessStream(request: Request) {
         sendEvent({ type: 'cleanup', message: 'Saving metadata...' })
         await saveMeta(meta)
         
+        let cacheMessage = ''
         if (urlsToPurge.length > 0) {
           sendEvent({ type: 'cleanup', message: 'Purging CDN cache...' })
-          await purgeCloudflareCache(urlsToPurge)
+          const cacheResult = await purgeCloudflareCache(urlsToPurge)
+          if (cacheResult.message) {
+            cacheMessage = ` ${cacheResult.message}`
+          }
         }
 
         // Clean up empty folders in the images directory
@@ -411,6 +425,7 @@ export async function handleUnprocessStream(request: Request) {
         if (errors.length > 0) {
           message += ` ${errors.length} image${errors.length !== 1 ? 's' : ''} failed.`
         }
+        message += cacheMessage
 
         sendEvent({ 
           type: 'complete', 
@@ -568,9 +583,13 @@ export async function handleReprocessStream(request: Request) {
         sendEvent({ type: 'cleanup', message: 'Saving metadata...' })
         await saveMeta(meta)
         
+        let cacheMessage = ''
         if (urlsToPurge.length > 0) {
           sendEvent({ type: 'cleanup', message: 'Purging CDN cache...' })
-          await purgeCloudflareCache(urlsToPurge)
+          const cacheResult = await purgeCloudflareCache(urlsToPurge)
+          if (cacheResult.message) {
+            cacheMessage = ` ${cacheResult.message}`
+          }
         }
 
         // Build completion message
@@ -578,6 +597,7 @@ export async function handleReprocessStream(request: Request) {
         if (errors.length > 0) {
           message += ` ${errors.length} image${errors.length !== 1 ? 's' : ''} failed.`
         }
+        message += cacheMessage
 
         sendEvent({ 
           type: 'complete', 
@@ -816,8 +836,12 @@ export async function handleProcessAllStream() {
         await saveMeta(meta)
         
         // Purge Cloudflare cache for re-uploaded thumbnails
+        let cacheMessage = ''
         if (urlsToPurge.length > 0) {
-          await purgeCloudflareCache(urlsToPurge)
+          const cacheResult = await purgeCloudflareCache(urlsToPurge)
+          if (cacheResult.message) {
+            cacheMessage = cacheResult.message
+          }
         }
 
         sendEvent({ 
@@ -826,6 +850,7 @@ export async function handleProcessAllStream() {
           alreadyProcessed,
           orphansRemoved: orphansRemoved.length,
           errors: errors.length,
+          cacheMessage,
         })
       } catch (error) {
         console.error('Failed to process all:', error)
@@ -1107,9 +1132,17 @@ export async function handlePushUpdatesStream(request: Request) {
 
         await saveMeta(meta)
 
+        let cacheMessage = ''
         if (urlsToPurge.length > 0) {
           sendEvent({ type: 'cleanup', message: 'Purging CDN cache...' })
-          await purgeCloudflareCache(urlsToPurge)
+          const cacheResult = await purgeCloudflareCache(urlsToPurge)
+          if (cacheResult.status === 'not_configured') {
+            cacheMessage = ` ${cacheResult.message}`
+          } else if (cacheResult.status === 'failed') {
+            cacheMessage = ` ${cacheResult.message}`
+          } else if (cacheResult.status === 'success' && cacheResult.message) {
+            cacheMessage = ` ${cacheResult.message}`
+          }
         }
 
         let message = `Pushed ${pushed.length} update${pushed.length !== 1 ? 's' : ''} to cloud.`
@@ -1119,6 +1152,7 @@ export async function handlePushUpdatesStream(request: Request) {
         if (errors.length > 0) {
           message += ` ${errors.length} file${errors.length !== 1 ? 's' : ''} failed.`
         }
+        message += cacheMessage
 
         sendEvent({
           type: 'complete',
