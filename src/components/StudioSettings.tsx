@@ -360,7 +360,7 @@ CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_access_key
 CLOUDFLARE_R2_BUCKET_NAME=your_bucket_name
 CLOUDFLARE_R2_PUBLIC_URL=https://your-cdn.example.com
 
-# Cloudflare Cache Purge (optional)
+# Cloudflare Cache Purge
 CLOUDFLARE_ZONE_ID=your_zone_id
 CLOUDFLARE_API_TOKEN=your_api_token`
 
@@ -513,7 +513,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
                 <p css={styles.codeLine}>CLOUDFLARE_R2_BUCKET_NAME=your_bucket_name</p>
                 <p css={styles.codeLine}>CLOUDFLARE_R2_PUBLIC_URL=https://your-cdn.example.com</p>
                 <p css={styles.codeLine}>&nbsp;</p>
-                <p css={styles.codeLine}># Cache Purge (optional)</p>
+                <p css={styles.codeLine}># Cloudflare Cache Purge</p>
                 <p css={styles.codeLine}>CLOUDFLARE_ZONE_ID=your_zone_id</p>
                 <p css={styles.codeLine}>CLOUDFLARE_API_TOKEN=your_api_token</p>
               </div>

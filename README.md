@@ -35,7 +35,7 @@ CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_key
 CLOUDFLARE_R2_BUCKET_NAME=your_bucket
 CLOUDFLARE_R2_PUBLIC_URL=https://your-cdn.example.com
 
-# Cloudflare Cache Purge (optional, for custom domains)
+# Cloudflare Cache Purge
 CLOUDFLARE_ZONE_ID=your_zone_id
 CLOUDFLARE_API_TOKEN=your_api_token
 ```
@@ -70,8 +70,8 @@ Studio opens in your browser on an available port (default 3001).
 | `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | For CDN | R2 API secret key |
 | `CLOUDFLARE_R2_BUCKET_NAME` | For CDN | R2 bucket name |
 | `CLOUDFLARE_R2_PUBLIC_URL` | For CDN | Public URL for your R2 bucket or custom domain |
-| `CLOUDFLARE_ZONE_ID` | For cache purge | Cloudflare zone ID for cache purge |
-| `CLOUDFLARE_API_TOKEN` | For cache purge | API token with Cache Purge permission |
+| `CLOUDFLARE_ZONE_ID` | For CDN | Cloudflare zone ID for cache purge |
+| `CLOUDFLARE_API_TOKEN` | For CDN | API token with Cache Purge permission |
 
 ## Setting Up Cloudflare R2
 
