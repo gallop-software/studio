@@ -7,7 +7,7 @@ import { handleList, handleSearch, handleListFolders, handleCountImages, handleF
 import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleMove, handleMoveStream } from './files'
 
 // Image handlers
-import { handleSync, handleReprocess, handleReprocessStream, handleUnprocessStream, handleProcessAllStream } from './images'
+import { handleSync, handleReprocess, handleReprocessStream, handleUnprocessStream, handleProcessAllStream, handleDownloadStream } from './images'
 
 // Scan handler
 import { handleScanStream, handleDeleteOrphans } from './scan'
@@ -106,6 +106,11 @@ export async function POST(request: NextRequest) {
   // Route: /api/studio/process-all (streaming)
   if (route === 'process-all') {
     return handleProcessAllStream()
+  }
+
+  // Route: /api/studio/download-stream (streaming) - download from R2 to local
+  if (route === 'download-stream') {
+    return handleDownloadStream(request)
   }
 
   // Route: /api/studio/create-folder

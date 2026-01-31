@@ -819,3 +819,130 @@ export async function handleProcessAllStream() {
     },
   })
 }
+
+/**
+ * Download images from R2 CDN to local storage (streaming)
+ * This removes the images from R2 and stores them locally
+ */
+export async function handleDownloadStream(request: NextRequest) {
+  const { imageKeys } = await request.json() as { imageKeys: string[] }
+
+  if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
+    return NextResponse.json({ error: 'No image keys provided' }, { status: 400 })
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder()
+      const sendEvent = (data: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      sendEvent({ type: 'start', total: imageKeys.length })
+
+      const downloaded: string[] = []
+      const skipped: string[] = []
+      const errors: string[] = []
+
+      try {
+        const meta = await loadMeta()
+
+        for (let i = 0; i < imageKeys.length; i++) {
+          const imageKey = imageKeys[i]
+          const entry = getMetaEntry(meta, imageKey)
+          
+          if (!entry || entry.c === undefined) {
+            skipped.push(imageKey)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total: imageKeys.length,
+              message: `Skipped ${imageKey} (not on cloud)`,
+            })
+            continue
+          }
+
+          try {
+            // Download original from R2
+            const imageBuffer = await downloadFromCdn(imageKey)
+            
+            // Ensure directory exists
+            const localPath = path.join(process.cwd(), 'public', imageKey.replace(/^\//, ''))
+            await fs.mkdir(path.dirname(localPath), { recursive: true })
+            
+            // Write to local filesystem
+            await fs.writeFile(localPath, imageBuffer)
+            
+            // Delete thumbnails from R2
+            await deleteThumbnailsFromCdn(imageKey)
+            
+            // Check if image was processed (has thumbnails)
+            const wasProcessed = isProcessed(entry)
+            
+            // Remove the c property (no longer on CDN)
+            delete entry.c
+            
+            // If it was processed, regenerate thumbnails locally
+            if (wasProcessed) {
+              const processedEntry = await processImage(imageBuffer, imageKey)
+              // Update dimensions in meta
+              entry.sm = processedEntry.sm
+              entry.md = processedEntry.md
+              entry.lg = processedEntry.lg
+              entry.f = processedEntry.f
+            }
+            
+            downloaded.push(imageKey)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total: imageKeys.length,
+              message: `Downloaded ${imageKey}`,
+            })
+          } catch (error) {
+            console.error(`Failed to download ${imageKey}:`, error)
+            errors.push(imageKey)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total: imageKeys.length,
+              message: `Failed to download ${imageKey}`,
+            })
+          }
+        }
+
+        await saveMeta(meta)
+
+        // Build completion message
+        let message = `Downloaded ${downloaded.length} image${downloaded.length !== 1 ? 's' : ''}.`
+        if (skipped.length > 0) {
+          message += ` ${skipped.length} image${skipped.length !== 1 ? 's were' : ' was'} not on cloud.`
+        }
+        if (errors.length > 0) {
+          message += ` ${errors.length} image${errors.length !== 1 ? 's' : ''} failed.`
+        }
+
+        sendEvent({
+          type: 'complete',
+          downloaded: downloaded.length,
+          skipped: skipped.length,
+          errors: errors.length,
+          message,
+        })
+      } catch (error) {
+        console.error('Download stream error:', error)
+        sendEvent({ type: 'error', message: 'Failed to download images' })
+      } finally {
+        controller.close()
+      }
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
+}

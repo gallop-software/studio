@@ -225,6 +225,8 @@ export function StudioToolbar() {
   const [syncImageCount, setSyncImageCount] = useState(0)
   const [syncHasRemote, setSyncHasRemote] = useState(false)
   const [syncHasLocal, setSyncHasLocal] = useState(false)
+  const [showDownloadConfirm, setShowDownloadConfirm] = useState(false)
+  const [downloadImageCount, setDownloadImageCount] = useState(0)
   const [showProgress, setShowProgress] = useState(false)
   const [progressTitle, setProgressTitle] = useState('Processing Images')
   const [progressState, setProgressState] = useState<ProgressState>({
@@ -788,6 +790,129 @@ export function StudioToolbar() {
     }
   }, [selectedItems, clearSelection, triggerRefresh])
 
+  // Download from R2 to local
+  const handleDownloadClick = useCallback(async () => {
+    if (selectedItems.size === 0) return
+
+    const selectedPaths = Array.from(selectedItems)
+    
+    // Get only image files (not folders)
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif']
+    const selectedImagePaths = selectedPaths.filter(p => {
+      const ext = p.split('.').pop()?.toLowerCase() || ''
+      return imageExtensions.includes(ext)
+    })
+
+    if (selectedImagePaths.length === 0) {
+      setAlertMessage({
+        title: 'No Images Found',
+        message: 'No images found in the selected items.',
+      })
+      return
+    }
+
+    setDownloadImageCount(selectedImagePaths.length)
+    setShowDownloadConfirm(true)
+  }, [selectedItems])
+
+  const handleDownloadConfirm = useCallback(async () => {
+    setShowDownloadConfirm(false)
+    
+    const selectedPaths = Array.from(selectedItems)
+    
+    // Get only image files
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif']
+    const selectedImagePaths = selectedPaths.filter(p => {
+      const ext = p.split('.').pop()?.toLowerCase() || ''
+      return imageExtensions.includes(ext)
+    })
+
+    // Convert to image keys
+    const imageKeys = selectedImagePaths.map(p => '/' + p.replace(/^public\//, ''))
+
+    // Show progress modal
+    setProgressTitle('Downloading from CDN')
+    setShowProgress(true)
+    setProgressState({
+      current: 0,
+      total: imageKeys.length,
+      percent: 0,
+      status: 'processing',
+    })
+
+    try {
+      const response = await fetch('/api/studio/download-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageKeys }),
+      })
+
+      if (!response.ok || !response.body) {
+        throw new Error('Download request failed')
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.type === 'progress') {
+                setProgressState({
+                  current: data.current,
+                  total: data.total,
+                  percent: Math.round((data.current / data.total) * 100),
+                  status: 'processing',
+                  message: data.message,
+                })
+              } else if (data.type === 'complete') {
+                setProgressState({
+                  current: data.total || imageKeys.length,
+                  total: data.total || imageKeys.length,
+                  percent: 100,
+                  status: 'complete',
+                  message: data.message,
+                })
+              } else if (data.type === 'error') {
+                setProgressState({
+                  current: 0,
+                  total: 0,
+                  percent: 0,
+                  status: 'error',
+                  message: data.message,
+                })
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+
+      clearSelection()
+      triggerRefresh()
+    } catch (error) {
+      console.error('Download error:', error)
+      setProgressState({
+        current: 0,
+        total: 0,
+        percent: 0,
+        status: 'error',
+        message: 'Failed to download from CDN.',
+      })
+    }
+  }, [selectedItems, clearSelection, triggerRefresh])
+
   const handleCreateFolder = useCallback(async (folderName: string) => {
     setShowNewFolderModal(false)
     
@@ -928,6 +1053,13 @@ export function StudioToolbar() {
     return item && item.cdnPushed && !item.isRemote
   })
   
+  // Check if ALL selected items are R2 cloud files (for Download button)
+  const allR2Selection = hasSelection && Array.from(selectedItems).every(path => {
+    const item = fileItems.find(f => f.path === path)
+    // Only file items, not folders, and must be on R2 (cdnPushed && !isRemote)
+    return item && item.type === 'file' && item.cdnPushed && !item.isRemote
+  })
+  
   // Check if exactly one folder is selected (for rename)
   const selectedPaths = Array.from(selectedItems)
   const singleFolderSelected = selectedPaths.length === 1 && !selectedPaths[0].includes('.')
@@ -977,6 +1109,16 @@ export function StudioToolbar() {
           confirmLabel="Push"
           onConfirm={handleSyncConfirm}
           onCancel={() => setShowSyncConfirm(false)}
+        />
+      )}
+
+      {showDownloadConfirm && (
+        <ConfirmModal
+          title="Download from CDN"
+          message={`Download ${downloadImageCount} image${downloadImageCount !== 1 ? 's' : ''} from Cloudflare R2 to local storage? Images will be removed from the CDN.`}
+          confirmLabel="Download"
+          onConfirm={handleDownloadConfirm}
+          onCancel={() => setShowDownloadConfirm(false)}
         />
       )}
 
@@ -1113,15 +1255,26 @@ export function StudioToolbar() {
             <MoveIcon />
             Move
           </button>
-          <button
-            css={styles.btn}
-            onClick={handleSyncClick}
-            disabled={!hasSelection || hasR2Selection}
-            title={hasR2Selection ? 'Selected files are already in R2' : undefined}
-          >
-            <CloudIcon />
-            Push CDN
-          </button>
+          {allR2Selection ? (
+            <button
+              css={styles.btn}
+              onClick={handleDownloadClick}
+              disabled={!hasSelection}
+            >
+              <CloudDownloadIcon />
+              Download
+            </button>
+          ) : (
+            <button
+              css={styles.btn}
+              onClick={handleSyncClick}
+              disabled={!hasSelection || hasR2Selection}
+              title={hasR2Selection ? 'Selected files are already in R2' : undefined}
+            >
+              <CloudIcon />
+              Push CDN
+            </button>
+          )}
           <div css={styles.searchWrapper}>
             <input
               css={styles.searchInput}
@@ -1238,6 +1391,14 @@ function CloudIcon() {
   return (
     <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+    </svg>
+  )
+}
+
+function CloudDownloadIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
     </svg>
   )
 }
