@@ -35,11 +35,9 @@ export async function startServer(options: ServerOptions) {
   const envPath = join(workspace, '.env')
   
   if (existsSync(envLocalPath)) {
-    loadEnv({ path: envLocalPath })
-    console.log('Loaded environment from .env.local')
+    loadEnv({ path: envLocalPath, quiet: true })
   } else if (existsSync(envPath)) {
-    loadEnv({ path: envPath })
-    console.log('Loaded environment from .env')
+    loadEnv({ path: envPath, quiet: true })
   }
 
   // Middleware

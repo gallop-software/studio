@@ -1,6 +1,6 @@
 {
   "name": "@gallop.software/studio",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Standalone media manager - upload, process, and sync images to CDN",
   "type": "module",
   "bin": {
