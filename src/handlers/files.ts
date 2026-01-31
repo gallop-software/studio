@@ -19,6 +19,7 @@ import {
 } from './utils'
 import { getPublicPath, getWorkspacePath } from '../config'
 import { jsonResponse, streamResponse, createSSEStream } from './utils/response'
+import { deleteEmptyFolders } from './utils/folders'
 
 export async function handleUpload(request: Request) {
   try {
@@ -130,6 +131,7 @@ export async function handleDelete(request: Request) {
     const meta = await loadMeta()
     const deleted: string[] = []
     const errors: string[] = []
+    const sourceFolders = new Set<string>()
 
     for (const itemPath of paths) {
       try {
@@ -140,6 +142,9 @@ export async function handleDelete(request: Request) {
 
         const absolutePath = getWorkspacePath(itemPath)
         const imageKey = '/' + itemPath.replace(/^public\//, '')
+        
+        // Track source folder for cleanup
+        sourceFolders.add(path.dirname(absolutePath))
         
         // Check if this is in meta (could be synced with no local file)
         const entry = meta[imageKey] as MetaEntry | undefined
@@ -213,6 +218,11 @@ export async function handleDelete(request: Request) {
     }
 
     await saveMeta(meta)
+
+    // Clean up empty source folders
+    for (const folder of sourceFolders) {
+      await deleteEmptyFolders(folder)
+    }
 
     return jsonResponse({
       success: true,
@@ -385,6 +395,7 @@ export async function handleMoveStream(request: Request) {
 
         const moved: string[] = []
         const errors: string[] = []
+        const sourceFolders = new Set<string>()
         const total = paths.length
 
         sendEvent({ type: 'start', total })
@@ -426,6 +437,10 @@ export async function handleMoveStream(request: Request) {
           const hasProcessedThumbnails = isProcessed(entry)
 
           try {
+            // Track source folder for cleanup
+            const sourceFolder = path.dirname(getWorkspacePath(safePath))
+            sourceFolders.add(sourceFolder)
+
             if (isRemote && isImage) {
               // ===== REMOTE IMAGE =====
               const remoteUrl = `${fileCdnUrl}${oldKey}`
@@ -513,6 +528,9 @@ export async function handleMoveStream(request: Request) {
                   const oldThumbPath = getPublicPath(oldThumbPaths[j])
                   const newThumbPath = getPublicPath(newThumbPaths[j])
                   
+                  // Track thumbnail source folder for cleanup
+                  sourceFolders.add(path.dirname(oldThumbPath))
+                  
                   await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
 
                   try {
@@ -546,6 +564,11 @@ export async function handleMoveStream(request: Request) {
         }
 
         await saveMeta(meta)
+
+        // Clean up empty source folders
+        for (const folder of sourceFolders) {
+          await deleteEmptyFolders(folder)
+        }
 
         sendEvent({
           type: 'complete',
@@ -595,6 +618,7 @@ export async function handleMove(request: Request) {
 
     const moved: string[] = []
     const errors: string[] = []
+    const sourceFolders = new Set<string>()
     const meta = await loadMeta()
     const cdnUrls = getCdnUrls(meta)
     const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '') || ''
@@ -610,6 +634,9 @@ export async function handleMove(request: Request) {
       const newRelativePath = path.join(safeDestination.replace(/^public\//, ''), itemName)
       const oldKey = '/' + oldRelativePath
       const newKey = '/' + newRelativePath
+
+      // Track source folder for cleanup
+      sourceFolders.add(path.dirname(getWorkspacePath(safePath)))
 
       // Check if destination already exists in meta
       if (meta[newKey]) {
@@ -733,6 +760,9 @@ export async function handleMove(request: Request) {
               const oldThumbPath = getPublicPath(oldThumbPaths[i])
               const newThumbPath = getPublicPath(newThumbPaths[i])
               
+              // Track thumbnail source folder for cleanup
+              sourceFolders.add(path.dirname(oldThumbPath))
+              
               await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
 
               try {
@@ -770,6 +800,11 @@ export async function handleMove(request: Request) {
 
     if (metaChanged) {
       await saveMeta(meta)
+    }
+
+    // Clean up empty source folders
+    for (const folder of sourceFolders) {
+      await deleteEmptyFolders(folder)
     }
 
     return jsonResponse({

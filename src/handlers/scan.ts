@@ -266,7 +266,7 @@ export async function handleDeleteOrphans(request: Request) {
       }
     }
     
-    // Clean up empty directories
+    // Clean up empty directories (including images folder itself)
     const imagesDir = getPublicPath('images')
     
     async function removeEmptyDirs(dir: string): Promise<boolean> {
@@ -283,7 +283,8 @@ export async function handleDeleteOrphans(request: Request) {
           }
         }
         
-        if (isEmpty && dir !== imagesDir) {
+        // Delete empty folder including the images folder
+        if (isEmpty) {
           await fs.rmdir(dir)
         }
         

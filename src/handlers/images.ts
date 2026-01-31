@@ -23,6 +23,7 @@ import { getPublicPath } from '../config'
 import {
   purgeCloudflareCache,
 } from './utils'
+import { deleteEmptyFolders } from './utils/folders'
 
 export async function handleSync(request: Request) {
   const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
@@ -60,6 +61,7 @@ export async function handleSync(request: Request) {
     const pushed: string[] = []
     const errors: string[] = []
     const urlsToPurge: string[] = []
+    const sourceFolders = new Set<string>()
 
     for (let imageKey of imageKeys) {
       // Normalize key to have leading /
@@ -141,9 +143,14 @@ export async function handleSync(request: Request) {
         if (!isRemote) {
           const originalLocalPath = getPublicPath(imageKey)
           
+          // Track source folder for cleanup
+          sourceFolders.add(path.dirname(originalLocalPath))
+          
           // Delete local thumbnails
           for (const thumbPath of getAllThumbnailPaths(imageKey)) {
             const localPath = getPublicPath(thumbPath)
+            // Track thumbnail folder too
+            sourceFolders.add(path.dirname(localPath))
             try { await fs.unlink(localPath) } catch { /* ignore */ }
           }
 
@@ -159,6 +166,11 @@ export async function handleSync(request: Request) {
     }
 
     await saveMeta(meta)
+    
+    // Clean up empty source folders
+    for (const folder of sourceFolders) {
+      await deleteEmptyFolders(folder)
+    }
     
     // Purge Cloudflare cache for uploaded files
     if (urlsToPurge.length > 0) {
