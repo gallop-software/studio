@@ -96,6 +96,14 @@ const styles = {
       border-color: ${colors.danger};
     }
   `,
+  btnUpdate: css`
+    color: #f59e0b;
+    
+    &:hover:not(:disabled) {
+      background-color: rgba(245, 158, 11, 0.1);
+      border-color: #f59e0b;
+    }
+  `,
   icon: css`
     width: 16px;
     height: 16px;
@@ -935,6 +943,151 @@ export function StudioToolbar() {
     }
   }, [selectedItems, clearSelection, triggerRefresh])
 
+  // Push pending updates to cloud
+  const handlePushUpdates = useCallback(async () => {
+    if (selectedItems.size === 0) return
+
+    const selectedPaths = Array.from(selectedItems)
+    
+    // Get files with hasUpdate
+    const updatePaths = selectedPaths.filter(p => {
+      const item = fileItems.find(f => f.path === p)
+      return item && item.hasUpdate
+    })
+
+    if (updatePaths.length === 0) {
+      setAlertMessage({
+        title: 'No Updates',
+        message: 'No files with pending updates in selection.',
+      })
+      return
+    }
+
+    // Show progress modal
+    setProgressTitle('Pushing Updates')
+    setShowProgress(true)
+    setProgressState({
+      current: 0,
+      total: updatePaths.length,
+      percent: 0,
+      status: 'processing',
+    })
+
+    try {
+      const response = await fetch('/api/studio/push-updates-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: updatePaths }),
+      })
+
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const data = JSON.parse(line.slice(6))
+            if (data.type === 'progress') {
+              setProgressState({
+                current: data.current,
+                total: data.total,
+                percent: data.percent,
+                status: 'processing',
+                currentFile: data.currentFile,
+              })
+            } else if (data.type === 'cleanup') {
+              setProgressState(prev => ({
+                ...prev,
+                message: data.message,
+              }))
+            } else if (data.type === 'complete') {
+              setProgressState({
+                current: data.total || updatePaths.length,
+                total: data.total || updatePaths.length,
+                percent: 100,
+                status: 'complete',
+                message: data.message,
+              })
+            } else if (data.type === 'error') {
+              setProgressState({
+                current: 0,
+                total: 0,
+                percent: 0,
+                status: 'error',
+                message: data.message,
+              })
+            }
+          } catch {
+            // Parse error, skip
+          }
+        }
+      }
+
+      clearSelection()
+      triggerRefresh()
+    } catch (error) {
+      console.error('Push updates error:', error)
+      setProgressState({
+        current: 0,
+        total: 0,
+        percent: 0,
+        status: 'error',
+        message: 'Failed to push updates.',
+      })
+    }
+  }, [selectedItems, fileItems, clearSelection, triggerRefresh])
+
+  // Cancel pending updates (delete local files)
+  const handleCancelUpdates = useCallback(async () => {
+    if (selectedItems.size === 0) return
+
+    const selectedPaths = Array.from(selectedItems)
+    
+    // Get files with hasUpdate
+    const updatePaths = selectedPaths.filter(p => {
+      const item = fileItems.find(f => f.path === p)
+      return item && item.hasUpdate
+    })
+
+    if (updatePaths.length === 0) return
+
+    try {
+      const response = await fetch('/api/studio/cancel-updates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: updatePaths }),
+      })
+
+      if (response.ok) {
+        clearSelection()
+        triggerRefresh()
+      } else {
+        const error = await response.json()
+        setAlertMessage({
+          title: 'Cancel Failed',
+          message: error.error || 'Unknown error',
+        })
+      }
+    } catch (error) {
+      console.error('Cancel updates error:', error)
+      setAlertMessage({
+        title: 'Cancel Failed',
+        message: 'Failed to cancel updates. Check console for details.',
+      })
+    }
+  }, [selectedItems, fileItems, clearSelection, triggerRefresh])
+
   const handleCreateFolder = useCallback(async (folderName: string) => {
     setShowNewFolderModal(false)
     
@@ -1080,6 +1233,12 @@ export function StudioToolbar() {
     const item = fileItems.find(f => f.path === path)
     // Only file items, not folders, and must be on R2 (cdnPushed && !isRemote)
     return item && item.type === 'file' && item.cdnPushed && !item.isRemote
+  })
+  
+  // Check if any selected items have pending updates
+  const hasUpdateSelection = hasSelection && Array.from(selectedItems).some(path => {
+    const item = fileItems.find(f => f.path === path)
+    return item && item.hasUpdate
   })
   
   // Check if exactly one folder is selected (for rename)
@@ -1277,7 +1436,29 @@ export function StudioToolbar() {
             <MoveIcon />
             Move
           </button>
-          {allR2Selection ? (
+          {hasUpdateSelection ? (
+            <>
+              <button
+                css={[styles.btn, styles.btnUpdate]}
+                onClick={handlePushUpdates}
+                disabled={!hasSelection}
+                title="Push local changes to cloud"
+              >
+                <CloudIcon />
+                <SyncIcon />
+                Push Update
+              </button>
+              <button
+                css={[styles.btn, styles.btnDanger]}
+                onClick={handleCancelUpdates}
+                disabled={!hasSelection}
+                title="Cancel update (delete local file)"
+              >
+                <CancelIcon />
+                Cancel Update
+              </button>
+            </>
+          ) : allR2Selection ? (
             <button
               css={styles.btn}
               onClick={handleDownloadClick}
@@ -1413,6 +1594,22 @@ function CloudIcon() {
   return (
     <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+    </svg>
+  )
+}
+
+function SyncIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+  )
+}
+
+function CancelIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
     </svg>
   )
 }

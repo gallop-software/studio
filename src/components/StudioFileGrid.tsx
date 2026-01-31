@@ -289,7 +289,7 @@ const styles = {
     color: #ef4444;
   `,
   folderStatUpdate: css`
-    color: #8b5cf6;
+    color: #f59e0b;
   `,
   folderStatIcon: css`
     width: 14px;
@@ -313,20 +313,25 @@ const styles = {
   folderStatIconUpdate: css`
     width: 14px;
     height: 14px;
-    color: #8b5cf6;
+    color: #f59e0b;
   `,
   updateLabel: css`
     display: flex;
     align-items: center;
     gap: 4px;
-    color: #8b5cf6;
+    color: #f59e0b;
     font-size: ${fontSize.xs};
     margin: 0;
   `,
-  updateIcon: css`
+  updateCloudIcon: css`
     width: 14px;
     height: 14px;
-    color: #8b5cf6;
+    color: #f59e0b;
+  `,
+  updateSyncIcon: css`
+    width: 14px;
+    height: 14px;
+    color: #f59e0b;
   `,
   storedLabel: css`
     display: flex;
@@ -701,7 +706,10 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
               </div>
             ) : item.hasUpdate ? (
               <p css={styles.updateLabel}>
-                <svg css={styles.updateIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg css={styles.updateCloudIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                </svg>
+                <svg css={styles.updateSyncIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 <span>update</span>
