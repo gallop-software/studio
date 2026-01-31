@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { config as loadEnv } from 'dotenv'
+import { createServer } from 'net'
 
 // Import handlers from individual modules
 import { handleList, handleSearch, handleListFolders, handleCountImages, handleFolderImages } from '../handlers/list'
@@ -22,8 +23,45 @@ export interface ServerOptions {
   open?: boolean
 }
 
+/**
+ * Check if a port is available
+ */
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer()
+    server.once('error', () => {
+      resolve(false)
+    })
+    server.once('listening', () => {
+      server.close()
+      resolve(true)
+    })
+    server.listen(port)
+  })
+}
+
+/**
+ * Find an available port starting from the given port
+ */
+async function findAvailablePort(startPort: number, maxAttempts = 10): Promise<number> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const port = startPort + i
+    if (await isPortAvailable(port)) {
+      return port
+    }
+  }
+  throw new Error(`No available port found between ${startPort} and ${startPort + maxAttempts - 1}`)
+}
+
 export async function startServer(options: ServerOptions) {
-  const { port, workspace, open } = options
+  const { port: requestedPort, workspace, open } = options
+  
+  // Find an available port starting from the requested port
+  const port = await findAvailablePort(requestedPort)
+  if (port !== requestedPort) {
+    console.log(`Port ${requestedPort} is in use, using port ${port} instead`)
+  }
+  
   const app = express()
 
   // Store workspace in a way handlers can access
