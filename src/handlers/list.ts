@@ -29,6 +29,29 @@ function getExistingThumbnails(originalPath: string, entry: MetaEntry): Array<{ 
 }
 
 /**
+ * Count cloud and local files for a folder prefix
+ */
+function countCloudAndLocal(
+  folderPrefix: string,
+  fileEntries: [string, MetaEntry][]
+): { cloudCount: number; localCount: number } {
+  let cloudCount = 0
+  let localCount = 0
+  
+  for (const [key, entry] of fileEntries) {
+    if (key.startsWith(folderPrefix)) {
+      if (entry.c !== undefined) {
+        cloudCount++
+      } else {
+        localCount++
+      }
+    }
+  }
+  
+  return { cloudCount, localCount }
+}
+
+/**
  * List files and folders from meta
  * Folders are derived from file paths in meta AND filesystem
  */
@@ -194,6 +217,9 @@ export async function handleList(request: NextRequest) {
             
             // Count files in this folder
             let fileCount = 0
+            let cloudCount = 0
+            let localCount = 0
+            
             if (isImagesFolder) {
               // Count thumbnails from meta for images folder
               for (const [key, metaEntry] of fileEntries) {
@@ -207,6 +233,10 @@ export async function handleList(request: NextRequest) {
               for (const k of metaKeys) {
                 if (k.startsWith(folderPrefix)) fileCount++
               }
+              // Count cloud vs local
+              const counts = countCloudAndLocal(folderPrefix, fileEntries)
+              cloudCount = counts.cloudCount
+              localCount = counts.localCount
             }
             
             items.push({
@@ -214,6 +244,8 @@ export async function handleList(request: NextRequest) {
               path: folderPath,
               type: 'folder',
               fileCount,
+              cloudCount,
+              localCount,
               isProtected: isImagesFolder,
             })
           }
@@ -275,11 +307,16 @@ export async function handleList(request: NextRequest) {
             if (k.startsWith(folderPrefix)) fileCount++
           }
           
+          // Count cloud vs local
+          const counts = countCloudAndLocal(folderPrefix, fileEntries)
+          
           items.push({
             name: folderName,
             path: relativePath ? `public/${relativePath}/${folderName}` : `public/${folderName}`,
             type: 'folder',
             fileCount,
+            cloudCount: counts.cloudCount,
+            localCount: counts.localCount,
             isProtected: isInsideImagesFolder,
           })
         }
