@@ -57,8 +57,9 @@ export interface FileItem {
   // Folder-specific properties
   fileCount?: number
   totalSize?: number
-  cloudCount?: number  // Number of cloud files in folder
-  localCount?: number  // Number of local files in folder
+  cloudCount?: number   // Number of R2 cloud files in folder
+  remoteCount?: number  // Number of remote (imported URL) files in folder
+  localCount?: number   // Number of local files in folder
   // For showing thumbnails - path to -sm version if exists
   thumbnail?: string
   // Whether a processed thumbnail exists

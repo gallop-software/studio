@@ -29,26 +29,35 @@ function getExistingThumbnails(originalPath: string, entry: MetaEntry): Array<{ 
 }
 
 /**
- * Count cloud and local files for a folder prefix
+ * Count cloud, remote, and local files for a folder prefix
  */
-function countCloudAndLocal(
+function countFileTypes(
   folderPrefix: string,
-  fileEntries: [string, MetaEntry][]
-): { cloudCount: number; localCount: number } {
+  fileEntries: [string, MetaEntry][],
+  cdnUrls: string[],
+  r2PublicUrl: string
+): { cloudCount: number; remoteCount: number; localCount: number } {
   let cloudCount = 0
+  let remoteCount = 0
   let localCount = 0
   
   for (const [key, entry] of fileEntries) {
     if (key.startsWith(folderPrefix)) {
       if (entry.c !== undefined) {
-        cloudCount++
+        // Check if it's our R2 or a remote URL
+        const cdnUrl = cdnUrls[entry.c]
+        if (cdnUrl === r2PublicUrl) {
+          cloudCount++
+        } else {
+          remoteCount++
+        }
       } else {
         localCount++
       }
     }
   }
   
-  return { cloudCount, localCount }
+  return { cloudCount, remoteCount, localCount }
 }
 
 /**
@@ -218,6 +227,7 @@ export async function handleList(request: NextRequest) {
             // Count files in this folder
             let fileCount = 0
             let cloudCount = 0
+            let remoteCount = 0
             let localCount = 0
             
             if (isImagesFolder) {
@@ -233,9 +243,10 @@ export async function handleList(request: NextRequest) {
               for (const k of metaKeys) {
                 if (k.startsWith(folderPrefix)) fileCount++
               }
-              // Count cloud vs local
-              const counts = countCloudAndLocal(folderPrefix, fileEntries)
+              // Count cloud vs remote vs local
+              const counts = countFileTypes(folderPrefix, fileEntries, cdnUrls, r2PublicUrl)
               cloudCount = counts.cloudCount
+              remoteCount = counts.remoteCount
               localCount = counts.localCount
             }
             
@@ -245,6 +256,7 @@ export async function handleList(request: NextRequest) {
               type: 'folder',
               fileCount,
               cloudCount,
+              remoteCount,
               localCount,
               isProtected: isImagesFolder,
             })
@@ -307,8 +319,8 @@ export async function handleList(request: NextRequest) {
             if (k.startsWith(folderPrefix)) fileCount++
           }
           
-          // Count cloud vs local
-          const counts = countCloudAndLocal(folderPrefix, fileEntries)
+          // Count cloud vs remote vs local
+          const counts = countFileTypes(folderPrefix, fileEntries, cdnUrls, r2PublicUrl)
           
           items.push({
             name: folderName,
@@ -316,6 +328,7 @@ export async function handleList(request: NextRequest) {
             type: 'folder',
             fileCount,
             cloudCount: counts.cloudCount,
+            remoteCount: counts.remoteCount,
             localCount: counts.localCount,
             isProtected: isInsideImagesFolder,
           })
