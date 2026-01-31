@@ -151,16 +151,35 @@ export async function handleList(request: Request) {
             const folderName = thumbRelative.slice(0, slashIndex)
             if (!seenFolders.has(folderName)) {
               seenFolders.add(folderName)
-              // Count thumbnails in this folder
+              // Count thumbnails in this folder with cloud/local breakdown
               const folderPrefix = `/${folderName}/`
-              const fileCount = allThumbnails.filter(t => 
+              const folderThumbs = allThumbnails.filter(t => 
                 t.path.replace(/^\/images/, '').startsWith(folderPrefix)
-              ).length
+              )
+              let folderCloudCount = 0
+              let folderRemoteCount = 0
+              let folderLocalCount = 0
+              for (const ft of folderThumbs) {
+                const origEntry = meta[ft.originalKey] as MetaEntry | undefined
+                if (origEntry?.c !== undefined) {
+                  const entryCdnUrl = cdnUrls[origEntry.c]?.replace(/\/?$/, '')
+                  if (r2PublicUrl && entryCdnUrl === r2PublicUrl) {
+                    folderCloudCount++
+                  } else {
+                    folderRemoteCount++
+                  }
+                } else {
+                  folderLocalCount++
+                }
+              }
               items.push({
                 name: folderName,
                 path: `public/images/${folderName}`,
                 type: 'folder',
-                fileCount,
+                fileCount: folderThumbs.length,
+                cloudCount: folderCloudCount,
+                remoteCount: folderRemoteCount,
+                localCount: folderLocalCount,
                 isProtected: true,
               })
             }
@@ -193,14 +212,33 @@ export async function handleList(request: Request) {
             if (!seenFolders.has(folderName)) {
               seenFolders.add(folderName)
               const folderPrefix = `${imagesSubPath}/${folderName}/`
-              const fileCount = allThumbnails.filter(t => 
+              const folderThumbs = allThumbnails.filter(t => 
                 t.path.replace(/^\/images\//, '').startsWith(folderPrefix)
-              ).length
+              )
+              let subCloudCount = 0
+              let subRemoteCount = 0
+              let subLocalCount = 0
+              for (const ft of folderThumbs) {
+                const origEntry = meta[ft.originalKey] as MetaEntry | undefined
+                if (origEntry?.c !== undefined) {
+                  const entryCdnUrl = cdnUrls[origEntry.c]?.replace(/\/?$/, '')
+                  if (r2PublicUrl && entryCdnUrl === r2PublicUrl) {
+                    subCloudCount++
+                  } else {
+                    subRemoteCount++
+                  }
+                } else {
+                  subLocalCount++
+                }
+              }
               items.push({
                 name: folderName,
                 path: `public/images/${imagesSubPath}/${folderName}`,
                 type: 'folder',
-                fileCount,
+                fileCount: folderThumbs.length,
+                cloudCount: subCloudCount,
+                remoteCount: subRemoteCount,
+                localCount: subLocalCount,
                 isProtected: true,
               })
             }
@@ -236,7 +274,19 @@ export async function handleList(request: Request) {
               // Count thumbnails from meta for images folder
               for (const [key, metaEntry] of fileEntries) {
                 if (isProcessed(metaEntry)) {
-                  fileCount += getExistingThumbnails(key, metaEntry).length
+                  const thumbCount = getExistingThumbnails(key, metaEntry).length
+                  fileCount += thumbCount
+                  // Thumbnails are on CDN if original is on CDN
+                  if (metaEntry.c !== undefined) {
+                    const entryCdnUrl = cdnUrls[metaEntry.c]?.replace(/\/?$/, '')
+                    if (r2PublicUrl && entryCdnUrl === r2PublicUrl) {
+                      cloudCount += thumbCount
+                    } else {
+                      remoteCount += thumbCount
+                    }
+                  } else {
+                    localCount += thumbCount
+                  }
                 }
               }
             } else {
@@ -272,9 +322,24 @@ export async function handleList(request: Request) {
     // Always show images folder at root level if any processed images exist
     if (!relativePath && !seenFolders.has('images')) {
       let thumbnailCount = 0
+      let imgCloudCount = 0
+      let imgRemoteCount = 0
+      let imgLocalCount = 0
       for (const [key, entry] of fileEntries) {
         if (isProcessed(entry)) {
-          thumbnailCount += getExistingThumbnails(key, entry).length
+          const thumbCount = getExistingThumbnails(key, entry).length
+          thumbnailCount += thumbCount
+          // Thumbnails are on CDN if original is on CDN
+          if (entry.c !== undefined) {
+            const entryCdnUrl = cdnUrls[entry.c]?.replace(/\/?$/, '')
+            if (r2PublicUrl && entryCdnUrl === r2PublicUrl) {
+              imgCloudCount += thumbCount
+            } else {
+              imgRemoteCount += thumbCount
+            }
+          } else {
+            imgLocalCount += thumbCount
+          }
         }
       }
       if (thumbnailCount > 0) {
@@ -283,6 +348,9 @@ export async function handleList(request: Request) {
           path: 'public/images',
           type: 'folder',
           fileCount: thumbnailCount,
+          cloudCount: imgCloudCount,
+          remoteCount: imgRemoteCount,
+          localCount: imgLocalCount,
           isProtected: true,
         })
       }
