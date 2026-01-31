@@ -342,6 +342,7 @@ export interface ProgressState {
   orphansRemoved?: number
   orphanedFiles?: string[]  // List of orphaned files found during scan
   pendingUpdates?: number   // Count of pending cloud updates found during scan
+  orphanedEntries?: number  // Count of orphaned meta entries removed during scan
   errors?: number
   errorMessages?: string[]
   isScan?: boolean
@@ -400,6 +401,9 @@ export function ProgressModal({
                       <>{progress.alreadyProcessed} image{progress.alreadyProcessed !== 1 ? 's' : ''} already exist. </>
                     ) : null}
                     Scanned {progress.processed} new image{progress.processed !== 1 ? 's' : ''}.
+                    {progress.orphanedEntries !== undefined && progress.orphanedEntries > 0 ? (
+                      <> Removed {progress.orphanedEntries} orphaned entr{progress.orphanedEntries !== 1 ? 'ies' : 'y'}.</>
+                    ) : null}
                     {progress.pendingUpdates !== undefined && progress.pendingUpdates > 0 ? (
                       <> {progress.pendingUpdates} file{progress.pendingUpdates !== 1 ? 's have' : ' has'} local updates pending.</>
                     ) : null}

@@ -250,6 +250,48 @@ export async function handleScanStream() {
           // images dir might not exist
         }
 
+        // Clean up orphaned meta entries (local files that no longer exist)
+        sendEvent({ type: 'cleanup', message: 'Checking for orphaned entries...' })
+        const orphanedEntries: string[] = []
+        const cdnUrls = (meta._cdns || []) as string[]
+        const r2PublicUrl = (process.env.CLOUDFLARE_R2_PUBLIC_URL || '').replace(/\/$/, '')
+        
+        for (const key of Object.keys(meta)) {
+          if (key.startsWith('_')) continue  // Skip special keys
+          
+          const entry = meta[key] as { c?: number; u?: 1 } | undefined
+          if (!entry) continue
+          
+          // Skip cloud files - they still exist in the cloud
+          if (entry.c !== undefined) {
+            // But if it has u:1 flag, the local override might have been deleted
+            if (entry.u === 1) {
+              const localPath = getPublicPath(key)
+              try {
+                await fs.access(localPath)
+              } catch {
+                // Local override was deleted, remove the u flag
+                delete entry.u
+              }
+            }
+            continue
+          }
+          
+          // For local files, check if they still exist
+          const localPath = getPublicPath(key)
+          try {
+            await fs.access(localPath)
+          } catch {
+            // File doesn't exist - orphaned entry
+            orphanedEntries.push(key)
+            delete meta[key]
+          }
+        }
+        
+        if (orphanedEntries.length > 0) {
+          sendEvent({ type: 'cleanup', message: `Removed ${orphanedEntries.length} orphaned entries...` })
+        }
+
         await saveMeta(meta)
 
         sendEvent({ 
@@ -261,6 +303,7 @@ export async function handleScanStream() {
           renamedFiles: renamed,
           orphanedFiles: orphanedFiles.length > 0 ? orphanedFiles : undefined,
           pendingUpdates: pendingUpdates.length,
+          orphanedEntries: orphanedEntries.length,
         })
       } catch (error) {
         console.error('Scan failed:', error)
