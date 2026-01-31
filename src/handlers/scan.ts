@@ -6,6 +6,7 @@ import { encode } from 'blurhash'
 import { loadMeta, saveMeta, isMediaFile, isImageFile, getFileEntries } from './utils'
 import { getAllThumbnailPaths, isProcessed } from '../types'
 import { getPublicPath } from '../config'
+import { deleteEmptyFolders } from './utils/folders'
 
 /**
  * Streaming scan handler - scans filesystem for new files not in meta
@@ -204,6 +205,34 @@ export async function handleScanStream() {
         } catch {
           // images dir might not exist
         }
+
+        // Clean up empty folders in the public directory
+        sendEvent({ type: 'cleanup', message: 'Cleaning up empty folders...' })
+        
+        async function cleanEmptyFolders(dir: string): Promise<void> {
+          try {
+            const entries = await fs.readdir(dir, { withFileTypes: true })
+            
+            for (const entry of entries) {
+              if (entry.name.startsWith('.')) continue
+              if (!entry.isDirectory()) continue
+              
+              // Skip the images folder (handled separately by deleteOrphans)
+              const fullPath = path.join(dir, entry.name)
+              if (fullPath === imagesDir) continue
+              
+              // Recursively clean subdirectories first
+              await cleanEmptyFolders(fullPath)
+              
+              // Then try to delete this folder if empty
+              await deleteEmptyFolders(fullPath)
+            }
+          } catch {
+            // Directory might not exist or not readable
+          }
+        }
+        
+        await cleanEmptyFolders(getPublicPath())
 
         await saveMeta(meta)
 
