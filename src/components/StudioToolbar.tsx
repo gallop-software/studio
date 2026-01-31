@@ -467,44 +467,46 @@ export function StudioToolbar() {
     if (hasSelection) {
       const selectedPaths = Array.from(selectedItems)
       
-      // Separate folders and image files
-      const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif']
-      const selectedImagePaths = selectedPaths.filter(p => {
-        const ext = p.split('.').pop()?.toLowerCase() || ''
-        return imageExtensions.includes(ext)
+      // Separate folders and files (files have extensions)
+      const selectedFilePaths = selectedPaths.filter(p => {
+        const lastPart = p.split('/').pop() || ''
+        return lastPart.includes('.') && !p.endsWith('/')
       })
-      const selectedFolders = selectedPaths.filter(p => !p.includes('.') || p.endsWith('/'))
+      const selectedFolders = selectedPaths.filter(p => {
+        const lastPart = p.split('/').pop() || ''
+        return !lastPart.includes('.') || p.endsWith('/')
+      })
       
-      // If folders are selected, fetch all images from them
+      // If folders are selected, fetch all files from them
       if (selectedFolders.length > 0) {
         try {
           const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
           const data = await response.json()
           
           if (data.images) {
-            // Add folder images to selectedImagePaths (as public/ paths)
+            // Add folder files to selectedFilePaths (as public/ paths)
             for (const img of data.images) {
               const fullPath = `public/${img}`
-              if (!selectedImagePaths.includes(fullPath)) {
-                selectedImagePaths.push(fullPath)
+              if (!selectedFilePaths.includes(fullPath)) {
+                selectedFilePaths.push(fullPath)
               }
             }
           }
         } catch (error) {
-          console.error('Failed to get folder images:', error)
+          console.error('Failed to get folder files:', error)
         }
       }
       
-      if (selectedImagePaths.length === 0) {
+      if (selectedFilePaths.length === 0) {
         setAlertMessage({
-          title: 'No Images Found',
-          message: 'No images found in the selected items.',
+          title: 'No Files Found',
+          message: 'No files found in the selected items.',
         })
         return
       }
       
       // Use shared process modal
-      requestProcess(selectedImagePaths)
+      requestProcess(selectedFilePaths)
     } else {
       // Get ALL image paths for "process all"
       try {
@@ -613,15 +615,17 @@ export function StudioToolbar() {
 
     const selectedPaths = Array.from(selectedItems)
     
-    // Separate folders and image files
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif']
-    const selectedImagePaths = selectedPaths.filter(p => {
-      const ext = p.split('.').pop()?.toLowerCase() || ''
-      return imageExtensions.includes(ext)
+    // Separate folders and files (files have extensions)
+    const selectedFilePaths = selectedPaths.filter(p => {
+      const lastPart = p.split('/').pop() || ''
+      return lastPart.includes('.') && !p.endsWith('/')
     })
-    const selectedFolders = selectedPaths.filter(p => !p.includes('.') || p.endsWith('/'))
+    const selectedFolders = selectedPaths.filter(p => {
+      const lastPart = p.split('/').pop() || ''
+      return !lastPart.includes('.') || p.endsWith('/')
+    })
 
-    // If folders are selected, fetch all images from them
+    // If folders are selected, fetch all files from them
     if (selectedFolders.length > 0) {
       try {
         const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
@@ -630,30 +634,30 @@ export function StudioToolbar() {
         if (data.images) {
           for (const img of data.images) {
             const fullPath = `public/${img}`
-            if (!selectedImagePaths.includes(fullPath)) {
-              selectedImagePaths.push(fullPath)
+            if (!selectedFilePaths.includes(fullPath)) {
+              selectedFilePaths.push(fullPath)
             }
           }
         }
       } catch (error) {
-        console.error('Failed to get folder images:', error)
+        console.error('Failed to get folder files:', error)
       }
     }
 
-    if (selectedImagePaths.length === 0) {
+    if (selectedFilePaths.length === 0) {
       setAlertMessage({
-        title: 'No Images Found',
-        message: 'No images found in the selected items.',
+        title: 'No Files Found',
+        message: 'No files found in the selected items.',
       })
       return
     }
 
-    // Determine what types of images are selected
+    // Determine what types of files are selected
     let hasRemote = false
     let hasLocal = false
     
-    for (const imgPath of selectedImagePaths) {
-      const item = fileItems.find(f => f.path === imgPath)
+    for (const filePath of selectedFilePaths) {
+      const item = fileItems.find(f => f.path === filePath)
       if (item) {
         if (item.isRemote) {
           hasRemote = true
@@ -664,7 +668,7 @@ export function StudioToolbar() {
     }
 
     // Store info and show confirm modal
-    setSyncImageCount(selectedImagePaths.length)
+    setSyncImageCount(selectedFilePaths.length)
     setSyncHasRemote(hasRemote)
     setSyncHasLocal(hasLocal)
     setShowSyncConfirm(true)
@@ -675,15 +679,17 @@ export function StudioToolbar() {
     
     const selectedPaths = Array.from(selectedItems)
     
-    // Separate folders and image files
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif']
-    const selectedImagePaths = selectedPaths.filter(p => {
-      const ext = p.split('.').pop()?.toLowerCase() || ''
-      return imageExtensions.includes(ext)
+    // Separate folders and files (files have extensions)
+    const selectedFilePaths = selectedPaths.filter(p => {
+      const lastPart = p.split('/').pop() || ''
+      return lastPart.includes('.') && !p.endsWith('/')
     })
-    const selectedFolders = selectedPaths.filter(p => !p.includes('.') || p.endsWith('/'))
+    const selectedFolders = selectedPaths.filter(p => {
+      const lastPart = p.split('/').pop() || ''
+      return !lastPart.includes('.') || p.endsWith('/')
+    })
 
-    // If folders are selected, fetch all images from them
+    // If folders are selected, fetch all files from them
     if (selectedFolders.length > 0) {
       try {
         const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
@@ -692,18 +698,18 @@ export function StudioToolbar() {
         if (data.images) {
           for (const img of data.images) {
             const fullPath = `public/${img}`
-            if (!selectedImagePaths.includes(fullPath)) {
-              selectedImagePaths.push(fullPath)
+            if (!selectedFilePaths.includes(fullPath)) {
+              selectedFilePaths.push(fullPath)
             }
           }
         }
       } catch (error) {
-        console.error('Failed to get folder images:', error)
+        console.error('Failed to get folder files:', error)
       }
     }
 
-    // Convert to image keys
-    const imageKeys = selectedImagePaths.map(p => '/' + p.replace(/^public\//, ''))
+    // Convert to file keys
+    const imageKeys = selectedFilePaths.map(p => '/' + p.replace(/^public\//, ''))
 
     // Show progress modal
     setProgressTitle('Pushing to CDN')
@@ -812,22 +818,21 @@ export function StudioToolbar() {
 
     const selectedPaths = Array.from(selectedItems)
     
-    // Get only image files (not folders)
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif']
-    const selectedImagePaths = selectedPaths.filter(p => {
-      const ext = p.split('.').pop()?.toLowerCase() || ''
-      return imageExtensions.includes(ext)
+    // Get only files (not folders)
+    const selectedFilePaths = selectedPaths.filter(p => {
+      const lastPart = p.split('/').pop() || ''
+      return lastPart.includes('.') && !p.endsWith('/')
     })
 
-    if (selectedImagePaths.length === 0) {
+    if (selectedFilePaths.length === 0) {
       setAlertMessage({
-        title: 'No Images Found',
-        message: 'No images found in the selected items.',
+        title: 'No Files Found',
+        message: 'No files found in the selected items.',
       })
       return
     }
 
-    setDownloadImageCount(selectedImagePaths.length)
+    setDownloadImageCount(selectedFilePaths.length)
     setShowDownloadConfirm(true)
   }, [selectedItems])
 
@@ -836,15 +841,14 @@ export function StudioToolbar() {
     
     const selectedPaths = Array.from(selectedItems)
     
-    // Get only image files
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif']
-    const selectedImagePaths = selectedPaths.filter(p => {
-      const ext = p.split('.').pop()?.toLowerCase() || ''
-      return imageExtensions.includes(ext)
+    // Get only files (not folders)
+    const selectedFilePaths = selectedPaths.filter(p => {
+      const lastPart = p.split('/').pop() || ''
+      return lastPart.includes('.') && !p.endsWith('/')
     })
 
-    // Convert to image keys
-    const imageKeys = selectedImagePaths.map(p => '/' + p.replace(/^public\//, ''))
+    // Convert to file keys
+    const imageKeys = selectedFilePaths.map(p => '/' + p.replace(/^public\//, ''))
 
     // Show progress modal
     setProgressTitle('Downloading from CDN')
