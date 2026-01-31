@@ -407,8 +407,9 @@ export async function handleMoveStream(request: Request) {
           const newAbsolutePath = path.join(absoluteDestination, itemName)
 
           // Build meta keys
-          const oldRelativePath = safePath.replace(/^public\//, '')
-          const newRelativePath = path.join(safeDestination.replace(/^public\//, ''), itemName)
+          const oldRelativePath = safePath.replace(/^public\/?/, '')
+          const destWithoutPublic = safeDestination.replace(/^public\/?/, '')
+          const newRelativePath = destWithoutPublic ? path.join(destWithoutPublic, itemName) : itemName
           const oldKey = '/' + oldRelativePath
           const newKey = '/' + newRelativePath
 
@@ -527,16 +528,19 @@ export async function handleMoveStream(request: Request) {
                 for (let j = 0; j < oldThumbPaths.length; j++) {
                   const oldThumbPath = getPublicPath(oldThumbPaths[j])
                   const newThumbPath = getPublicPath(newThumbPaths[j])
-                  
-                  // Track thumbnail source folder for cleanup
-                  sourceFolders.add(path.dirname(oldThumbPath))
-                  
-                  await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
 
                   try {
+                    // Check if thumbnail exists before trying to move
+                    await fs.access(oldThumbPath)
+                    
+                    // Track thumbnail source folder for cleanup
+                    sourceFolders.add(path.dirname(oldThumbPath))
+                    
+                    // Create destination folder and move thumbnail
+                    await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
                     await fs.rename(oldThumbPath, newThumbPath)
                   } catch {
-                    // Thumbnail might not exist
+                    // Thumbnail doesn't exist, skip
                   }
                 }
 
@@ -630,8 +634,9 @@ export async function handleMove(request: Request) {
       const newAbsolutePath = path.join(absoluteDestination, itemName)
 
       // Build meta keys
-      const oldRelativePath = safePath.replace(/^public\//, '')
-      const newRelativePath = path.join(safeDestination.replace(/^public\//, ''), itemName)
+      const oldRelativePath = safePath.replace(/^public\/?/, '')
+      const destWithoutPublic = safeDestination.replace(/^public\/?/, '')
+      const newRelativePath = destWithoutPublic ? path.join(destWithoutPublic, itemName) : itemName
       const oldKey = '/' + oldRelativePath
       const newKey = '/' + newRelativePath
 
@@ -759,16 +764,19 @@ export async function handleMove(request: Request) {
             for (let i = 0; i < oldThumbPaths.length; i++) {
               const oldThumbPath = getPublicPath(oldThumbPaths[i])
               const newThumbPath = getPublicPath(newThumbPaths[i])
-              
-              // Track thumbnail source folder for cleanup
-              sourceFolders.add(path.dirname(oldThumbPath))
-              
-              await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
 
               try {
+                // Check if thumbnail exists before trying to move
+                await fs.access(oldThumbPath)
+                
+                // Track thumbnail source folder for cleanup
+                sourceFolders.add(path.dirname(oldThumbPath))
+                
+                // Create destination folder and move thumbnail
+                await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
                 await fs.rename(oldThumbPath, newThumbPath)
               } catch {
-                // Thumbnail might not exist
+                // Thumbnail doesn't exist, skip
               }
             }
 
