@@ -123,15 +123,6 @@ const styles = {
     height: 16px;
     color: ${colors.textSecondary};
   `,
-  workspacePath: css`
-    font-size: ${fontSize.sm};
-    color: ${colors.textMuted};
-    padding: 0 12px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 200px;
-  `,
   content: css`
     flex: 1;
     display: flex;
@@ -422,11 +413,6 @@ export function StudioUI({
             <Breadcrumbs currentPath={currentPath} onNavigate={setCurrentPath} />
           </div>
           <div css={styles.headerActions}>
-            {standaloneMode && workspacePath && (
-              <span css={styles.workspacePath} title={workspacePath}>
-                {workspacePath.length > 30 ? '...' + workspacePath.slice(-27) : workspacePath}
-              </span>
-            )}
             <StudioSettings />
             {!standaloneMode && (
               <button

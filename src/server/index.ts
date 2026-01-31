@@ -70,8 +70,9 @@ export async function startServer(options: ServerOptions) {
   // API Routes - DELETE endpoints
   app.delete('/api/studio/delete', wrapHandler(handleDelete))
 
-  // Serve static files from public folder (images, etc.)
-  app.use('/public', express.static(join(workspace, 'public')))
+  // Serve static files from workspace's public folder
+  // Files are accessed at root path (e.g., /favicon.png, /images/photo.jpg)
+  app.use(express.static(join(workspace, 'public')))
 
   // Serve the client app
   const clientDir = resolve(__dirname, '../client')
