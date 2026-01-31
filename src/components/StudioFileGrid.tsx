@@ -271,15 +271,22 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-left: auto;
-    padding-left: 8px;
+    margin: 2px 0 0 0;
   `,
   folderStat: css`
     display: flex;
     align-items: center;
     gap: 3px;
-    font-size: 11px;
-    color: ${colors.textSecondary};
+    font-size: ${fontSize.xs};
+  `,
+  folderStatLocal: css`
+    color: ${colors.textMuted};
+  `,
+  folderStatCloud: css`
+    color: #f59e0b;
+  `,
+  folderStatRemote: css`
+    color: #ef4444;
   `,
   folderStatIcon: css`
     width: 14px;
@@ -304,9 +311,9 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 12px;
+    font-size: ${fontSize.xs};
     color: #f59e0b;
-    margin: 0;
+    margin: 2px 0 0 0;
   `,
   globeIcon: css`
     width: 18px;
@@ -629,7 +636,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
             {isFolder ? (
               <div css={styles.folderStats}>
                 {item.localCount !== undefined && item.localCount > 0 && (
-                  <span css={styles.folderStat} title={`${item.localCount} local`}>
+                  <span css={[styles.folderStat, styles.folderStatLocal]} title={`${item.localCount} local`}>
                     <svg css={styles.folderStatIconLocal} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
@@ -637,7 +644,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
                   </span>
                 )}
                 {item.cloudCount !== undefined && item.cloudCount > 0 && (
-                  <span css={styles.folderStat} title={`${item.cloudCount} in cloud`}>
+                  <span css={[styles.folderStat, styles.folderStatCloud]} title={`${item.cloudCount} in cloud`}>
                     <svg css={styles.folderStatIconCloud} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
                     </svg>
@@ -645,7 +652,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
                   </span>
                 )}
                 {item.remoteCount !== undefined && item.remoteCount > 0 && (
-                  <span css={styles.folderStat} title={`${item.remoteCount} remote`}>
+                  <span css={[styles.folderStat, styles.folderStatRemote]} title={`${item.remoteCount} remote`}>
                     <svg css={styles.folderStatIconRemote} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                     </svg>
