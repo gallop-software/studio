@@ -298,6 +298,14 @@ export async function handleDeleteOrphans(request: Request) {
     // Clean up empty directories (including images folder itself)
     const imagesDir = getPublicPath('images')
     
+    // Check if a file is hidden/system file
+    function isHiddenOrSystemFile(filename: string): boolean {
+      if (filename.startsWith('.')) return true
+      const windowsFiles = ['thumbs.db', 'desktop.ini', 'ehthumbs.db', 'ehthumbs_vista.db']
+      if (windowsFiles.includes(filename.toLowerCase())) return true
+      return false
+    }
+    
     async function removeEmptyDirs(dir: string): Promise<boolean> {
       try {
         const entries = await fs.readdir(dir, { withFileTypes: true })
@@ -307,13 +315,24 @@ export async function handleDeleteOrphans(request: Request) {
           if (entry.isDirectory()) {
             const subDirEmpty = await removeEmptyDirs(path.join(dir, entry.name))
             if (!subDirEmpty) isEmpty = false
-          } else {
+          } else if (!isHiddenOrSystemFile(entry.name)) {
+            // Non-hidden file exists
             isEmpty = false
           }
         }
         
         // Delete empty folder including the images folder
         if (isEmpty) {
+          // First delete any hidden/system files
+          for (const entry of entries) {
+            if (!entry.isDirectory() && isHiddenOrSystemFile(entry.name)) {
+              try {
+                await fs.unlink(path.join(dir, entry.name))
+              } catch {
+                // Ignore deletion errors
+              }
+            }
+          }
           await fs.rmdir(dir)
         }
         
