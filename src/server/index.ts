@@ -3,6 +3,7 @@ import { resolve, join } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { existsSync, readFileSync } from 'fs'
+import { config as loadEnv } from 'dotenv'
 
 // Import handlers from individual modules
 import { handleList, handleSearch, handleListFolders, handleCountImages, handleFolderImages } from '../handlers/list'
@@ -27,6 +28,19 @@ export async function startServer(options: ServerOptions) {
 
   // Store workspace in a way handlers can access
   process.env.STUDIO_WORKSPACE = workspace
+
+  // Load environment variables from workspace
+  // Try .env.local first (Next.js convention), then .env
+  const envLocalPath = join(workspace, '.env.local')
+  const envPath = join(workspace, '.env')
+  
+  if (existsSync(envLocalPath)) {
+    loadEnv({ path: envLocalPath })
+    console.log('Loaded environment from .env.local')
+  } else if (existsSync(envPath)) {
+    loadEnv({ path: envPath })
+    console.log('Loaded environment from .env')
+  }
 
   // Middleware
   app.use(express.json({ limit: '50mb' }))

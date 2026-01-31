@@ -45,8 +45,8 @@ function countFileTypes(
   for (const [key, entry] of fileEntries) {
     if (key.startsWith(folderPrefix)) {
       if (entry.c !== undefined) {
-        // Check if it's our R2 or a remote URL
-        const cdnUrl = cdnUrls[entry.c]
+        // Check if it's our R2 or a remote URL (normalize trailing slashes)
+        const cdnUrl = cdnUrls[entry.c]?.replace(/\/$/, '') || ''
         if (cdnUrl === r2PublicUrl) {
           cloudCount++
         } else {
@@ -120,7 +120,8 @@ export async function handleList(request: Request) {
         const thumbnailUrl = cdnBaseUrl ? `${cdnBaseUrl}${thumb.path}` : thumb.path
         // Determine if it's pushed to CDN and if it's remote (not our R2)
         const isPushedToCloud = cdnIndex !== undefined
-        const isRemote = isPushedToCloud && cdnBaseUrl !== r2PublicUrl
+        const normalizedCdnBaseUrl = cdnBaseUrl?.replace(/\/$/, '') || ''
+        const isRemote = isPushedToCloud && normalizedCdnBaseUrl !== r2PublicUrl
         
         // Get dimensions for this thumbnail size
         const thumbDims = originalEntry?.[thumb.size]
@@ -342,7 +343,8 @@ export async function handleList(request: Request) {
         
         // Determine if this is a remote import vs pushed to our R2
         const fileCdnUrl = isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
-        const isRemote = isPushedToCloud && (!r2PublicUrl || fileCdnUrl !== r2PublicUrl)
+        const normalizedFileCdnUrl = fileCdnUrl?.replace(/\/$/, '') || ''
+        const isRemote = isPushedToCloud && (!r2PublicUrl || normalizedFileCdnUrl !== r2PublicUrl)
         
         let thumbnail: string | undefined
         let hasThumbnail = false
@@ -446,7 +448,8 @@ export async function handleSearch(request: Request) {
       
       // Determine if this is a remote import vs pushed to our R2
       const fileCdnUrl = isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
-      const isRemote = isPushedToCloud && (!r2PublicUrl || fileCdnUrl !== r2PublicUrl)
+      const normalizedFileCdnUrl = fileCdnUrl?.replace(/\/$/, '') || ''
+      const isRemote = isPushedToCloud && (!r2PublicUrl || normalizedFileCdnUrl !== r2PublicUrl)
       
       let thumbnail: string | undefined
       let hasThumbnail = false
