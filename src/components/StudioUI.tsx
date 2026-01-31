@@ -410,7 +410,11 @@ export function StudioUI({
             <h1 css={styles.title}>Studio</h1>
           </div>
           <div css={styles.headerCenter}>
-            <Breadcrumbs currentPath={currentPath} onNavigate={setCurrentPath} />
+            <Breadcrumbs 
+              currentPath={currentPath} 
+              onNavigate={setCurrentPath} 
+              projectName={workspacePath ? workspacePath.split('/').pop() : undefined}
+            />
           </div>
           <div css={styles.headerActions}>
             <StudioSettings />
@@ -670,12 +674,12 @@ function ProcessConfirmModal({ imageCount, mode, onModeChange, onConfirm, onCanc
   )
 }
 
-function Breadcrumbs({ currentPath, onNavigate }: { currentPath: string; onNavigate: (path: string) => void }) {
+function Breadcrumbs({ currentPath, onNavigate, projectName }: { currentPath: string; onNavigate: (path: string) => void; projectName?: string }) {
   const parts = currentPath.split('/').filter(Boolean)
   
-  // Build paths for each breadcrumb
+  // Build paths for each breadcrumb, replacing "public" with project name
   const breadcrumbs = parts.map((part, index) => ({
-    name: part,
+    name: index === 0 && part === 'public' && projectName ? projectName : part,
     path: parts.slice(0, index + 1).join('/')
   }))
 
