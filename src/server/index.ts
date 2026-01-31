@@ -78,9 +78,21 @@ export async function startServer(options: ServerOptions) {
     loadEnv({ path: envPath, quiet: true })
   }
 
-  // Middleware
-  app.use(express.json({ limit: '50mb' }))
-  app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+  // Middleware - skip JSON parsing for upload route (needs raw body for FormData)
+  app.use((req, res, next) => {
+    if (req.path === '/api/studio/upload') {
+      next()
+    } else {
+      express.json({ limit: '50mb' })(req, res, next)
+    }
+  })
+  app.use((req, res, next) => {
+    if (req.path === '/api/studio/upload') {
+      next()
+    } else {
+      express.urlencoded({ extended: true, limit: '50mb' })(req, res, next)
+    }
+  })
 
   // API Routes - GET endpoints
   app.get('/api/studio/list', wrapHandler(handleList))
@@ -91,7 +103,8 @@ export async function startServer(options: ServerOptions) {
   app.get('/api/studio/cdns', wrapHandler(handleGetCdns))
 
   // API Routes - POST endpoints
-  app.post('/api/studio/upload', wrapHandler(handleUpload))
+  // Upload uses raw body wrapper to preserve FormData
+  app.post('/api/studio/upload', wrapRawHandler(handleUpload))
   app.post('/api/studio/create-folder', wrapHandler(handleCreateFolder))
   app.post('/api/studio/rename', wrapHandler(handleRename))
   app.post('/api/studio/move', wrapHandler(handleMoveStream, true))
@@ -179,6 +192,23 @@ function wrapHandler(
   }
 }
 
+// Wrapper for handlers that need raw body (like file uploads with FormData)
+function wrapRawHandler(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handler: (request?: any) => Promise<globalThis.Response>
+) {
+  return async (req: Request, res: Response) => {
+    try {
+      const request = await createRawFetchRequest(req)
+      const response = await handler(request)
+      await sendResponse(res, response)
+    } catch (error) {
+      console.error('Handler error:', error)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  }
+}
+
 // Helper to create a Fetch API Request from Express request
 function createFetchRequest(req: Request): globalThis.Request {
   const url = new URL(req.url, `http://${req.headers.host}`)
@@ -204,6 +234,37 @@ function createFetchRequest(req: Request): globalThis.Request {
     if (req.body) {
       init.body = JSON.stringify(req.body)
     }
+  }
+
+  return new globalThis.Request(url.toString(), init)
+}
+
+// Helper to create a Fetch API Request with raw body (for FormData uploads)
+async function createRawFetchRequest(req: Request): Promise<globalThis.Request> {
+  const url = new URL(req.url, `http://${req.headers.host}`)
+  
+  const headers = new Headers()
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value) {
+      if (Array.isArray(value)) {
+        value.forEach((v) => headers.append(key, v))
+      } else {
+        headers.set(key, value)
+      }
+    }
+  }
+
+  // Collect raw body chunks
+  const chunks: Buffer[] = []
+  for await (const chunk of req) {
+    chunks.push(Buffer.from(chunk))
+  }
+  const body = Buffer.concat(chunks)
+
+  const init: RequestInit = {
+    method: req.method,
+    headers,
+    body,
   }
 
   return new globalThis.Request(url.toString(), init)
