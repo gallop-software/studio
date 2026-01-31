@@ -14,8 +14,8 @@ export function isMediaFile(filename: string): boolean {
   if (['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v'].includes(ext)) return true
   // Audio
   if (['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac'].includes(ext)) return true
-  // Documents/PDFs
-  if (['.pdf'].includes(ext)) return true
+  // Documents
+  if (['.pdf', '.json'].includes(ext)) return true
   return false
 }
 
