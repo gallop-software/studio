@@ -68,14 +68,11 @@ export async function startServer(options: ServerOptions) {
   process.env.STUDIO_WORKSPACE = workspace
 
   // Load environment variables from workspace
-  // Try .env.local first (Next.js convention), then .env
-  const envLocalPath = join(workspace, '.env.local')
-  const envPath = join(workspace, '.env')
+  // Load .env.studio only
+  const envStudioPath = join(workspace, '.env.studio')
   
-  if (existsSync(envLocalPath)) {
-    loadEnv({ path: envLocalPath, quiet: true })
-  } else if (existsSync(envPath)) {
-    loadEnv({ path: envPath, quiet: true })
+  if (existsSync(envStudioPath)) {
+    loadEnv({ path: envStudioPath, quiet: true })
   }
 
   // Middleware - skip JSON parsing for upload route (needs raw body for FormData)
