@@ -597,7 +597,7 @@ export async function handleFolderImages(request: NextRequest) {
     const folders = foldersParam.split(',')
     const meta = await loadMeta()
     const fileEntries = getFileEntries(meta)
-    const allImages: string[] = []
+    const allFiles: string[] = []
 
     // Convert folder paths to prefixes for matching
     const prefixes = folders.map(f => {
@@ -606,24 +606,21 @@ export async function handleFolderImages(request: NextRequest) {
     })
 
     for (const [key] of fileEntries) {
-      const fileName = path.basename(key)
-      if (!isImageFile(fileName)) continue
-      
-      // Check if this image is in one of the requested folders
+      // Check if this file is in one of the requested folders
       for (const prefix of prefixes) {
         if (key.startsWith(prefix) || (prefix === '/' && key.startsWith('/'))) {
-          allImages.push(key.slice(1)) // Remove leading /
+          allFiles.push(key.slice(1)) // Remove leading /
           break
         }
       }
     }
 
     return NextResponse.json({
-      count: allImages.length,
-      images: allImages,
+      count: allFiles.length,
+      images: allFiles, // Keep as 'images' for backwards compatibility
     })
   } catch (error) {
-    console.error('Failed to get folder images:', error)
-    return NextResponse.json({ error: 'Failed to get folder images' }, { status: 500 })
+    console.error('Failed to get folder files:', error)
+    return NextResponse.json({ error: 'Failed to get folder files' }, { status: 500 })
   }
 }
