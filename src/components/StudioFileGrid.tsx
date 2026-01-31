@@ -310,10 +310,17 @@ const styles = {
   storedLabel: css`
     display: flex;
     align-items: center;
-    gap: 4px;
-    font-size: ${fontSize.xs};
-    color: #f59e0b;
     margin: 2px 0 0 0;
+  `,
+  storedIconCloud: css`
+    width: 16px;
+    height: 16px;
+    color: #f59e0b;
+  `,
+  storedIconRemote: css`
+    width: 16px;
+    height: 16px;
+    color: #ef4444;
   `,
   globeIcon: css`
     width: 18px;
@@ -665,14 +672,13 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
               </div>
             ) : item.cdnPushed ? (
               <p css={styles.storedLabel}>
-                <svg css={item.isRemote ? styles.folderStatIconRemote : styles.folderStatIconCloud} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg css={item.isRemote ? styles.storedIconRemote : styles.storedIconCloud} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   {item.isRemote ? (
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                   ) : (
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
                   )}
                 </svg>
-                stored
               </p>
             ) : (
               item.size !== undefined && <p css={styles.size}>{formatFileSize(item.size)}</p>
