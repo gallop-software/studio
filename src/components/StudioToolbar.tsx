@@ -733,36 +733,52 @@ export function StudioToolbar() {
           currentFile: imageKey.replace(/^\//, ''),
         })
 
-        try {
-          const response = await fetch('/api/studio/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageKeys: [imageKey] }),
-          })
+        // Retry logic for transient network errors
+        let success = false
+        let lastError: string | undefined
+        
+        for (let attempt = 0; attempt < 3 && !success; attempt++) {
+          try {
+            const response = await fetch('/api/studio/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageKeys: [imageKey] }),
+            })
 
-          const data = await response.json()
+            const data = await response.json()
 
-          if (!response.ok) {
-            // Check if it's an R2 configuration error
-            if (data.error?.includes('R2 not configured') || data.error?.includes('CLOUDFLARE_R2')) {
-              setShowProgress(false)
-              setShowR2SetupModal(true)
-              return
+            if (!response.ok) {
+              // Check if it's an R2 configuration error
+              if (data.error?.includes('R2 not configured') || data.error?.includes('CLOUDFLARE_R2')) {
+                setShowProgress(false)
+                setShowR2SetupModal(true)
+                return
+              }
+              lastError = data.error || `Failed: ${imageKey}`
+            } else if (data.pushed?.length > 0) {
+              pushed++
+              success = true
+            } else if (data.errors?.length > 0) {
+              // Server-side errors from handler
+              for (const errMsg of data.errors) {
+                lastError = errMsg
+              }
+            } else {
+              // Already pushed or no action needed
+              success = true
             }
-            errors++
-            errorMessages.push(data.error || `Failed: ${imageKey}`)
-          } else if (data.pushed?.length > 0) {
-            pushed++
-          } else if (data.errors?.length > 0) {
-            errors++
-            // data.errors contains the actual error messages from the handler
-            for (const errMsg of data.errors) {
-              errorMessages.push(errMsg)
+          } catch (err) {
+            lastError = `Network error: ${imageKey}`
+            // Wait before retry (exponential backoff: 500ms, 1s)
+            if (attempt < 2) {
+              await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
             }
           }
-        } catch (err) {
+        }
+        
+        if (!success && lastError) {
           errors++
-          errorMessages.push(`Network error: ${imageKey}`)
+          errorMessages.push(lastError)
         }
       }
 
