@@ -145,6 +145,7 @@ const styles = {
     color: ${colors.text};
     cursor: pointer;
     text-align: left;
+    white-space: nowrap;
     
     &:hover {
       background-color: ${colors.hover};
@@ -153,6 +154,7 @@ const styles = {
     svg {
       width: 16px;
       height: 16px;
+      flex-shrink: 0;
       color: #f59e0b;
     }
   `,
