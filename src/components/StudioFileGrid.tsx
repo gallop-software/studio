@@ -316,12 +316,8 @@ const styles = {
     color: #f59e0b;
   `,
   updateLabel: css`
-    display: flex;
-    align-items: center;
-    gap: 4px;
     color: #f59e0b;
     font-size: ${fontSize.xs};
-    margin: 0;
   `,
   updateCloudIcon: css`
     width: 14px;
@@ -337,6 +333,37 @@ const styles = {
     display: flex;
     align-items: center;
     margin: 2px 0 0 0;
+  `,
+  statusRow: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 2px 0 0 0;
+    gap: 4px;
+  `,
+  statusLeft: css`
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  `,
+  thumbChips: css`
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: auto;
+  `,
+  thumbChip: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 4px;
+    font-size: 9px;
+    font-weight: 600;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.08);
+    color: ${colors.textMuted};
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
   `,
   storedIconCloud: css`
     width: 16px;
@@ -565,11 +592,26 @@ interface GridItemProps {
   onGenerateThumbnail: () => void
 }
 
+// Detect if an image is a thumbnail itself (in /images/sm/, /images/md/, etc.)
+function getThumbnailSizeFromPath(path: string): string | null {
+  if (path.includes('/images/sm/')) return 'SM'
+  if (path.includes('/images/md/')) return 'MD'
+  if (path.includes('/images/lg/')) return 'LG'
+  if (path.includes('/images/full/')) return 'FULL'
+  return null
+}
+
 function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: GridItemProps) {
   const [showCopied, setShowCopied] = useState(false)
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
   const isProtected = item.isProtected || (isFolder && item.name === 'images' && item.path === 'public/images')
+  
+  // Check if this image is in a thumbnail folder (e.g., /images/sm/, /images/md/)
+  const thumbnailSize = getThumbnailSizeFromPath(item.path)
+  
+  // Determine which chips to show
+  const showChips = !isFolder && (item.hasSm || item.hasMd || item.hasLg || item.hasFull || thumbnailSize)
 
   const handleCopyPath = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -660,6 +702,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
           </svg>
         )}
+
       </div>
 
       <div css={styles.label}>
@@ -704,28 +747,46 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
                   <span css={styles.size}>{item.fileCount} files</span>
                 )}
               </div>
-            ) : item.hasUpdate ? (
-              <p css={styles.updateLabel}>
-                <svg css={styles.updateCloudIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                </svg>
-                <svg css={styles.updateSyncIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>update</span>
-              </p>
-            ) : item.cdnPushed ? (
-              <p css={styles.storedLabel}>
-                <svg css={item.isRemote ? styles.storedIconRemote : styles.storedIconCloud} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {item.isRemote ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                  )}
-                </svg>
-              </p>
             ) : (
-              item.size !== undefined && <p css={styles.size}>{formatFileSize(item.size)}</p>
+              <div css={styles.statusRow}>
+                <div css={styles.statusLeft}>
+                  {item.hasUpdate ? (
+                    <>
+                      <svg css={styles.updateCloudIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                      </svg>
+                      <svg css={styles.updateSyncIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span css={styles.updateLabel}>update</span>
+                    </>
+                  ) : item.cdnPushed ? (
+                    <svg css={item.isRemote ? styles.storedIconRemote : styles.storedIconCloud} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {item.isRemote ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                      )}
+                    </svg>
+                  ) : item.size !== undefined ? (
+                    <span css={styles.size}>{formatFileSize(item.size)}</span>
+                  ) : null}
+                </div>
+                {showChips && (
+                  <span css={styles.thumbChips}>
+                    {thumbnailSize ? (
+                      <span css={styles.thumbChip}>{thumbnailSize}</span>
+                    ) : (
+                      <>
+                        {item.hasSm && <span css={styles.thumbChip}>SM</span>}
+                        {item.hasMd && <span css={styles.thumbChip}>MD</span>}
+                        {item.hasLg && <span css={styles.thumbChip}>LG</span>}
+                        {item.hasFull && <span css={styles.thumbChip}>FULL</span>}
+                      </>
+                    )}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </div>

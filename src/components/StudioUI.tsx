@@ -215,6 +215,20 @@ export function StudioUI({
     setRefreshKey((k) => k + 1)
   }, [])
 
+  // Update focusedItem when fileItems changes (to reflect changes after push/download/rename)
+  useEffect(() => {
+    if (focusedItem && fileItems.length > 0) {
+      // Find the updated item by path
+      const updatedItem = fileItems.find(f => f.path === focusedItem.path)
+      if (updatedItem) {
+        // Only update if something changed
+        if (JSON.stringify(updatedItem) !== JSON.stringify(focusedItem)) {
+          setFocusedItem(updatedItem)
+        }
+      }
+    }
+  }, [fileItems, focusedItem])
+
   const triggerScan = useCallback(() => {
     setScanRequested(true)
   }, [])
@@ -408,6 +422,7 @@ export function StudioUI({
     requestDelete: actions.requestDelete,
     requestMove: actions.requestMove,
     requestSync: actions.requestSync,
+    requestDownload: actions.requestDownload,
     requestProcess: actions.requestProcess,
     setProcessMode: actions.setProcessMode,
     confirmDelete: actions.confirmDelete,
@@ -515,7 +530,6 @@ export function StudioUI({
           <ProcessConfirmModal
             imageCount={actions.actionState.actionPaths.length}
             mode={actions.actionState.processMode}
-            onModeChange={actions.setProcessMode}
             onConfirm={actions.confirmProcess}
             onCancel={actions.cancelAction}
           />
@@ -547,12 +561,11 @@ export function StudioUI({
 interface ProcessConfirmModalProps {
   imageCount: number
   mode: 'generate' | 'remove'
-  onModeChange: (mode: 'generate' | 'remove') => void
   onConfirm: () => void
   onCancel: () => void
 }
 
-function ProcessConfirmModal({ imageCount, mode, onModeChange, onConfirm, onCancel }: ProcessConfirmModalProps) {
+function ProcessConfirmModal({ imageCount, mode, onConfirm, onCancel }: ProcessConfirmModalProps) {
   const processModalStyles = {
     overlay: css`
       position: fixed;
@@ -576,37 +589,6 @@ function ProcessConfirmModal({ imageCount, mode, onModeChange, onConfirm, onCanc
       font-weight: 600;
       color: ${colors.text};
       margin: 0 0 16px;
-    `,
-    modeToggle: css`
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-    `,
-    modeBtn: css`
-      flex: 1;
-      padding: 10px 16px;
-      border: 2px solid ${colors.border};
-      border-radius: 8px;
-      background: ${colors.background};
-      color: ${colors.textSecondary};
-      font-size: ${fontSize.base};
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      
-      &:hover {
-        border-color: ${colors.borderHover};
-      }
-    `,
-    modeBtnActive: css`
-      border-color: ${colors.primary};
-      background: rgba(99, 91, 255, 0.1);
-      color: ${colors.primary};
-    `,
-    modeBtnDanger: css`
-      border-color: ${colors.danger};
-      background: rgba(239, 68, 68, 0.1);
-      color: ${colors.danger};
     `,
     message: css`
       font-size: ${fontSize.base};
@@ -660,31 +642,16 @@ function ProcessConfirmModal({ imageCount, mode, onModeChange, onConfirm, onCanc
   }
 
   const isRemove = mode === 'remove'
-  const title = 'Process Images'
+  const title = isRemove ? 'Remove Thumbnails' : 'Generate Thumbnails'
   const message = isRemove
     ? `Remove generated thumbnails for ${imageCount} image${imageCount !== 1 ? 's' : ''}? Original images will be kept.`
     : `Generate thumbnails for ${imageCount} image${imageCount !== 1 ? 's' : ''}?`
-  const confirmLabel = isRemove ? 'Remove' : 'Process'
+  const confirmLabel = isRemove ? 'Remove' : 'Generate'
 
   return (
     <div css={processModalStyles.overlay} onClick={onCancel}>
       <div css={processModalStyles.container} onClick={e => e.stopPropagation()}>
         <h2 css={processModalStyles.title}>{title}</h2>
-        
-        <div css={processModalStyles.modeToggle}>
-          <button
-            css={[processModalStyles.modeBtn, mode === 'generate' && processModalStyles.modeBtnActive]}
-            onClick={() => onModeChange('generate')}
-          >
-            Generate Thumbnails
-          </button>
-          <button
-            css={[processModalStyles.modeBtn, mode === 'remove' && processModalStyles.modeBtnDanger]}
-            onClick={() => onModeChange('remove')}
-          >
-            Remove Thumbnails
-          </button>
-        </div>
         
         <p css={processModalStyles.message}>{message}</p>
         

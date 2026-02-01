@@ -93,14 +93,6 @@ export async function handleGenerateFavicon(request: Request) {
 
         for (let i = 0; i < FAVICON_CONFIGS.length; i++) {
           const config = FAVICON_CONFIGS[i]
-          
-          sendEvent({ 
-            type: 'progress', 
-            current: i + 1, 
-            total, 
-            percent: Math.round(((i + 1) / total) * 100),
-            message: `Generating ${config.name} (${config.size}x${config.size})...`
-          })
 
           try {
             const outputPath = path.join(outputDir, config.name)
@@ -114,9 +106,25 @@ export async function handleGenerateFavicon(request: Request) {
               .toFile(outputPath)
 
             generated.push(config.name)
+            sendEvent({ 
+              type: 'progress', 
+              current: i + 1, 
+              total, 
+              processed: generated.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              message: `Generated ${config.name}`
+            })
           } catch (error) {
             console.error(`Failed to generate ${config.name}:`, error)
             errors.push(config.name)
+            sendEvent({ 
+              type: 'progress', 
+              current: i + 1, 
+              total, 
+              processed: generated.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              message: `Failed: ${config.name}`
+            })
           }
         }
 

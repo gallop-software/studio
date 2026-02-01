@@ -3,7 +3,7 @@ import path from 'path'
 import sharp from 'sharp'
 import { jsonResponse } from './utils/response'
 import { encode } from 'blurhash'
-import { loadMeta, saveMeta, isMediaFile, isImageFile, getFileEntries } from './utils'
+import { loadMeta, saveMeta, isMediaFile, isImageFile, getFileEntries, slugifyFilename } from './utils'
 import { getAllThumbnailPaths, isProcessed } from '../types'
 import { getPublicPath } from '../config'
 import { deleteEmptyFolders, cleanupEmptyFoldersRecursive } from './utils/folders'
@@ -90,6 +90,33 @@ export async function handleScanStream() {
             }
             // File already tracked - skip adding
             continue
+          }
+
+          // Slugify filename to be URL-safe (lowercase, no spaces, etc.)
+          const dirName = path.dirname(relativePath)
+          const originalFileName = path.basename(relativePath)
+          const sluggedFileName = slugifyFilename(originalFileName)
+          
+          // Check if filename needs to be slugified
+          if (sluggedFileName !== originalFileName) {
+            const newRelativePath = dirName === '.' ? sluggedFileName : `${dirName}/${sluggedFileName}`
+            const newFullPath = getPublicPath(newRelativePath)
+            const newKey = '/' + newRelativePath
+            
+            // Check if slugged name already exists
+            if (!meta[newKey] && !existingKeys.has(newKey)) {
+              try {
+                await fs.mkdir(path.dirname(newFullPath), { recursive: true })
+                await fs.rename(fullPath, newFullPath)
+                renamed.push({ from: relativePath, to: newRelativePath })
+                relativePath = newRelativePath
+                fullPath = newFullPath
+                imageKey = newKey
+              } catch (err) {
+                console.error(`Failed to slugify ${relativePath}:`, err)
+                // Continue with original name if rename fails
+              }
+            }
           }
 
           // Check for collision (path exists in meta but file is new)

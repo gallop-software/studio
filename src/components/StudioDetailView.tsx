@@ -300,6 +300,14 @@ const styles = {
       border-color: ${colors.danger};
     }
   `,
+  actionBtnCloud: css`
+    color: #f59e0b;
+    
+    &:hover:not(:disabled) {
+      background-color: rgba(245, 158, 11, 0.1);
+      border-color: #f59e0b;
+    }
+  `,
   actionIcon: css`
     width: 16px;
     height: 16px;
@@ -317,6 +325,7 @@ export function StudioDetailView() {
     requestDelete,
     requestMove,
     requestSync,
+    requestDownload,
     requestProcess,
     actionState,
   } = useStudio()
@@ -368,6 +377,19 @@ export function StudioDetailView() {
     setTimeout(() => setShowCopied(false), 1500)
   }
 
+  const handleDownloadImage = () => {
+    if (!focusedItem) return
+    
+    // Create a temporary link to download the image
+    const link = document.createElement('a')
+    link.href = fullUrl
+    link.download = focusedItem.name
+    link.target = '_blank'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const handleRename = async (newName: string) => {
     setShowRenameModal(false)
     if (newName && newName !== focusedItem.name) {
@@ -382,8 +404,15 @@ export function StudioDetailView() {
         })
         
         if (response.ok) {
+          const data = await response.json()
+          // Update focused item with new path so it stays open after refresh
+          const newPath = data.newPath
+          setFocusedItem({
+            ...focusedItem,
+            path: newPath,
+            name: newPath.split('/').pop() || newName,
+          })
           triggerRefresh()
-          setFocusedItem(null)
         } else {
           const data = await response.json()
           setAlertMessage({
@@ -656,7 +685,7 @@ export function StudioDetailView() {
                 Move
               </button>
               <button 
-                css={styles.actionBtn} 
+                css={[styles.actionBtn, styles.actionBtnCloud]} 
                 onClick={() => requestSync([focusedItem.path], fileItems)} 
                 disabled={isActionInProgress || focusedItem.isProtected || (focusedItem.cdnPushed && !focusedItem.isRemote)}
                 title={focusedItem.cdnPushed && !focusedItem.isRemote ? 'Already in R2' : undefined}
@@ -665,6 +694,17 @@ export function StudioDetailView() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
                 Push to CDN
+              </button>
+              <button 
+                css={[styles.actionBtn, styles.actionBtnCloud]} 
+                onClick={() => requestDownload([focusedItem.path], fileItems)}
+                disabled={isActionInProgress || !focusedItem.cdnPushed || focusedItem.isRemote}
+                title={!focusedItem.cdnPushed ? 'Not on CDN' : focusedItem.isRemote ? 'Remote image' : 'Download from CDN to local'}
+              >
+                <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                </svg>
+                Download from CDN
               </button>
               <button 
                 css={styles.actionBtn} 

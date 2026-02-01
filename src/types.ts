@@ -65,6 +65,11 @@ export interface FileItem {
   thumbnail?: string
   // Whether a processed thumbnail exists
   hasThumbnail?: boolean
+  // Which thumbnail sizes exist
+  hasSm?: boolean
+  hasMd?: boolean
+  hasLg?: boolean
+  hasFull?: boolean
   // Update pending - local file overrides cloud file
   hasUpdate?: boolean
   // Number of files with pending updates in folder

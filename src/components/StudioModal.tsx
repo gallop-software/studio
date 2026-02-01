@@ -335,7 +335,7 @@ export interface ProgressState {
   total: number
   percent: number
   currentFile?: string
-  status: 'processing' | 'cleanup' | 'complete' | 'error' | 'stopped'
+  status: 'idle' | 'processing' | 'cleanup' | 'complete' | 'error' | 'stopping' | 'stopped'
   message?: string
   processed?: number
   alreadyProcessed?: number
@@ -367,8 +367,9 @@ export function ProgressModal({
   const isComplete = progress.status === 'complete'
   const isError = progress.status === 'error'
   const isStopped = progress.status === 'stopped'
+  const isStopping = progress.status === 'stopping'
   const canClose = isComplete || isError || isStopped
-  const isRunning = !canClose
+  const isRunning = !canClose || isStopping
 
   return (
     <div css={styles.overlay}>
@@ -460,8 +461,12 @@ export function ProgressModal({
         </div>
         <div css={styles.footer}>
           {isRunning && onStop && (
-            <button css={[styles.btn, styles.btnDanger]} onClick={onStop}>
-              Stop
+            <button 
+              css={[styles.btn, styles.btnDanger]} 
+              onClick={onStop}
+              disabled={progress.status === 'stopping'}
+            >
+              {progress.status === 'stopping' ? 'Stopping...' : 'Stop'}
             </button>
           )}
           {canClose && progress.orphanedFiles && progress.orphanedFiles.length > 0 && onDeleteOrphans && (

@@ -11,8 +11,10 @@ import {
   processImage,
   downloadFromCdn,
   uploadToCdn,
+  uploadOriginalToCdn,
   deleteLocalThumbnails,
   deleteThumbnailsFromCdn,
+  deleteOriginalFromCdn,
   getOrAddCdnIndex,
   getFileEntries,
   getMetaEntry,
@@ -21,6 +23,23 @@ import {
 } from './utils'
 import { getPublicPath } from '../config'
 import { deleteEmptyFolders, cleanupEmptyFoldersRecursive } from './utils/folders'
+
+// Global cancellation tokens for streaming operations
+const cancelledOperations = new Set<string>()
+
+export function cancelOperation(operationId: string) {
+  cancelledOperations.add(operationId)
+  // Clean up after 60 seconds
+  setTimeout(() => cancelledOperations.delete(operationId), 60000)
+}
+
+export function isOperationCancelled(operationId: string): boolean {
+  return cancelledOperations.has(operationId)
+}
+
+export function clearCancelledOperation(operationId: string) {
+  cancelledOperations.delete(operationId)
+}
 
 export async function handleSync(request: Request) {
   const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
@@ -56,6 +75,7 @@ export async function handleSync(request: Request) {
     })
 
     const pushed: string[] = []
+    const alreadyPushed: string[] = []
     const errors: string[] = []
     const sourceFolders = new Set<string>()
 
@@ -76,7 +96,7 @@ export async function handleSync(request: Request) {
       const isAlreadyInOurR2 = existingCdnUrl === publicUrl
       
       if (isAlreadyInOurR2) {
-        pushed.push(imageKey)
+        alreadyPushed.push(imageKey)
         continue
       }
 
@@ -169,6 +189,7 @@ export async function handleSync(request: Request) {
     return jsonResponse({
       success: true,
       pushed,
+      alreadyPushed: alreadyPushed.length > 0 ? alreadyPushed : undefined,
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (error) {
@@ -235,10 +256,13 @@ export async function handleReprocess(request: Request) {
         // No need to set p flag - presence of thumbnail dims (sm/md/lg/f) indicates processed
         
         if (isInOurR2) {
-          // Re-upload thumbnails to R2 and clean up local files
+          // Re-upload to R2 and clean up local files
           updatedEntry.c = existingCdnIndex
-          // Delete existing thumbnails from CDN first to clear cache
+          // Delete original and thumbnails from CDN first to clear cache
+          await deleteOriginalFromCdn(imageKey)
           await deleteThumbnailsFromCdn(imageKey)
+          // Re-upload original and thumbnails
+          await uploadOriginalToCdn(imageKey)
           await uploadToCdn(imageKey)
           
           await deleteLocalThumbnails(imageKey)
@@ -310,19 +334,19 @@ export async function handleUnprocessStream(request: Request) {
           if (!imageKey.startsWith('/')) {
             imageKey = `/${imageKey}`
           }
-          
-          sendEvent({ 
-            type: 'progress', 
-            current: i + 1, 
-            total, 
-            percent: Math.round(((i + 1) / total) * 100),
-            message: `Removing thumbnails for ${imageKey.slice(1)}...`
-          })
 
           try {
             const entry = getMetaEntry(meta, imageKey)
             if (!entry) {
               errors.push(imageKey)
+              sendEvent({ 
+                type: 'progress', 
+                current: i + 1, 
+                total, 
+                processed: removed.length,
+                percent: Math.round(((i + 1) / total) * 100),
+                message: `Error: ${imageKey.slice(1)}`
+              })
               continue
             }
             
@@ -330,6 +354,14 @@ export async function handleUnprocessStream(request: Request) {
             const hasThumbnails = entry.sm || entry.md || entry.lg || entry.f
             if (!hasThumbnails) {
               skipped.push(imageKey)
+              sendEvent({ 
+                type: 'progress', 
+                current: i + 1, 
+                total, 
+                processed: removed.length,
+                percent: Math.round(((i + 1) / total) * 100),
+                message: `Skipped ${imageKey.slice(1)} (no thumbnails)`
+              })
               continue
             }
             
@@ -353,9 +385,25 @@ export async function handleUnprocessStream(request: Request) {
             }
             
             removed.push(imageKey)
+            sendEvent({ 
+              type: 'progress', 
+              current: i + 1, 
+              total, 
+              processed: removed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              message: `Removed thumbnails for ${imageKey.slice(1)}`
+            })
           } catch (error) {
             console.error(`Failed to unprocess ${imageKey}:`, error)
             errors.push(imageKey)
+            sendEvent({ 
+              type: 'progress', 
+              current: i + 1, 
+              total, 
+              processed: removed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              message: `Failed: ${imageKey.slice(1)}`
+            })
           }
         }
 
@@ -446,14 +494,6 @@ export async function handleReprocessStream(request: Request) {
           if (!imageKey.startsWith('/')) {
             imageKey = `/${imageKey}`
           }
-          
-          sendEvent({ 
-            type: 'progress', 
-            current: i + 1, 
-            total, 
-            percent: Math.round(((i + 1) / total) * 100),
-            message: `Processing ${imageKey.slice(1)}...`
-          })
 
           try {
             let buffer: Buffer
@@ -513,8 +553,11 @@ export async function handleReprocessStream(request: Request) {
               
               if (isInOurR2) {
                 updatedEntry.c = existingCdnIndex
-                // Delete existing thumbnails from CDN first to clear cache
+                // Delete original and thumbnails from CDN first to clear cache
+                await deleteOriginalFromCdn(imageKey)
                 await deleteThumbnailsFromCdn(imageKey)
+                // Re-upload original and thumbnails
+                await uploadOriginalToCdn(imageKey)
                 await uploadToCdn(imageKey)
                 
                 await deleteLocalThumbnails(imageKey)
@@ -525,9 +568,25 @@ export async function handleReprocessStream(request: Request) {
             }
             
             processed.push(imageKey)
+            sendEvent({ 
+              type: 'progress', 
+              current: i + 1, 
+              total, 
+              processed: processed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              message: `Processed ${imageKey.slice(1)}`
+            })
           } catch (error) {
             console.error(`Failed to reprocess ${imageKey}:`, error)
             errors.push(imageKey)
+            sendEvent({ 
+              type: 'progress', 
+              current: i + 1, 
+              total, 
+              processed: processed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              message: `Failed: ${imageKey.slice(1)}`
+            })
           }
         }
 
@@ -612,14 +671,6 @@ export async function handleProcessAllStream() {
           // Determine if this is our R2 or a remote CDN
           const isInOurR2 = existingCdnUrl === publicUrl
           const isRemote = existingCdnIndex !== undefined && !isInOurR2
-          
-          sendEvent({ 
-            type: 'progress', 
-            current: i + 1, 
-            total, 
-            percent: Math.round(((i + 1) / total) * 100),
-            currentFile: key.slice(1) // Remove leading /
-          })
 
           try {
             let buffer: Buffer
@@ -672,10 +723,13 @@ export async function handleProcessAllStream() {
               // Remote images become local after processing (no c)
             }
 
-            // If image was in our R2, upload new thumbnails and clean up local files
+            // If image was in our R2, re-upload original + thumbnails and clean up local files
             if (isInOurR2) {
-              // Delete existing thumbnails from CDN first to clear cache
+              // Delete original and thumbnails from CDN first to clear cache
+              await deleteOriginalFromCdn(key)
               await deleteThumbnailsFromCdn(key)
+              // Re-upload original and thumbnails
+              await uploadOriginalToCdn(key)
               await uploadToCdn(key)
               
               await deleteLocalThumbnails(key)
@@ -685,9 +739,26 @@ export async function handleProcessAllStream() {
             // Remote images stay local after processing (original + thumbnails)
 
             processed.push(key.slice(1))
+            sendEvent({ 
+              type: 'progress', 
+              current: i + 1, 
+              total, 
+              processed: processed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: key.slice(1)
+            })
           } catch (error) {
             console.error(`Failed to process ${key}:`, error)
             errors.push(key.slice(1))
+            sendEvent({ 
+              type: 'progress', 
+              current: i + 1, 
+              total, 
+              processed: processed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: key.slice(1),
+              message: `Failed: ${key.slice(1)}`
+            })
           }
         }
 
@@ -802,7 +873,7 @@ export async function handleProcessAllStream() {
  * This removes the images from R2 and stores them locally
  */
 export async function handleDownloadStream(request: Request) {
-  const { imageKeys } = await request.json() as { imageKeys: string[] }
+  const { imageKeys, operationId } = await request.json() as { imageKeys: string[], operationId?: string }
 
   if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
     return jsonResponse({ error: 'No image keys provided' }, { status: 400 })
@@ -812,7 +883,11 @@ export async function handleDownloadStream(request: Request) {
     async start(controller) {
       const encoder = new TextEncoder()
       const sendEvent = (data: Record<string, unknown>) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        } catch {
+          // Controller may be closed if client disconnected
+        }
       }
 
       sendEvent({ type: 'start', total: imageKeys.length })
@@ -821,10 +896,27 @@ export async function handleDownloadStream(request: Request) {
       const skipped: string[] = []
       const errors: string[] = []
 
+      // Helper to check if operation was cancelled
+      const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
+
       try {
         const meta = await loadMeta()
 
         for (let i = 0; i < imageKeys.length; i++) {
+          // Check if operation was cancelled
+          if (isCancelled()) {
+            // Save meta with what we've done so far
+            await saveMeta(meta)
+            if (operationId) clearCancelledOperation(operationId)
+            sendEvent({
+              type: 'stopped',
+              downloaded: downloaded.length,
+              message: `Stopped. ${downloaded.length} image${downloaded.length !== 1 ? 's' : ''} downloaded.`,
+            })
+            controller.close()
+            return
+          }
+
           const imageKey = imageKeys[i]
           const entry = getMetaEntry(meta, imageKey)
           
@@ -834,6 +926,7 @@ export async function handleDownloadStream(request: Request) {
               type: 'progress',
               current: i + 1,
               total: imageKeys.length,
+              downloaded: downloaded.length,
               message: `Skipped ${imageKey} (not on cloud)`,
             })
             continue
@@ -842,6 +935,19 @@ export async function handleDownloadStream(request: Request) {
           try {
             // Download original from R2
             const imageBuffer = await downloadFromCdn(imageKey)
+            
+            // Check again after download (long operation)
+            if (isCancelled()) {
+              await saveMeta(meta)
+              if (operationId) clearCancelledOperation(operationId)
+              sendEvent({
+                type: 'stopped',
+                downloaded: downloaded.length,
+                message: `Stopped. ${downloaded.length} image${downloaded.length !== 1 ? 's' : ''} downloaded.`,
+              })
+              controller.close()
+              return
+            }
             
             // Ensure directory exists
             const localPath = getPublicPath(imageKey.replace(/^\//, ''))
@@ -874,6 +980,7 @@ export async function handleDownloadStream(request: Request) {
               type: 'progress',
               current: i + 1,
               total: imageKeys.length,
+              downloaded: downloaded.length,
               message: `Downloaded ${imageKey}`,
             })
           } catch (error) {
@@ -883,6 +990,7 @@ export async function handleDownloadStream(request: Request) {
               type: 'progress',
               current: i + 1,
               total: imageKeys.length,
+              downloaded: downloaded.length,
               message: `Failed to download ${imageKey}`,
             })
           }
@@ -980,16 +1088,16 @@ export async function handlePushUpdatesStream(request: Request) {
           const key = itemPath.startsWith('public/') ? '/' + itemPath.slice(7) : itemPath
           const entry = meta[key] as { c?: number; u?: 1; o?: { w: number; h: number }; b?: string; sm?: object; md?: object; lg?: object; f?: object } | undefined
 
-          sendEvent({
-            type: 'progress',
-            current: i + 1,
-            total,
-            percent: Math.round(((i + 1) / total) * 100),
-            currentFile: path.basename(key),
-          })
-
           if (!entry || entry.u !== 1) {
             skipped.push(key)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total,
+              pushed: pushed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: path.basename(key),
+            })
             continue
           }
 
@@ -997,6 +1105,14 @@ export async function handlePushUpdatesStream(request: Request) {
           const fileCdnUrl = entry.c !== undefined ? cdnUrls[entry.c]?.replace(/\/$/, '') : undefined
           if (!fileCdnUrl || fileCdnUrl !== r2PublicUrl) {
             skipped.push(key)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total,
+              pushed: pushed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: path.basename(key),
+            })
             continue
           }
 
@@ -1048,9 +1164,26 @@ export async function handlePushUpdatesStream(request: Request) {
             delete entry.u
 
             pushed.push(key)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total,
+              pushed: pushed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: path.basename(key),
+            })
           } catch (error) {
             console.error(`Failed to push update for ${key}:`, error)
             errors.push(key)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total,
+              pushed: pushed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: path.basename(key),
+              message: `Failed: ${path.basename(key)}`,
+            })
           }
         }
 
@@ -1094,6 +1227,26 @@ export async function handlePushUpdatesStream(request: Request) {
       'Connection': 'keep-alive',
     },
   })
+}
+
+/**
+ * Cancel a streaming operation (download, push, etc.)
+ */
+export async function handleCancelStreamOperation(request: Request) {
+  try {
+    const { operationId } = await request.json()
+    
+    if (!operationId || typeof operationId !== 'string') {
+      return jsonResponse({ error: 'No operation ID provided' }, { status: 400 })
+    }
+
+    cancelOperation(operationId)
+    
+    return jsonResponse({ success: true, operationId })
+  } catch (error) {
+    console.error('Failed to cancel operation:', error)
+    return jsonResponse({ error: 'Failed to cancel operation' }, { status: 500 })
+  }
 }
 
 /**

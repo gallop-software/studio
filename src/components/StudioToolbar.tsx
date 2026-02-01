@@ -158,6 +158,11 @@ const styles = {
       color: #f59e0b;
     }
   `,
+  cloudDropdownItemDefault: css`
+    svg {
+      color: ${colors.text};
+    }
+  `,
   cloudDropdownItemDanger: css`
     color: ${colors.danger};
     
@@ -288,7 +293,7 @@ const styles = {
 }
 
 export function StudioToolbar() {
-  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest, fileItems, requestProcess, actionState } = useStudio()
+  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest, fileItems, requestProcess, setProcessMode, actionState, cancelAction } = useStudio()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [showAddNewModal, setShowAddNewModal] = useState(false)
@@ -312,11 +317,14 @@ export function StudioToolbar() {
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showNewFolderModal, setShowNewFolderModal] = useState(false)
   const [showRenameFolderModal, setShowRenameFolderModal] = useState(false)
+  const [showRenameFileModal, setShowRenameFileModal] = useState(false)
   const [showMoveModal, setShowMoveModal] = useState(false)
   const [showR2SetupModal, setShowR2SetupModal] = useState(false)
   const [pushing, setPushing] = useState(false)
   const [showCloudDropdown, setShowCloudDropdown] = useState(false)
+  const [showProcessDropdown, setShowProcessDropdown] = useState(false)
   const cloudDropdownRef = useRef<HTMLDivElement>(null)
+  const processDropdownRef = useRef<HTMLDivElement>(null)
 
   // Check if we're in the images folder (uploads not allowed there)
   const isInImagesFolder = currentPath === 'public/images' || currentPath.startsWith('public/images/')
@@ -423,11 +431,14 @@ export function StudioToolbar() {
     }
   }, [triggerRefresh])
 
-  // Close cloud dropdown on click outside
+  // Close dropdowns on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (cloudDropdownRef.current && !cloudDropdownRef.current.contains(event.target as Node)) {
         setShowCloudDropdown(false)
+      }
+      if (processDropdownRef.current && !processDropdownRef.current.contains(event.target as Node)) {
+        setShowProcessDropdown(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -468,16 +479,6 @@ export function StudioToolbar() {
     try {
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i]
-        
-        if (fileList.length > 1) {
-          setProgressState({
-            current: i + 1,
-            total: fileList.length,
-            percent: Math.round(((i + 1) / fileList.length) * 100),
-            status: 'processing',
-            currentFile: file.name,
-          })
-        }
 
         const formData = new FormData()
         formData.append('file', file)
@@ -511,6 +512,17 @@ export function StudioToolbar() {
           }
         } catch {
           errors++
+        }
+
+        // Update progress AFTER processing each file
+        if (fileList.length > 1) {
+          setProgressState({
+            current: i + 1,
+            total: fileList.length,
+            percent: Math.round(((i + 1) / fileList.length) * 100),
+            status: 'processing',
+            currentFile: file.name,
+          })
         }
       }
 
@@ -550,7 +562,7 @@ export function StudioToolbar() {
     }
   }, [currentPath, triggerRefresh])
 
-  const handleProcessImages = useCallback(async () => {
+  const handleProcessImages = useCallback(async (mode: 'generate' | 'remove') => {
     const hasSelection = selectedItems.size > 0
     
     if (hasSelection) {
@@ -594,7 +606,8 @@ export function StudioToolbar() {
         return
       }
       
-      // Use shared process modal
+      // Set mode and use shared process modal
+      setProcessMode(mode)
       requestProcess(selectedFilePaths)
     } else {
       // Get ALL image paths for "process all"
@@ -610,8 +623,9 @@ export function StudioToolbar() {
           return
         }
         
-        // Convert to full paths and use shared process modal
+        // Convert to full paths, set mode, and use shared process modal
         const allImagePaths = data.images.map((img: string) => `public/${img}`)
+        setProcessMode(mode)
         requestProcess(allImagePaths)
       } catch (error) {
         console.error('Failed to get images:', error)
@@ -621,10 +635,15 @@ export function StudioToolbar() {
         })
       }
     }
-  }, [selectedItems, requestProcess])
+  }, [selectedItems, requestProcess, setProcessMode])
 
   const handleStopProcessing = useCallback(() => {
     if (abortControllerRef.current) {
+      // Show "Stopping..." state
+      setProgressState(prev => ({
+        ...prev,
+        status: 'stopping',
+      }))
       abortControllerRef.current.abort()
     }
   }, [])
@@ -714,8 +733,10 @@ export function StudioToolbar() {
       return !lastPart.includes('.') || p.endsWith('/')
     })
 
+    const hasFolders = selectedFolders.length > 0
+
     // If folders are selected, fetch all files from them
-    if (selectedFolders.length > 0) {
+    if (hasFolders) {
       try {
         const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
         const data = await response.json()
@@ -742,8 +763,10 @@ export function StudioToolbar() {
     }
 
     // Determine what types of files are selected
+    // Note: When folders are selected, we can't check fileItems since folder contents aren't in the current view
     let hasRemote = false
     let hasLocal = false
+    let alreadyPushedCount = 0
     
     for (const filePath of selectedFilePaths) {
       const item = fileItems.find(f => f.path === filePath)
@@ -752,8 +775,23 @@ export function StudioToolbar() {
           hasRemote = true
         } else if (!item.cdnPushed) {
           hasLocal = true
+        } else {
+          // Already on R2 (cdnPushed && !isRemote)
+          alreadyPushedCount++
         }
+      } else if (hasFolders) {
+        // Item not in fileItems (from folder contents) - assume it needs checking
+        hasLocal = true
       }
+    }
+
+    // If all files are already pushed (only check when no folders selected, since we can't verify folder contents)
+    if (!hasFolders && alreadyPushedCount === selectedFilePaths.length) {
+      setAlertMessage({
+        title: 'Already Pushed',
+        message: `All ${selectedFilePaths.length} file${selectedFilePaths.length !== 1 ? 's are' : ' is'} already on the CDN.`,
+      })
+      return
     }
 
     // Store info and show confirm modal
@@ -801,6 +839,10 @@ export function StudioToolbar() {
     const imageKeys = selectedFilePaths.map(p => '/' + p.replace(/^public\//, ''))
 
     // Show progress modal
+    // Create abort controller for stopping
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
     setProgressTitle('Pushing to CDN')
     setProgressState({
       current: 0,
@@ -812,32 +854,44 @@ export function StudioToolbar() {
     setShowProgress(true)
 
     let pushed = 0
+    let alreadyOnCdn = 0
     let errors = 0
     const errorMessages: string[] = []
 
     try {
       // Push images one by one for progress tracking
       for (let i = 0; i < imageKeys.length; i++) {
+        // Check if aborted
+        if (abortController.signal.aborted) {
+          // Show "Stopped" state with Done button
+          setProgressState(prev => ({
+            ...prev,
+            status: 'stopped',
+            message: `Stopped. ${pushed} file${pushed !== 1 ? 's' : ''} pushed.`,
+          }))
+          clearSelection()
+          triggerRefresh()
+          abortControllerRef.current = null
+          return
+        }
+
         const imageKey = imageKeys[i]
-        
-        setProgressState({
-          current: i + 1,
-          total: imageKeys.length,
-          percent: Math.round(((i + 1) / imageKeys.length) * 100),
-          status: 'processing',
-          currentFile: imageKey.replace(/^\//, ''),
-        })
 
         // Retry logic for transient network errors
         let success = false
+        let wasAlreadyPushed = false
         let lastError: string | undefined
         
         for (let attempt = 0; attempt < 3 && !success; attempt++) {
+          // Check if aborted before each attempt
+          if (abortController.signal.aborted) break
+
           try {
             const response = await fetch('/api/studio/sync', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ imageKeys: [imageKey] }),
+              signal: abortController.signal,
             })
 
             const data = await response.json()
@@ -853,13 +907,16 @@ export function StudioToolbar() {
             } else if (data.pushed?.length > 0) {
               pushed++
               success = true
+            } else if (data.alreadyPushed?.length > 0) {
+              wasAlreadyPushed = true
+              success = true
             } else if (data.errors?.length > 0) {
               // Server-side errors from handler
               for (const errMsg of data.errors) {
                 lastError = errMsg
               }
             } else {
-              // Already pushed or no action needed
+              // No action needed
               success = true
             }
           } catch (err) {
@@ -871,10 +928,37 @@ export function StudioToolbar() {
           }
         }
         
-        if (!success && lastError) {
+        if (wasAlreadyPushed) {
+          alreadyOnCdn++
+        } else if (!success && lastError) {
           errors++
           errorMessages.push(lastError)
         }
+
+        // Update progress AFTER processing each file
+        setProgressState({
+          current: i + 1,
+          total: imageKeys.length,
+          percent: Math.round(((i + 1) / imageKeys.length) * 100),
+          status: 'processing',
+          currentFile: imageKey.replace(/^\//, ''),
+        })
+      }
+
+      // If aborted, don't show complete message (already shown stopped message)
+      if (abortController.signal.aborted) {
+        clearSelection()
+        triggerRefresh()
+        abortControllerRef.current = null
+        return
+      }
+
+      // Build completion message
+      let message: string | undefined
+      if (pushed === 0 && errors === 0) {
+        message = `${alreadyOnCdn} file${alreadyOnCdn !== 1 ? 's' : ''} already on CDN. 0 new files pushed.`
+      } else if (alreadyOnCdn > 0 && errors === 0) {
+        message = `${pushed} file${pushed !== 1 ? 's' : ''} pushed. ${alreadyOnCdn} already on CDN.`
       }
 
       setProgressState({
@@ -885,11 +969,17 @@ export function StudioToolbar() {
         processed: pushed,
         errors: errors,
         errorMessages: errorMessages.length > 0 ? errorMessages : undefined,
+        message,
       })
       
       clearSelection()
       triggerRefresh()
     } catch (error) {
+      // Don't show error if aborted
+      if (abortController.signal.aborted) {
+        abortControllerRef.current = null
+        return
+      }
       console.error('Push error:', error)
       setProgressState({
         current: 0,
@@ -898,8 +988,14 @@ export function StudioToolbar() {
         status: 'error',
         message: 'Failed to push to CDN.',
       })
+    } finally {
+      abortControllerRef.current = null
     }
   }, [selectedItems, clearSelection, triggerRefresh])
+
+  // Track files for download (including folder contents)
+  const [downloadableFiles, setDownloadableFiles] = useState<string[]>([])
+  const [downloadTotalSelected, setDownloadTotalSelected] = useState(0)
 
   // Download from R2 to local
   const handleDownloadClick = useCallback(async () => {
@@ -907,11 +1003,36 @@ export function StudioToolbar() {
 
     const selectedPaths = Array.from(selectedItems)
     
-    // Get only files (not folders)
+    // Separate folders and files (files have extensions)
     const selectedFilePaths = selectedPaths.filter(p => {
       const lastPart = p.split('/').pop() || ''
       return lastPart.includes('.') && !p.endsWith('/')
     })
+    const selectedFolders = selectedPaths.filter(p => {
+      const lastPart = p.split('/').pop() || ''
+      return !lastPart.includes('.') || p.endsWith('/')
+    })
+
+    const hasFolders = selectedFolders.length > 0
+
+    // If folders are selected, fetch all files from them
+    if (hasFolders) {
+      try {
+        const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
+        const data = await response.json()
+        
+        if (data.images) {
+          for (const img of data.images) {
+            const fullPath = `public/${img}`
+            if (!selectedFilePaths.includes(fullPath)) {
+              selectedFilePaths.push(fullPath)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to get folder files:', error)
+      }
+    }
 
     if (selectedFilePaths.length === 0) {
       setAlertMessage({
@@ -921,23 +1042,58 @@ export function StudioToolbar() {
       return
     }
 
-    setDownloadImageCount(selectedFilePaths.length)
+    // When folders are selected, we can't check fileItems (folder contents aren't in current view)
+    // So we send all files to the server and let it filter
+    let r2Files: string[]
+    
+    if (hasFolders) {
+      // Can't pre-filter - send all and let server handle it
+      r2Files = selectedFilePaths
+    } else {
+      // Filter to only files that are on R2 (cdnPushed && !isRemote)
+      r2Files = selectedFilePaths.filter(p => {
+        const item = fileItems.find(f => f.path === p)
+        return item && item.cdnPushed && !item.isRemote
+      })
+
+      // If no files are on R2, show alert
+      if (r2Files.length === 0) {
+        setAlertMessage({
+          title: 'No CDN Files',
+          message: `None of the ${selectedFilePaths.length} selected file${selectedFilePaths.length !== 1 ? 's are' : ' is'} on the CDN.`,
+        })
+        return
+      }
+    }
+
+    setDownloadableFiles(r2Files)
+    setDownloadTotalSelected(selectedFilePaths.length)
+    setDownloadImageCount(r2Files.length)
     setShowDownloadConfirm(true)
-  }, [selectedItems])
+  }, [selectedItems, fileItems])
+
+  // Track current operation ID for cancellation
+  const operationIdRef = useRef<string | null>(null)
 
   const handleDownloadConfirm = useCallback(async () => {
     setShowDownloadConfirm(false)
     
-    const selectedPaths = Array.from(selectedItems)
+    // Also close shared state if it was triggered from there
+    if (actionState.showDownloadConfirm) {
+      cancelAction()
+    }
     
-    // Get only files (not folders)
-    const selectedFilePaths = selectedPaths.filter(p => {
-      const lastPart = p.split('/').pop() || ''
-      return lastPart.includes('.') && !p.endsWith('/')
-    })
-
-    // Convert to file keys
-    const imageKeys = selectedFilePaths.map(p => '/' + p.replace(/^public\//, ''))
+    // Create abort controller for stopping
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    
+    // Generate unique operation ID for server-side cancellation
+    const operationId = `download-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    operationIdRef.current = operationId
+    
+    // Use actionPaths from shared state if triggered from detail view, otherwise use downloadableFiles
+    const filesToDownload = actionState.showDownloadConfirm ? actionState.actionPaths : downloadableFiles
+    const imageKeys = filesToDownload.map(p => '/' + p.replace(/^public\//, ''))
 
     // Show progress modal
     setProgressTitle('Downloading from CDN')
@@ -953,7 +1109,8 @@ export function StudioToolbar() {
       const response = await fetch('/api/studio/download-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageKeys }),
+        body: JSON.stringify({ imageKeys, operationId }),
+        signal: abortController.signal,
       })
 
       if (!response.ok || !response.body) {
@@ -963,54 +1120,108 @@ export function StudioToolbar() {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let downloadedCount = 0
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      // Listen for abort signal to cancel the reader and send cancel to server
+      const onAbort = async () => {
+        // Send cancel request to server
+        try {
+          await fetch('/api/studio/cancel-stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ operationId }),
+          })
+        } catch {
+          // Ignore cancel request errors
+        }
+        
+        reader.cancel()
+        // Show "Stopped" state with Done button - use downloadedCount for accurate count
+        setProgressState(prev => ({
+          ...prev,
+          status: 'stopped',
+          message: `Stopped. ${downloadedCount} file${downloadedCount !== 1 ? 's' : ''} downloaded.`,
+        }))
+        clearSelection()
+        triggerRefresh()
+        abortControllerRef.current = null
+        operationIdRef.current = null
+      }
+      abortController.signal.addEventListener('abort', onAbort)
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.type === 'progress') {
-                setProgressState({
-                  current: data.current,
-                  total: data.total,
-                  percent: Math.round((data.current / data.total) * 100),
-                  status: 'processing',
-                  message: data.message,
-                })
-              } else if (data.type === 'complete') {
-                setProgressState({
-                  current: data.total || imageKeys.length,
-                  total: data.total || imageKeys.length,
-                  percent: 100,
-                  status: 'complete',
-                  message: data.message,
-                })
-              } else if (data.type === 'error') {
-                setProgressState({
-                  current: 0,
-                  total: 0,
-                  percent: 0,
-                  status: 'error',
-                  message: data.message,
-                })
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                if (data.type === 'progress') {
+                  // Track actual downloaded count (not just iteration count)
+                  if (data.downloaded !== undefined) {
+                    downloadedCount = data.downloaded
+                  }
+                  setProgressState({
+                    current: data.current,
+                    total: data.total,
+                    percent: Math.round((data.current / data.total) * 100),
+                    status: 'processing',
+                    message: data.message,
+                  })
+                } else if (data.type === 'complete') {
+                  downloadedCount = data.downloaded || data.total || imageKeys.length
+                  // Show "X out of Y" if there's a difference between downloaded and total selected
+                  let message = data.message
+                  if (downloadTotalSelected > downloadedCount) {
+                    message = `${downloadedCount} file${downloadedCount !== 1 ? 's' : ''} downloaded out of ${downloadTotalSelected} selected.`
+                  }
+                  setProgressState({
+                    current: downloadedCount,
+                    total: downloadedCount,
+                    percent: 100,
+                    status: 'complete',
+                    message,
+                  })
+                } else if (data.type === 'error') {
+                  setProgressState({
+                    current: 0,
+                    total: 0,
+                    percent: 0,
+                    status: 'error',
+                    message: data.message,
+                  })
+                }
+              } catch {
+                // Ignore parse errors
               }
-            } catch {
-              // Ignore parse errors
             }
           }
         }
-      }
 
-      clearSelection()
-      triggerRefresh()
+        // Only proceed if not aborted
+        if (!abortController.signal.aborted) {
+          clearSelection()
+          triggerRefresh()
+        }
+      } catch (error) {
+        // Ignore errors if aborted (reader.cancel() throws)
+        if (!abortController.signal.aborted) {
+          throw error
+        }
+      } finally {
+        abortController.signal.removeEventListener('abort', onAbort)
+      }
     } catch (error) {
+      // Don't show error if aborted
+      if (abortController.signal.aborted) {
+        return
+      }
       console.error('Download error:', error)
       setProgressState({
         current: 0,
@@ -1019,8 +1230,10 @@ export function StudioToolbar() {
         status: 'error',
         message: 'Failed to download from CDN.',
       })
+    } finally {
+      abortControllerRef.current = null
     }
-  }, [selectedItems, clearSelection, triggerRefresh])
+  }, [downloadableFiles, downloadTotalSelected, clearSelection, triggerRefresh, actionState.showDownloadConfirm, actionState.actionPaths, cancelAction])
 
   // Push pending updates to cloud
   const handlePushUpdates = useCallback(async () => {
@@ -1326,6 +1539,11 @@ export function StudioToolbar() {
   const selectedFolderPath = singleFolderSelected ? selectedPaths[0] : null
   const selectedFolderName = selectedFolderPath ? selectedFolderPath.split('/').pop() || '' : ''
 
+  // Check if exactly one file is selected (for rename)
+  const singleFileSelected = selectedPaths.length === 1 && selectedPaths[0].includes('.')
+  const selectedFilePath = singleFileSelected ? selectedPaths[0] : null
+  const selectedFileName = selectedFilePath ? selectedFilePath.split('/').pop() || '' : ''
+
   const handleRenameFolder = useCallback(async (newName: string) => {
     if (!selectedFolderPath) return
     setShowRenameFolderModal(false)
@@ -1343,6 +1561,24 @@ export function StudioToolbar() {
       console.error('Failed to rename folder:', error)
     }
   }, [selectedFolderPath, clearSelection, triggerRefresh])
+
+  const handleRenameFile = useCallback(async (newName: string) => {
+    if (!selectedFilePath) return
+    setShowRenameFileModal(false)
+    try {
+      const response = await fetch('/api/studio/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPath: selectedFilePath, newName }),
+      })
+      if (response.ok) {
+        clearSelection()
+        triggerRefresh()
+      }
+    } catch (error) {
+      console.error('Failed to rename file:', error)
+    }
+  }, [selectedFilePath, clearSelection, triggerRefresh])
 
   // Hide toolbar actions when viewing detail
   if (focusedItem) {
@@ -1372,13 +1608,25 @@ export function StudioToolbar() {
         />
       )}
 
-      {showDownloadConfirm && (
+      {(showDownloadConfirm || actionState.showDownloadConfirm) && (
         <ConfirmModal
           title="Download from CDN"
-          message={`Download ${downloadImageCount} image${downloadImageCount !== 1 ? 's' : ''} from Cloudflare R2 to local storage? Images will be removed from the CDN.`}
+          message={(() => {
+            const count = actionState.showDownloadConfirm ? actionState.downloadImageCount : downloadImageCount
+            const total = actionState.showDownloadConfirm ? actionState.downloadTotalSelected : downloadTotalSelected
+            if (total > count) {
+              return `Download ${count} of ${total} selected file${total !== 1 ? 's' : ''} from Cloudflare R2? (${total - count} not on CDN)`
+            }
+            return `Download ${count} image${count !== 1 ? 's' : ''} from Cloudflare R2 to local storage? Images will be removed from the CDN.`
+          })()}
           confirmLabel="Download"
           onConfirm={handleDownloadConfirm}
-          onCancel={() => setShowDownloadConfirm(false)}
+          onCancel={() => {
+            setShowDownloadConfirm(false)
+            if (actionState.showDownloadConfirm) {
+              cancelAction()
+            }
+          }}
         />
       )}
 
@@ -1396,6 +1644,7 @@ export function StudioToolbar() {
               percent: 0,
               status: 'processing',
             })
+            triggerRefresh()
           }}
         />
       )}
@@ -1435,11 +1684,26 @@ export function StudioToolbar() {
         />
       )}
 
+      {showRenameFileModal && selectedFilePath && (
+        <InputModal
+          title="Rename File"
+          message="Enter a new name for the file:"
+          placeholder={selectedFileName}
+          defaultValue={selectedFileName}
+          confirmLabel="Rename"
+          onConfirm={handleRenameFile}
+          onCancel={() => setShowRenameFileModal(false)}
+        />
+      )}
+
       {alertMessage && (
         <AlertModal
           title={alertMessage.title}
           message={alertMessage.message}
-          onClose={() => setAlertMessage(null)}
+          onClose={() => {
+            setAlertMessage(null)
+            triggerRefresh()
+          }}
         />
       )}
 
@@ -1480,25 +1744,56 @@ export function StudioToolbar() {
           </button>
           <button
             css={styles.btn}
-            onClick={() => singleFolderSelected ? setShowRenameFolderModal(true) : setShowNewFolderModal(true)}
-            disabled={isInImagesFolder && !singleFolderSelected}
-            title={isInImagesFolder && !singleFolderSelected ? 'Cannot create folders in protected images folder' : undefined}
+            onClick={() => {
+              if (singleFileSelected) {
+                setShowRenameFileModal(true)
+              } else if (singleFolderSelected) {
+                setShowRenameFolderModal(true)
+              } else {
+                setShowNewFolderModal(true)
+              }
+            }}
+            disabled={isInImagesFolder && !singleFolderSelected && !singleFileSelected}
+            title={isInImagesFolder && !singleFolderSelected && !singleFileSelected ? 'Cannot create folders in protected images folder' : undefined}
           >
-            {singleFolderSelected ? <RenameIcon /> : <FolderPlusIcon />}
-            {singleFolderSelected ? 'Rename Folder' : 'New Folder'}
+            {singleFileSelected || singleFolderSelected ? <RenameIcon /> : <FolderPlusIcon />}
+            {singleFileSelected ? 'Rename File' : singleFolderSelected ? 'Rename Folder' : 'New Folder'}
           </button>
           
           <div css={styles.divider} />
           
-          <button
-            css={styles.btn}
-            onClick={handleProcessImages}
-            disabled={actionState.showProgress || isInImagesFolder}
-            title={isInImagesFolder ? 'Cannot process images folder' : undefined}
-          >
-            <ImageStackIcon />
-            Process Images
-          </button>
+          <div css={styles.cloudDropdownWrapper} ref={processDropdownRef}>
+            <button
+              css={styles.btn}
+              onClick={() => setShowProcessDropdown(!showProcessDropdown)}
+              disabled={actionState.showProgress || isInImagesFolder}
+              title={isInImagesFolder ? 'Cannot process images folder' : undefined}
+            >
+              <ImageStackIcon />
+              Thumbnails
+              <svg css={styles.dropdownArrow} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showProcessDropdown && (
+              <div css={styles.cloudDropdown}>
+                <button
+                  css={[styles.cloudDropdownItem, styles.cloudDropdownItemDefault]}
+                  onClick={() => { setShowProcessDropdown(false); handleProcessImages('generate') }}
+                >
+                  <GenerateThumbnailIcon />
+                  Generate Thumbnails
+                </button>
+                <button
+                  css={[styles.cloudDropdownItem, styles.cloudDropdownItemDanger]}
+                  onClick={() => { setShowProcessDropdown(false); handleProcessImages('remove') }}
+                >
+                  <RemoveThumbnailIcon />
+                  Remove Thumbnails
+                </button>
+              </div>
+            )}
+          </div>
           <button
             css={[styles.btn, styles.btnDanger]}
             onClick={handleDeleteClick}
@@ -1527,7 +1822,7 @@ export function StudioToolbar() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {showCloudDropdown && hasSelection && (
+              {showCloudDropdown && hasSelection && (
               <div css={styles.cloudDropdown}>
                 {hasUpdateSelection && (
                   <>
@@ -1548,24 +1843,20 @@ export function StudioToolbar() {
                     <div css={styles.cloudDropdownDivider} />
                   </>
                 )}
-                {!hasR2Selection && (
-                  <button
-                    css={styles.cloudDropdownItem}
-                    onClick={() => { setShowCloudDropdown(false); handleSyncClick() }}
-                  >
-                    <CloudIcon />
-                    Push CDN
-                  </button>
-                )}
-                {allR2Selection && (
-                  <button
-                    css={styles.cloudDropdownItem}
-                    onClick={() => { setShowCloudDropdown(false); handleDownloadClick() }}
-                  >
-                    <CloudDownloadIcon />
-                    Download
-                  </button>
-                )}
+                <button
+                  css={styles.cloudDropdownItem}
+                  onClick={() => { setShowCloudDropdown(false); handleSyncClick() }}
+                >
+                  <CloudIcon />
+                  Push CDN
+                </button>
+                <button
+                  css={styles.cloudDropdownItem}
+                  onClick={() => { setShowCloudDropdown(false); handleDownloadClick() }}
+                >
+                  <CloudDownloadIcon />
+                  Download
+                </button>
               </div>
             )}
           </div>
@@ -1741,6 +2032,22 @@ function ImageStackIcon() {
   return (
     <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  )
+}
+
+function GenerateThumbnailIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  )
+}
+
+function RemoveThumbnailIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
   )
 }

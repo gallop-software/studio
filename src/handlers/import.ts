@@ -81,14 +81,6 @@ export async function handleImportUrls(request: Request) {
         for (let i = 0; i < urls.length; i++) {
           const url = urls[i].trim()
           if (!url) continue
-          
-          sendEvent({
-            type: 'progress',
-            current: i + 1,
-            total,
-            percent: Math.round(((i + 1) / total) * 100),
-            currentFile: url,
-          })
 
           try {
             // Parse URL to get base and path
@@ -98,6 +90,14 @@ export async function handleImportUrls(request: Request) {
             const existingEntry = getMetaEntry(meta, path)
             if (existingEntry) {
               skipped.push(path)
+              sendEvent({
+                type: 'progress',
+                current: i + 1,
+                total,
+                imported: added.length,
+                percent: Math.round(((i + 1) / total) * 100),
+                currentFile: url,
+              })
               continue
             }
             
@@ -116,9 +116,25 @@ export async function handleImportUrls(request: Request) {
             })
             
             added.push(path)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total,
+              imported: added.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: url,
+            })
           } catch (error) {
             console.error(`Failed to import ${url}:`, error)
             errors.push(url)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total,
+              imported: added.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: url,
+            })
           }
         }
 

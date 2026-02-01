@@ -199,3 +199,25 @@ export async function deleteThumbnailsFromCdn(imageKey: string): Promise<void> {
     }
   }
 }
+
+/**
+ * Delete only original from R2 CDN (keeps thumbnails)
+ * Used for cache busting before re-upload
+ */
+export async function deleteOriginalFromCdn(imageKey: string): Promise<void> {
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME
+  if (!bucketName) throw new Error('R2 bucket not configured')
+
+  const r2 = getR2Client()
+
+  try {
+    await r2.send(
+      new DeleteObjectCommand({
+        Bucket: bucketName,
+        Key: imageKey.replace(/^\//, ''),
+      })
+    )
+  } catch {
+    // May not exist
+  }
+}

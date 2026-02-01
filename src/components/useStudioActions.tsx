@@ -12,11 +12,14 @@ const defaultActionState: ActionState = {
   showMoveModal: false,
   showSyncConfirm: false,
   showProcessConfirm: false,
+  showDownloadConfirm: false,
   actionPaths: [],
   syncImageCount: 0,
   syncHasRemote: false,
   syncHasLocal: false,
   processMode: 'generate',
+  downloadImageCount: 0,
+  downloadTotalSelected: 0,
 }
 
 interface UseStudioActionsProps {
@@ -89,6 +92,26 @@ export function useStudioActions({
     }))
   }, [])
 
+  const requestDownload = useCallback((paths: string[], fileItems: FileItem[]) => {
+    // Calculate downloadable files (those in R2, not remote)
+    const downloadable: string[] = []
+    
+    for (const path of paths) {
+      const item = fileItems.find(f => f.path === path)
+      if (item && item.cdnPushed && !item.isRemote) {
+        downloadable.push(path)
+      }
+    }
+    
+    setActionState(prev => ({
+      ...prev,
+      actionPaths: downloadable,
+      downloadImageCount: downloadable.length,
+      downloadTotalSelected: paths.length,
+      showDownloadConfirm: true,
+    }))
+  }, [])
+
   const requestProcess = useCallback((paths: string[]) => {
     setActionState(prev => ({
       ...prev,
@@ -113,6 +136,7 @@ export function useStudioActions({
       showMoveModal: false,
       showSyncConfirm: false,
       showProcessConfirm: false,
+      showDownloadConfirm: false,
     }))
   }, [])
 
@@ -273,14 +297,6 @@ export function useStudioActions({
 
     for (let i = 0; i < imageKeys.length; i++) {
       const imageKey = imageKeys[i]
-      
-      setProgressState({
-        current: i + 1,
-        total: imageKeys.length,
-        percent: Math.round(((i + 1) / imageKeys.length) * 100),
-        status: 'processing',
-        message: `Pushing ${imageKey}...`,
-      })
 
       try {
         const response = await fetch('/api/studio/sync', {
@@ -298,6 +314,15 @@ export function useStudioActions({
       } catch (error) {
         errors.push(`${imageKey}: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
+
+      // Update progress AFTER processing each file
+      setProgressState({
+        current: i + 1,
+        total: imageKeys.length,
+        percent: Math.round(((i + 1) / imageKeys.length) * 100),
+        status: 'processing',
+        message: `Pushed ${imageKey}`,
+      })
     }
 
     setProgressState({
@@ -483,6 +508,7 @@ export function useStudioActions({
     requestDelete,
     requestMove,
     requestSync,
+    requestDownload,
     requestProcess,
     setProcessMode,
     cancelAction,

@@ -16,6 +16,8 @@ import {
   deleteFromCdn,
   deleteLocalThumbnails,
   processImage,
+  slugifyFilename,
+  slugifyFolderName,
 } from './utils'
 import { getPublicPath, getWorkspacePath } from '../config'
 import { jsonResponse, streamResponse, createSSEStream } from './utils/response'
@@ -34,7 +36,8 @@ export async function handleUpload(request: Request) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
-    const fileName = file.name
+    // Slugify filename to be URL-safe (lowercase, no spaces, etc.)
+    const fileName = slugifyFilename(file.name)
     const ext = path.extname(fileName).toLowerCase()
 
     const isImage = isImageFile(fileName)
@@ -149,6 +152,7 @@ export async function handleDelete(request: Request) {
         // Check if this is in meta (could be synced with no local file)
         const entry = meta[imageKey] as MetaEntry | undefined
         const isPushedToCloud = entry?.c !== undefined
+        const hasThumbnails = entry ? isProcessed(entry) : false
         
         // Try to delete local file/folder
         try {
@@ -162,8 +166,15 @@ export async function handleDelete(request: Request) {
             for (const key of Object.keys(meta)) {
               if (key.startsWith(prefix) || key === imageKey) {
                 const keyEntry = meta[key] as MetaEntry | undefined
-                // Also delete local thumbnails if not synced
-                if (keyEntry && keyEntry.c === undefined) {
+                const keyHasThumbnails = keyEntry ? isProcessed(keyEntry) : false
+                
+                // Delete from CDN if pushed
+                if (keyEntry?.c !== undefined) {
+                  try {
+                    await deleteFromCdn(key, keyHasThumbnails)
+                  } catch { /* ignore CDN delete errors */ }
+                } else {
+                  // Delete local thumbnails if not synced
                   for (const thumbPath of getAllThumbnailPaths(key)) {
                     const absoluteThumbPath = getPublicPath(thumbPath)
                     try { await fs.unlink(absoluteThumbPath) } catch { /* ignore */ }
@@ -178,8 +189,13 @@ export async function handleDelete(request: Request) {
             const isInImagesFolder = itemPath.startsWith('public/images/')
             
             if (!isInImagesFolder && entry) {
-              // Delete local thumbnails if not synced
-              if (!isPushedToCloud) {
+              // Delete from CDN if pushed
+              if (isPushedToCloud) {
+                try {
+                  await deleteFromCdn(imageKey, hasThumbnails)
+                } catch { /* ignore CDN delete errors */ }
+              } else {
+                // Delete local thumbnails if not synced
                 for (const thumbPath of getAllThumbnailPaths(imageKey)) {
                   const absoluteThumbPath = getPublicPath(thumbPath)
                   try { await fs.unlink(absoluteThumbPath) } catch { /* ignore */ }
@@ -191,7 +207,12 @@ export async function handleDelete(request: Request) {
         } catch {
           // File doesn't exist locally - might be synced
           if (entry) {
-            // Just remove from meta (file is on CDN)
+            // Delete from CDN if pushed
+            if (isPushedToCloud) {
+              try {
+                await deleteFromCdn(imageKey, hasThumbnails)
+              } catch { /* ignore CDN delete errors */ }
+            }
             delete meta[imageKey]
           } else {
             // Check if it's a folder prefix in meta
@@ -199,6 +220,14 @@ export async function handleDelete(request: Request) {
             let foundAny = false
             for (const key of Object.keys(meta)) {
               if (key.startsWith(prefix)) {
+                const keyEntry = meta[key] as MetaEntry | undefined
+                const keyHasThumbnails = keyEntry ? isProcessed(keyEntry) : false
+                // Delete from CDN if pushed
+                if (keyEntry?.c !== undefined) {
+                  try {
+                    await deleteFromCdn(key, keyHasThumbnails)
+                  } catch { /* ignore CDN delete errors */ }
+                }
                 delete meta[key]
                 foundAny = true
               }
@@ -243,7 +272,8 @@ export async function handleCreateFolder(request: Request) {
       return jsonResponse({ error: 'Folder name is required' }, { status: 400 })
     }
 
-    const sanitizedName = name.replace(/[<>:"/\\|?*]/g, '').trim()
+    // Slugify folder name to be URL-safe (lowercase, no spaces, etc.)
+    const sanitizedName = slugifyFolderName(name)
     if (!sanitizedName) {
       return jsonResponse({ error: 'Invalid folder name' }, { status: 400 })
     }
@@ -272,6 +302,8 @@ export async function handleCreateFolder(request: Request) {
 }
 
 export async function handleRename(request: Request) {
+  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '')
+  
   try {
     const { oldPath, newName } = await request.json()
 
@@ -279,26 +311,57 @@ export async function handleRename(request: Request) {
       return jsonResponse({ error: 'Path and new name are required' }, { status: 400 })
     }
 
-    const sanitizedName = newName.replace(/[<>:"/\\|?*]/g, '').trim()
-    if (!sanitizedName) {
-      return jsonResponse({ error: 'Invalid name' }, { status: 400 })
-    }
-
     const safePath = oldPath.replace(/\.\./g, '')
     const absoluteOldPath = getWorkspacePath(safePath)
-    const parentDir = path.dirname(absoluteOldPath)
-    const absoluteNewPath = path.join(parentDir, sanitizedName)
 
     if (!absoluteOldPath.startsWith(getPublicPath())) {
       return jsonResponse({ error: 'Invalid path' }, { status: 400 })
     }
 
+    const oldRelativePath = safePath.replace(/^public\//, '')
+    const oldKey = '/' + oldRelativePath
+    const isImage = isImageFile(path.basename(oldPath))
+
+    // Load meta to check if this is a cloud file
+    const meta = await loadMeta()
+    const cdnUrls = getCdnUrls(meta)
+    const entry = meta[oldKey] as MetaEntry | undefined
+    const isInCloud = entry?.c !== undefined
+    const fileCdnUrl = isInCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
+    const isInOurR2 = isInCloud && fileCdnUrl === publicUrl
+    const hasThumbnails = entry ? isProcessed(entry) : false
+
+    // Check if local file exists
+    let hasLocalFile = false
+    let isFile = true
     try {
-      await fs.access(absoluteOldPath)
+      const stats = await fs.stat(absoluteOldPath)
+      hasLocalFile = true
+      isFile = stats.isFile()
     } catch {
-      return jsonResponse({ error: 'File or folder not found' }, { status: 404 })
+      // No local file - might be cloud-only
+      if (!isInCloud) {
+        return jsonResponse({ error: 'File or folder not found' }, { status: 404 })
+      }
     }
 
+    // Slugify name based on whether it's a file or folder
+    const sanitizedName = isFile ? slugifyFilename(newName) : slugifyFolderName(newName)
+    if (!sanitizedName) {
+      return jsonResponse({ error: 'Invalid name' }, { status: 400 })
+    }
+
+    const parentDir = path.dirname(absoluteOldPath)
+    const absoluteNewPath = path.join(parentDir, sanitizedName)
+    const newRelativePath = path.join(path.dirname(oldRelativePath), sanitizedName)
+    const newKey = '/' + newRelativePath
+
+    // Check if new name already exists in meta
+    if (meta[newKey]) {
+      return jsonResponse({ error: 'An item with this name already exists' }, { status: 400 })
+    }
+
+    // Check if new local path already exists
     try {
       await fs.access(absoluteNewPath)
       return jsonResponse({ error: 'An item with this name already exists' }, { status: 400 })
@@ -306,42 +369,99 @@ export async function handleRename(request: Request) {
       // Good - new path doesn't exist
     }
 
-    const stats = await fs.stat(absoluteOldPath)
-    const isFile = stats.isFile()
-    const isImage = isFile && isImageFile(path.basename(oldPath))
-
-    await fs.rename(absoluteOldPath, absoluteNewPath)
-
-    if (isImage) {
-      const meta = await loadMeta()
-      const oldRelativePath = safePath.replace(/^public\//, '')
-      const newRelativePath = path.join(path.dirname(oldRelativePath), sanitizedName)
-      const oldKey = '/' + oldRelativePath
-      const newKey = '/' + newRelativePath
-
-      if (meta[oldKey]) {
-        const entry = meta[oldKey]
-
-        const oldThumbPaths = getAllThumbnailPaths(oldKey)
+    // Handle cloud-only file: download, save locally, then proceed
+    if (isInOurR2 && !hasLocalFile && isImage) {
+      // Download original from R2
+      const buffer = await downloadFromCdn(oldKey)
+      await fs.mkdir(path.dirname(absoluteNewPath), { recursive: true })
+      await fs.writeFile(absoluteNewPath, buffer)
+      
+      // Download and save thumbnails with new names
+      if (hasThumbnails) {
         const newThumbPaths = getAllThumbnailPaths(newKey)
-
+        const oldThumbPaths = getAllThumbnailPaths(oldKey)
+        
         for (let i = 0; i < oldThumbPaths.length; i++) {
-          const oldThumbPath = getPublicPath(oldThumbPaths[i])
-          const newThumbPath = getPublicPath(newThumbPaths[i])
-          
-          await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
-          
           try {
-            await fs.rename(oldThumbPath, newThumbPath)
+            const thumbBuffer = await downloadFromCdn(oldThumbPaths[i])
+            const newThumbLocalPath = getPublicPath(newThumbPaths[i])
+            await fs.mkdir(path.dirname(newThumbLocalPath), { recursive: true })
+            await fs.writeFile(newThumbLocalPath, thumbBuffer)
           } catch {
             // Thumbnail might not exist
           }
         }
+      }
+      
+      // Delete old files from CDN
+      await deleteFromCdn(oldKey, hasThumbnails)
+      
+      // Upload with new key
+      await uploadOriginalToCdn(newKey)
+      if (hasThumbnails) {
+        await uploadToCdn(newKey)
+      }
+      
+      // Clean up local files
+      try { await fs.unlink(absoluteNewPath) } catch { /* ignore */ }
+      if (hasThumbnails) {
+        await deleteLocalThumbnails(newKey)
+      }
+      
+      // Update meta
+      delete meta[oldKey]
+      meta[newKey] = entry
+      await saveMeta(meta)
+      
+      const newPath = path.join(path.dirname(safePath), sanitizedName)
+      return jsonResponse({ success: true, newPath })
+    }
 
-        delete meta[oldKey]
-        meta[newKey] = entry
+    // Handle local file rename
+    if (hasLocalFile) {
+      await fs.rename(absoluteOldPath, absoluteNewPath)
+    }
+
+    if (isImage && entry) {
+      const oldThumbPaths = getAllThumbnailPaths(oldKey)
+      const newThumbPaths = getAllThumbnailPaths(newKey)
+
+      // Rename local thumbnails
+      for (let i = 0; i < oldThumbPaths.length; i++) {
+        const oldThumbPath = getPublicPath(oldThumbPaths[i])
+        const newThumbPath = getPublicPath(newThumbPaths[i])
+        
+        await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
+        
+        try {
+          await fs.rename(oldThumbPath, newThumbPath)
+        } catch {
+          // Thumbnail might not exist
+        }
       }
 
+      // If file was in our R2, rename in cloud too
+      if (isInOurR2) {
+        // Read new local file and upload with new key
+        const buffer = await fs.readFile(absoluteNewPath)
+        await fs.mkdir(path.dirname(absoluteNewPath), { recursive: true })
+        
+        // Delete old from CDN
+        await deleteFromCdn(oldKey, hasThumbnails)
+        
+        // Upload with new key
+        await uploadOriginalToCdn(newKey)
+        if (hasThumbnails) {
+          await uploadToCdn(newKey)
+        }
+        
+        // Clean up local files (they're now on CDN)
+        try { await fs.unlink(absoluteNewPath) } catch { /* ignore */ }
+        await deleteLocalThumbnails(newKey)
+      }
+
+      delete meta[oldKey]
+      meta[newKey] = entry
       await saveMeta(meta)
     }
 
@@ -413,17 +533,17 @@ export async function handleMoveStream(request: Request) {
           const oldKey = '/' + oldRelativePath
           const newKey = '/' + newRelativePath
 
-          sendEvent({
-            type: 'progress',
-            current: i + 1,
-            total,
-            percent: Math.round(((i + 1) / total) * 100),
-            currentFile: itemName,
-          })
-
           // Check if destination already exists in meta
           if (meta[newKey]) {
             errors.push(`${itemName} already exists in destination`)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total,
+              moved: moved.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: itemName,
+            })
             continue
           }
 
@@ -457,6 +577,14 @@ export async function handleMoveStream(request: Request) {
               delete meta[oldKey]
               meta[newKey] = newEntry
               moved.push(itemPath)
+              sendEvent({
+                type: 'progress',
+                current: i + 1,
+                total,
+                moved: moved.length,
+                percent: Math.round(((i + 1) / total) * 100),
+                currentFile: itemName,
+              })
 
             } else if (isPushedToR2 && isImage) {
               // ===== CLOUD IMAGE (R2) =====
@@ -493,6 +621,14 @@ export async function handleMoveStream(request: Request) {
               delete meta[oldKey]
               meta[newKey] = newEntry
               moved.push(itemPath)
+              sendEvent({
+                type: 'progress',
+                current: i + 1,
+                total,
+                moved: moved.length,
+                percent: Math.round(((i + 1) / total) * 100),
+                currentFile: itemName,
+              })
 
             } else {
               // ===== LOCAL FILE =====
@@ -500,6 +636,14 @@ export async function handleMoveStream(request: Request) {
 
               if (absoluteDestination.startsWith(absolutePath + path.sep)) {
                 errors.push(`Cannot move ${itemName} into itself`)
+                sendEvent({
+                  type: 'progress',
+                  current: i + 1,
+                  total,
+                  moved: moved.length,
+                  percent: Math.round(((i + 1) / total) * 100),
+                  currentFile: itemName,
+                })
                 continue
               }
 
@@ -507,12 +651,28 @@ export async function handleMoveStream(request: Request) {
                 await fs.access(absolutePath)
               } catch {
                 errors.push(`${itemName} not found`)
+                sendEvent({
+                  type: 'progress',
+                  current: i + 1,
+                  total,
+                  moved: moved.length,
+                  percent: Math.round(((i + 1) / total) * 100),
+                  currentFile: itemName,
+                })
                 continue
               }
 
               try {
                 await fs.access(newAbsolutePath)
                 errors.push(`${itemName} already exists in destination`)
+                sendEvent({
+                  type: 'progress',
+                  current: i + 1,
+                  total,
+                  moved: moved.length,
+                  percent: Math.round(((i + 1) / total) * 100),
+                  currentFile: itemName,
+                })
                 continue
               } catch {
                 // Good
@@ -560,10 +720,26 @@ export async function handleMoveStream(request: Request) {
               }
 
               moved.push(itemPath)
+              sendEvent({
+                type: 'progress',
+                current: i + 1,
+                total,
+                moved: moved.length,
+                percent: Math.round(((i + 1) / total) * 100),
+                currentFile: itemName,
+              })
             }
           } catch (err) {
             console.error(`Failed to move ${itemName}:`, err)
             errors.push(`Failed to move ${itemName}`)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total,
+              moved: moved.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: itemName,
+            })
           }
         }
 

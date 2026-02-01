@@ -41,6 +41,7 @@ export interface ActionState {
   showMoveModal: boolean
   showSyncConfirm: boolean
   showProcessConfirm: boolean
+  showDownloadConfirm: boolean
   
   // Action-specific state
   actionPaths: string[]  // Paths being acted upon
@@ -48,6 +49,8 @@ export interface ActionState {
   syncHasRemote: boolean
   syncHasLocal: boolean
   processMode: 'generate' | 'remove'  // Mode for process modal
+  downloadImageCount: number
+  downloadTotalSelected: number
 }
 
 /**
@@ -118,6 +121,7 @@ export interface StudioState {
   requestDelete: (paths: string[]) => void
   requestMove: (paths: string[]) => void
   requestSync: (paths: string[], fileItems: FileItem[]) => void
+  requestDownload: (paths: string[], fileItems: FileItem[]) => void
   requestProcess: (paths: string[]) => void
   setProcessMode: (mode: 'generate' | 'remove') => void
   
@@ -196,6 +200,7 @@ const defaultState: StudioState = {
   requestDelete: () => {},
   requestMove: () => {},
   requestSync: () => {},
+  requestDownload: () => {},
   requestProcess: () => {},
   setProcessMode: () => {},
   confirmDelete: async () => {},

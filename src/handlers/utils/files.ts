@@ -1,6 +1,49 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 
+/**
+ * Convert a filename to a slug-friendly format:
+ * - lowercase
+ * - spaces and underscores to hyphens
+ * - remove special characters except hyphens and dots
+ * - collapse multiple hyphens
+ * - preserve file extension
+ */
+export function slugifyFilename(filename: string): string {
+  const ext = path.extname(filename).toLowerCase()
+  const baseName = path.basename(filename, path.extname(filename))
+  
+  const slugged = baseName
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+    .replace(/[_\s]+/g, '-') // Replace spaces and underscores with hyphens
+    .replace(/[^a-z0-9-]/g, '') // Remove non-alphanumeric except hyphens
+    .replace(/-+/g, '-') // Collapse multiple hyphens
+    .replace(/^-|-$/g, '') // Trim leading/trailing hyphens
+  
+  // If the slug is empty after processing, use a fallback
+  const finalSlug = slugged || 'file'
+  
+  return finalSlug + ext
+}
+
+/**
+ * Slugify a folder name (no extension handling)
+ */
+export function slugifyFolderName(name: string): string {
+  const slugged = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+    .replace(/[_\s]+/g, '-') // Replace spaces and underscores with hyphens
+    .replace(/[^a-z0-9-]/g, '') // Remove non-alphanumeric except hyphens
+    .replace(/-+/g, '-') // Collapse multiple hyphens
+    .replace(/^-|-$/g, '') // Trim leading/trailing hyphens
+  
+  return slugged || 'folder'
+}
+
 export function isImageFile(filename: string): boolean {
   const ext = path.extname(filename).toLowerCase()
   return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif'].includes(ext)
