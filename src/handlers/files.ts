@@ -1188,94 +1188,232 @@ export async function handleMoveStream(request: Request) {
                 // Good
               }
 
-              await fs.rename(absolutePath, newAbsolutePath)
+              const stats = await fs.stat(absolutePath)
+              
+              if (stats.isFile()) {
+                // ===== SINGLE LOCAL FILE =====
+                await fs.mkdir(path.dirname(newAbsolutePath), { recursive: true })
+                await fs.rename(absolutePath, newAbsolutePath)
+                
+                if (isImage && entry) {
+                  const oldThumbPaths = getAllThumbnailPaths(oldKey)
+                  const newThumbPaths = getAllThumbnailPaths(newKey)
 
-              const stats = await fs.stat(newAbsolutePath)
-              if (stats.isFile() && isImage && entry) {
-                const oldThumbPaths = getAllThumbnailPaths(oldKey)
-                const newThumbPaths = getAllThumbnailPaths(newKey)
+                  for (let j = 0; j < oldThumbPaths.length; j++) {
+                    const oldThumbPath = getPublicPath(oldThumbPaths[j])
+                    const newThumbPath = getPublicPath(newThumbPaths[j])
 
-                for (let j = 0; j < oldThumbPaths.length; j++) {
-                  const oldThumbPath = getPublicPath(oldThumbPaths[j])
-                  const newThumbPath = getPublicPath(newThumbPaths[j])
-
-                  try {
-                    // Check if thumbnail exists before trying to move
-                    await fs.access(oldThumbPath)
-                    
-                    // Track thumbnail source folder for cleanup
-                    sourceFolders.add(path.dirname(oldThumbPath))
-                    
-                    // Create destination folder and move thumbnail
-                    await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
-                    await fs.rename(oldThumbPath, newThumbPath)
-                  } catch {
-                    // Thumbnail doesn't exist, skip
+                    try {
+                      await fs.access(oldThumbPath)
+                      sourceFolders.add(path.dirname(oldThumbPath))
+                      await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
+                      await fs.rename(oldThumbPath, newThumbPath)
+                    } catch {
+                      // Thumbnail doesn't exist
+                    }
                   }
-                }
+                  
+                  // Check if file was synced to cloud - needs re-upload with new key
+                  const fileIsInCloud = entry.c !== undefined
+                  const fileCdnUrl = fileIsInCloud ? cdnUrls[entry.c!] : undefined
+                  const fileIsInR2 = fileIsInCloud && fileCdnUrl === r2PublicUrl
+                  const fileHasThumbs = isProcessed(entry)
+                  
+                  if (fileIsInR2) {
+                    // Re-upload with new key
+                    await deleteFromCdn(oldKey, fileHasThumbs)
+                    await uploadOriginalToCdn(newKey)
+                    if (fileHasThumbs) {
+                      await uploadToCdn(newKey)
+                    }
+                  }
 
-                delete meta[oldKey]
-                meta[newKey] = entry
+                  delete meta[oldKey]
+                  meta[newKey] = entry
+                }
+                
+                processedFiles++
+                sendEvent({
+                  type: 'progress',
+                  current: processedFiles,
+                  total: totalFiles,
+                  moved: moved.length,
+                  percent: Math.round((processedFiles / totalFiles) * 100),
+                  currentFile: itemName,
+                })
+                moved.push(itemPath)
+                
               } else if (stats.isDirectory()) {
+                // ===== LOCAL DIRECTORY - iterate through files =====
                 const oldPrefix = oldKey + '/'
                 const newPrefix = newKey + '/'
                 
-                for (const key of Object.keys(meta)) {
-                  if (key.startsWith(oldPrefix)) {
-                    const newMetaKey = newPrefix + key.slice(oldPrefix.length)
-                    meta[newMetaKey] = meta[key]
-                    delete meta[key]
+                // Collect all files in directory (local + cloud-only from meta)
+                const localFiles: Array<{ relativePath: string; isImage: boolean }> = []
+                
+                const collectLocalFiles = async (dir: string, relativeDir: string) => {
+                  const entries = await fs.readdir(dir, { withFileTypes: true })
+                  for (const dirEntry of entries) {
+                    const entryRelPath = relativeDir ? `${relativeDir}/${dirEntry.name}` : dirEntry.name
+                    if (dirEntry.isDirectory()) {
+                      await collectLocalFiles(path.join(dir, dirEntry.name), entryRelPath)
+                    } else {
+                      localFiles.push({ relativePath: entryRelPath, isImage: isImageFile(dirEntry.name) })
+                    }
+                  }
+                }
+                await collectLocalFiles(absolutePath, '')
+                
+                // Also find cloud-only files from meta that aren't local
+                const cloudOnlyFiles: Array<{ oldKey: string; newKey: string; entry: MetaEntry }> = []
+                for (const [metaKey, metaEntry] of Object.entries(meta)) {
+                  if (metaKey.startsWith(oldPrefix) && metaEntry && typeof metaEntry === 'object') {
+                    const relPath = metaKey.slice(oldPrefix.length)
+                    const localPath = path.join(absolutePath, relPath)
+                    try {
+                      await fs.access(localPath)
+                      // File exists locally, will be handled by localFiles
+                    } catch {
+                      // Cloud-only file
+                      cloudOnlyFiles.push({
+                        oldKey: metaKey,
+                        newKey: newPrefix + relPath,
+                        entry: metaEntry as MetaEntry
+                      })
+                    }
                   }
                 }
                 
-                // Also move the thumbnail folder
-                // oldKey is like "/layout-3/layout-2", we need "layout-3/layout-2" for thumbnail path
-                const oldThumbRelPath = oldKey.slice(1) // remove leading /
-                const newThumbRelPath = newKey.slice(1)
-                const imagesDir = getPublicPath('images')
-                const oldThumbFolder = path.join(imagesDir, oldThumbRelPath)
-                const newThumbFolder = path.join(imagesDir, newThumbRelPath)
-                try {
-                  await fs.access(oldThumbFolder)
-                  // Track old thumbnail folder for cleanup
-                  sourceFolders.add(oldThumbFolder)
-                  await fs.mkdir(path.dirname(newThumbFolder), { recursive: true })
-                  await fs.rename(oldThumbFolder, newThumbFolder)
-                } catch {
-                  // Thumbnail folder might not exist
+                // Process each local file
+                for (const localFile of localFiles) {
+                  const fileOldPath = path.join(absolutePath, localFile.relativePath)
+                  const fileNewPath = path.join(newAbsolutePath, localFile.relativePath)
+                  const fileOldKey = oldPrefix + localFile.relativePath
+                  const fileNewKey = newPrefix + localFile.relativePath
+                  const fileEntry = meta[fileOldKey] as MetaEntry | undefined
+                  
+                  // Track source folder
+                  sourceFolders.add(path.dirname(fileOldPath))
+                  
+                  // Move the file
+                  await fs.mkdir(path.dirname(fileNewPath), { recursive: true })
+                  await fs.rename(fileOldPath, fileNewPath)
+                  
+                  if (localFile.isImage && fileEntry) {
+                    // Move thumbnails
+                    const oldThumbPaths = getAllThumbnailPaths(fileOldKey)
+                    const newThumbPaths = getAllThumbnailPaths(fileNewKey)
+                    
+                    for (let t = 0; t < oldThumbPaths.length; t++) {
+                      const oldThumbPath = getPublicPath(oldThumbPaths[t])
+                      const newThumbPath = getPublicPath(newThumbPaths[t])
+                      try {
+                        await fs.access(oldThumbPath)
+                        sourceFolders.add(path.dirname(oldThumbPath))
+                        await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
+                        await fs.rename(oldThumbPath, newThumbPath)
+                      } catch { /* skip */ }
+                    }
+                    
+                    // Check if synced to cloud - re-upload with new key
+                    const fileIsInCloud = fileEntry.c !== undefined
+                    const fileCdnUrl = fileIsInCloud ? cdnUrls[fileEntry.c!] : undefined
+                    const fileIsInR2 = fileIsInCloud && fileCdnUrl === r2PublicUrl
+                    const fileHasThumbs = isProcessed(fileEntry)
+                    
+                    if (fileIsInR2) {
+                      await deleteFromCdn(fileOldKey, fileHasThumbs)
+                      await uploadOriginalToCdn(fileNewKey)
+                      if (fileHasThumbs) {
+                        await uploadToCdn(fileNewKey)
+                      }
+                    }
+                    
+                    delete meta[fileOldKey]
+                    meta[fileNewKey] = fileEntry
+                  }
+                  
+                  processedFiles++
+                  sendEvent({
+                    type: 'progress',
+                    current: processedFiles,
+                    total: totalFiles,
+                    moved: moved.length,
+                    percent: Math.round((processedFiles / totalFiles) * 100),
+                    currentFile: path.basename(localFile.relativePath),
+                  })
                 }
-              }
-
-              moved.push(itemPath)
-              
-              // For directories, count files moved
-              if (stats.isDirectory()) {
-                const countFilesInDir = async (dir: string): Promise<number> => {
-                  let count = 0
-                  const entries = await fs.readdir(dir, { withFileTypes: true })
-                  for (const entry of entries) {
-                    if (entry.isDirectory()) {
-                      count += await countFilesInDir(path.join(dir, entry.name))
-                    } else {
-                      count++
+                
+                // Process cloud-only files within the directory
+                for (const cloudFile of cloudOnlyFiles) {
+                  const cloudEntry = cloudFile.entry
+                  const cloudIsInCloud = cloudEntry.c !== undefined
+                  const cloudCdnUrl = cloudIsInCloud ? cdnUrls[cloudEntry.c!] : undefined
+                  const cloudIsInR2 = cloudIsInCloud && cloudCdnUrl === r2PublicUrl
+                  const cloudHasThumbs = isProcessed(cloudEntry)
+                  
+                  if (cloudIsInR2) {
+                    try {
+                      const cloudLocalPath = getPublicPath(cloudFile.newKey)
+                      const buffer = await downloadFromCdn(cloudFile.oldKey)
+                      await fs.mkdir(path.dirname(cloudLocalPath), { recursive: true })
+                      await fs.writeFile(cloudLocalPath, buffer)
+                      
+                      if (cloudHasThumbs) {
+                        const oldThumbPaths = getAllThumbnailPaths(cloudFile.oldKey)
+                        const newThumbPaths = getAllThumbnailPaths(cloudFile.newKey)
+                        for (let t = 0; t < oldThumbPaths.length; t++) {
+                          try {
+                            const thumbBuffer = await downloadFromCdn(oldThumbPaths[t])
+                            const newThumbLocalPath = getPublicPath(newThumbPaths[t])
+                            await fs.mkdir(path.dirname(newThumbLocalPath), { recursive: true })
+                            await fs.writeFile(newThumbLocalPath, thumbBuffer)
+                          } catch { /* skip */ }
+                        }
+                      }
+                      
+                      await deleteFromCdn(cloudFile.oldKey, cloudHasThumbs)
+                      await uploadOriginalToCdn(cloudFile.newKey)
+                      if (cloudHasThumbs) {
+                        await uploadToCdn(cloudFile.newKey)
+                      }
+                      
+                      try { await fs.unlink(cloudLocalPath) } catch { /* ignore */ }
+                      if (cloudHasThumbs) {
+                        await deleteLocalThumbnails(cloudFile.newKey)
+                      }
+                      
+                      // Clean up temp folder
+                      await deleteEmptyFolders(path.dirname(cloudLocalPath))
+                    } catch (err) {
+                      console.error(`Failed to move cloud file ${cloudFile.oldKey}:`, err)
                     }
                   }
-                  return count
+                  
+                  delete meta[cloudFile.oldKey]
+                  meta[cloudFile.newKey] = cloudEntry
+                  
+                  processedFiles++
+                  sendEvent({
+                    type: 'progress',
+                    current: processedFiles,
+                    total: totalFiles,
+                    moved: moved.length,
+                    percent: Math.round((processedFiles / totalFiles) * 100),
+                    currentFile: path.basename(cloudFile.newKey),
+                  })
                 }
-                const filesInDir = await countFilesInDir(newAbsolutePath)
-                processedFiles += filesInDir
-              } else {
-                processedFiles++
+                
+                // Clean up old empty source folder
+                sourceFolders.add(absolutePath)
+                
+                // Clean up old thumbnail folder
+                const oldThumbRelPath = oldKey.slice(1)
+                const oldThumbFolder = path.join(getPublicPath('images'), oldThumbRelPath)
+                sourceFolders.add(oldThumbFolder)
+                
+                moved.push(itemPath)
               }
-              
-              sendEvent({
-                type: 'progress',
-                current: processedFiles,
-                total: totalFiles,
-                moved: moved.length,
-                percent: Math.round((processedFiles / totalFiles) * 100),
-                currentFile: itemName,
-              })
             }
           } catch (err) {
             console.error(`Failed to move ${itemName}:`, err)
