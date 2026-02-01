@@ -27,7 +27,7 @@ const styles = {
     padding: 12px 16px;
     background-color: ${colors.surface};
     border-bottom: 1px solid ${colors.border};
-    overflow-x: auto;
+    overflow: visible;
     min-width: 0;
     
     @media (min-width: 768px) {
