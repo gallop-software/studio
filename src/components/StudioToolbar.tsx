@@ -703,31 +703,18 @@ export function StudioToolbar() {
   const handleDeleteConfirm = useCallback(async () => {
     setShowDeleteConfirm(false)
     
-    try {
-      const response = await fetch('/api/studio/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: Array.from(selectedItems) }),
-      })
+    const paths = Array.from(selectedItems)
+    if (paths.length === 0) return
 
-      if (response.ok) {
+    await streamingOperation.execute({
+      endpoint: '/api/studio/delete-stream',
+      body: { paths },
+      title: 'Deleting Files',
+      onComplete: () => {
         clearSelection()
-        triggerRefresh()
-      } else {
-        const error = await response.json()
-        setAlertMessage({
-          title: 'Delete Failed',
-          message: error.error || 'Unknown error',
-        })
-      }
-    } catch (error) {
-      console.error('Delete error:', error)
-      setAlertMessage({
-        title: 'Delete Failed',
-        message: 'Delete failed. Check console for details.',
-      })
-    }
-  }, [selectedItems, clearSelection, triggerRefresh])
+      },
+    })
+  }, [selectedItems, clearSelection, streamingOperation])
 
   const handleSyncClick = useCallback(async () => {
     if (selectedItems.size === 0) return
@@ -1297,6 +1284,10 @@ export function StudioToolbar() {
             setShowAddNewModal(false)
             triggerRefresh()
           }}
+          streamingOperation={streamingOperation}
+          setShowProgress={setShowProgress}
+          setProgressTitle={setProgressTitle}
+          setProgressState={setProgressState}
         />
       )}
 

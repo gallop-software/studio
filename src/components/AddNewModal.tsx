@@ -205,13 +205,39 @@ const styles = {
   `,
 }
 
+interface StreamingOperation {
+  execute: (config: {
+    endpoint: string
+    body: Record<string, unknown>
+    title: string
+    onComplete?: () => void
+    onError?: (message: string) => void
+  }) => Promise<void>
+  stop: () => void
+  isRunning: boolean
+}
+
+interface ProgressState {
+  current: number
+  total: number
+  percent: number
+  status: string
+  message?: string
+  currentFile?: string
+}
+
 interface AddNewModalProps {
   currentPath: string
   onClose: () => void
   onUploadComplete: () => void
+  streamingOperation?: StreamingOperation
+  // For file upload progress
+  setShowProgress?: (show: boolean) => void
+  setProgressTitle?: (title: string) => void
+  setProgressState?: (state: Partial<ProgressState> | ((prev: ProgressState) => ProgressState)) => void
 }
 
-export function AddNewModal({ currentPath, onClose, onUploadComplete }: AddNewModalProps) {
+export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingOperation, setShowProgress, setProgressTitle, setProgressState }: AddNewModalProps) {
   const [activeTab, setActiveTab] = useState<'upload' | 'import'>('upload')
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [urlInput, setUrlInput] = useState('')
@@ -232,9 +258,83 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete }: AddNewMo
     handleFileSelect(e.dataTransfer.files)
   }, [handleFileSelect])
 
+  // Ref to track if upload should be stopped
+  const stopUploadRef = useRef(false)
+  
   const handleUpload = useCallback(async () => {
     if (selectedFiles.length === 0) return
     
+    // If progress callbacks available, use them
+    if (setShowProgress && setProgressTitle && setProgressState) {
+      onClose() // Close modal first so progress modal shows
+      stopUploadRef.current = false
+      
+      setProgressTitle('Uploading Files')
+      setShowProgress(true)
+      setProgressState({
+        current: 0,
+        total: selectedFiles.length,
+        percent: 0,
+        status: 'processing',
+        message: 'Uploading...',
+      })
+      
+      let uploaded = 0
+      const errors: string[] = []
+      
+      for (let i = 0; i < selectedFiles.length; i++) {
+        // Check if stopped
+        if (stopUploadRef.current) {
+          setProgressState(prev => ({
+            ...prev,
+            status: 'stopped',
+            message: `Stopped. Uploaded ${uploaded} file${uploaded !== 1 ? 's' : ''}.`,
+          }))
+          onUploadComplete()
+          return
+        }
+        
+        const file = selectedFiles[i]
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('path', currentPath)
+        
+        try {
+          const response = await fetch('/api/studio/upload', {
+            method: 'POST',
+            body: formData,
+          })
+          
+          if (response.ok) {
+            uploaded++
+          } else {
+            errors.push(file.name)
+          }
+        } catch {
+          errors.push(file.name)
+        }
+        
+        setProgressState({
+          current: i + 1,
+          total: selectedFiles.length,
+          percent: Math.round(((i + 1) / selectedFiles.length) * 100),
+          status: 'processing',
+          currentFile: file.name,
+        })
+      }
+      
+      setProgressState({
+        current: selectedFiles.length,
+        total: selectedFiles.length,
+        percent: 100,
+        status: 'complete',
+        message: `Uploaded ${uploaded} file${uploaded !== 1 ? 's' : ''}.${errors.length > 0 ? ` ${errors.length} failed.` : ''}`,
+      })
+      onUploadComplete()
+      return
+    }
+    
+    // Fallback to old behavior
     setUploading(true)
     
     try {
@@ -256,7 +356,7 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete }: AddNewMo
     } finally {
       setUploading(false)
     }
-  }, [selectedFiles, currentPath, onUploadComplete, onClose])
+  }, [selectedFiles, currentPath, onUploadComplete, onClose, setShowProgress, setProgressTitle, setProgressState])
 
   const handleImport = useCallback(async () => {
     const urls = urlInput
@@ -266,6 +366,21 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete }: AddNewMo
     
     if (urls.length === 0) return
     
+    // Use unified streaming if available
+    if (streamingOperation) {
+      onClose() // Close modal first so progress modal can show
+      await streamingOperation.execute({
+        endpoint: '/api/studio/import',
+        body: { urls },
+        title: 'Importing URLs',
+        onComplete: () => {
+          onUploadComplete()
+        },
+      })
+      return
+    }
+    
+    // Fallback to old behavior
     setImporting(true)
     
     try {
@@ -300,7 +415,7 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete }: AddNewMo
     } finally {
       setImporting(false)
     }
-  }, [urlInput, onUploadComplete, onClose])
+  }, [urlInput, onUploadComplete, onClose, streamingOperation])
 
   return (
     <div css={styles.overlay} onClick={onClose}>

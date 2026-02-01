@@ -510,10 +510,15 @@ export async function handleList(request: Request) {
 export async function handleSearch(request: Request) {
   const searchParams = new URL(request.url).searchParams
   const query = searchParams.get('q')?.toLowerCase() || ''
+  const requestedPath = searchParams.get('path') || 'public'
   
   if (query.length < 2) {
     return jsonResponse({ items: [] })
   }
+
+  // Convert path to filter prefix (e.g. "public/images" -> "/images/")
+  const pathPrefix = requestedPath === 'public' ? '/' : '/' + requestedPath.replace(/^public\/?/, '')
+  const normalizedPrefix = pathPrefix.endsWith('/') ? pathPrefix : pathPrefix + '/'
 
   try {
     const meta = await loadMeta()
@@ -523,6 +528,9 @@ export async function handleSearch(request: Request) {
     const items: FileItem[] = []
 
     for (const [key, entry] of fileEntries) {
+      // Check if file is within the requested path (including subfolders)
+      if (!key.startsWith(normalizedPrefix)) continue
+      
       // Check if the path matches the query
       if (!key.toLowerCase().includes(query)) continue
       

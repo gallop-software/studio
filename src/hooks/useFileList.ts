@@ -44,7 +44,7 @@ export function useFileList() {
 
       try {
         const data = searchQuery && searchQuery.length >= 2
-          ? await studioApi.search(searchQuery)
+          ? await studioApi.search(searchQuery, currentPath)
           : await studioApi.list(currentPath)
         const loadedItems = data.items || []
         setItems(loadedItems)

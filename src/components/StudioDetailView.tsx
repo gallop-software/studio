@@ -261,6 +261,20 @@ const styles = {
       text-decoration: underline;
     }
   `,
+  thumbChips: css`
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  `,
+  thumbChip: css`
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: ${colors.primary};
+    color: white;
+  `,
   actions: css`
     display: flex;
     flex-direction: column;
@@ -327,6 +341,7 @@ export function StudioDetailView() {
     requestSync,
     requestDownload,
     requestProcess,
+    setProcessMode,
     actionState,
   } = useStudio()
   const [showRenameModal, setShowRenameModal] = useState(false)
@@ -726,6 +741,19 @@ export function StudioDetailView() {
                   <span css={styles.infoValue}>{focusedItem.dimensions.width} × {focusedItem.dimensions.height}</span>
                 </div>
               )}
+              {(focusedItem.hasSm || focusedItem.hasMd || focusedItem.hasLg || focusedItem.hasFull) && (
+                <div css={styles.infoRow}>
+                  <span css={styles.infoLabel}>Thumbnails</span>
+                  <span css={styles.infoValue}>
+                    <span css={styles.thumbChips}>
+                      {focusedItem.hasSm && <span css={styles.thumbChip}>SM</span>}
+                      {focusedItem.hasMd && <span css={styles.thumbChip}>MD</span>}
+                      {focusedItem.hasLg && <span css={styles.thumbChip}>LG</span>}
+                      {focusedItem.hasFull && <span css={styles.thumbChip}>FULL</span>}
+                    </span>
+                  </span>
+                </div>
+              )}
               <div css={styles.infoRow}>
                 <span css={styles.infoLabel}>CDN Status</span>
                 <span css={styles.infoValue}>
@@ -793,14 +821,26 @@ export function StudioDetailView() {
               </button>
               <button 
                 css={styles.actionBtn} 
-                onClick={() => requestProcess([focusedItem.path])}
+                onClick={() => { setProcessMode('generate'); requestProcess([focusedItem.path]) }}
                 disabled={isActionInProgress || focusedItem.isProtected}
               >
                 <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                Process Image
+                Generate Thumbnails
               </button>
+              {(focusedItem.hasSm || focusedItem.hasMd || focusedItem.hasLg || focusedItem.hasFull) && (
+                <button 
+                  css={styles.actionBtn} 
+                  onClick={() => { setProcessMode('remove'); requestProcess([focusedItem.path]) }}
+                  disabled={isActionInProgress || focusedItem.isProtected}
+                >
+                  <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Remove Thumbnails
+                </button>
+              )}
               {isFaviconSource && (
                 <button 
                   css={styles.actionBtn} 

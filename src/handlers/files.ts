@@ -23,7 +23,7 @@ import {
 import { getPublicPath, getWorkspacePath } from '../config'
 import { jsonResponse, streamResponse, createSSEStream } from './utils/response'
 import { deleteEmptyFolders } from './utils/folders'
-import { isOperationCancelled } from './images'
+import { isOperationCancelled, clearCancelledOperation } from './images'
 
 export async function handleUpload(request: Request) {
   try {
@@ -264,6 +264,230 @@ export async function handleDelete(request: Request) {
     console.error('Failed to delete:', error)
     return jsonResponse({ error: 'Failed to delete files' }, { status: 500 })
   }
+}
+
+/**
+ * Delete files/folders with streaming progress
+ */
+export async function handleDeleteStream(request: Request) {
+  const encoder = new TextEncoder()
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendEvent = (data: object) => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        } catch {
+          // Controller may be closed
+        }
+      }
+
+      try {
+        const { paths, operationId } = await request.json() as { paths: string[], operationId?: string }
+
+        if (!paths || !Array.isArray(paths) || paths.length === 0) {
+          sendEvent({ type: 'error', message: 'No paths provided' })
+          controller.close()
+          return
+        }
+
+        // Helper to check if operation was cancelled
+        const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
+
+        const meta = await loadMeta()
+        const deleted: string[] = []
+        const errors: string[] = []
+        const sourceFolders = new Set<string>()
+        const total = paths.length
+
+        sendEvent({ type: 'start', total })
+
+        for (let i = 0; i < paths.length; i++) {
+          // Check for cancellation before each item
+          if (isCancelled()) {
+            await saveMeta(meta)
+            // Clean up empty folders
+            for (const folder of sourceFolders) {
+              await deleteEmptyFolders(folder)
+            }
+            if (operationId) clearCancelledOperation(operationId)
+            sendEvent({
+              type: 'complete',
+              deleted: deleted.length,
+              errors: errors.length,
+              message: `Stopped. Deleted ${deleted.length} item${deleted.length !== 1 ? 's' : ''}.`,
+              cancelled: true,
+            })
+            controller.close()
+            return
+          }
+
+          const itemPath = paths[i]
+          
+          try {
+            if (!itemPath.startsWith('public/')) {
+              errors.push(`Invalid path: ${itemPath}`)
+              sendEvent({
+                type: 'progress',
+                current: i + 1,
+                total,
+                deleted: deleted.length,
+                percent: Math.round(((i + 1) / total) * 100),
+                currentFile: path.basename(itemPath),
+              })
+              continue
+            }
+
+            const absolutePath = getWorkspacePath(itemPath)
+            const imageKey = '/' + itemPath.replace(/^public\//, '')
+            
+            // Track source folder for cleanup
+            sourceFolders.add(path.dirname(absolutePath))
+            
+            // Check if this is in meta (could be synced with no local file)
+            const entry = meta[imageKey] as MetaEntry | undefined
+            const isPushedToCloud = entry?.c !== undefined
+            const hasThumbnails = entry ? isProcessed(entry) : false
+            
+            // Try to delete local file/folder
+            try {
+              const stats = await fs.stat(absolutePath)
+
+              if (stats.isDirectory()) {
+                await fs.rm(absolutePath, { recursive: true })
+                
+                // Remove all meta entries under this folder
+                const prefix = imageKey + '/'
+                for (const key of Object.keys(meta)) {
+                  if (key.startsWith(prefix) || key === imageKey) {
+                    const keyEntry = meta[key] as MetaEntry | undefined
+                    const keyHasThumbnails = keyEntry ? isProcessed(keyEntry) : false
+                    
+                    // Delete from CDN if pushed
+                    if (keyEntry?.c !== undefined) {
+                      try {
+                        await deleteFromCdn(key, keyHasThumbnails)
+                      } catch { /* ignore CDN delete errors */ }
+                    } else {
+                      // Delete local thumbnails if not synced
+                      for (const thumbPath of getAllThumbnailPaths(key)) {
+                        const absoluteThumbPath = getPublicPath(thumbPath)
+                        try { await fs.unlink(absoluteThumbPath) } catch { /* ignore */ }
+                      }
+                    }
+                    delete meta[key]
+                  }
+                }
+              } else {
+                await fs.unlink(absolutePath)
+
+                const isInImagesFolder = itemPath.startsWith('public/images/')
+                
+                if (!isInImagesFolder && entry) {
+                  // Delete from CDN if pushed
+                  if (isPushedToCloud) {
+                    try {
+                      await deleteFromCdn(imageKey, hasThumbnails)
+                    } catch { /* ignore CDN delete errors */ }
+                  } else {
+                    // Delete local thumbnails if not synced
+                    for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+                      const absoluteThumbPath = getPublicPath(thumbPath)
+                      try { await fs.unlink(absoluteThumbPath) } catch { /* ignore */ }
+                    }
+                  }
+                  delete meta[imageKey]
+                }
+              }
+            } catch {
+              // File doesn't exist locally - might be synced
+              if (entry) {
+                // Delete from CDN if pushed
+                if (isPushedToCloud) {
+                  try {
+                    await deleteFromCdn(imageKey, hasThumbnails)
+                  } catch { /* ignore CDN delete errors */ }
+                }
+                delete meta[imageKey]
+              } else {
+                // Check if it's a folder prefix in meta
+                const prefix = imageKey + '/'
+                let foundAny = false
+                for (const key of Object.keys(meta)) {
+                  if (key.startsWith(prefix)) {
+                    const keyEntry = meta[key] as MetaEntry | undefined
+                    const keyHasThumbnails = keyEntry ? isProcessed(keyEntry) : false
+                    // Delete from CDN if pushed
+                    if (keyEntry?.c !== undefined) {
+                      try {
+                        await deleteFromCdn(key, keyHasThumbnails)
+                      } catch { /* ignore CDN delete errors */ }
+                    }
+                    delete meta[key]
+                    foundAny = true
+                  }
+                }
+                if (!foundAny) {
+                  errors.push(`Not found: ${itemPath}`)
+                  sendEvent({
+                    type: 'progress',
+                    current: i + 1,
+                    total,
+                    deleted: deleted.length,
+                    percent: Math.round(((i + 1) / total) * 100),
+                    currentFile: path.basename(itemPath),
+                  })
+                  continue
+                }
+              }
+            }
+
+            // Save meta incrementally
+            await saveMeta(meta)
+            deleted.push(itemPath)
+          } catch (error) {
+            console.error(`Failed to delete ${itemPath}:`, error)
+            errors.push(itemPath)
+          }
+
+          sendEvent({
+            type: 'progress',
+            current: i + 1,
+            total,
+            deleted: deleted.length,
+            percent: Math.round(((i + 1) / total) * 100),
+            currentFile: path.basename(itemPath),
+          })
+        }
+
+        // Clean up empty source folders
+        for (const folder of sourceFolders) {
+          await deleteEmptyFolders(folder)
+        }
+
+        if (operationId) clearCancelledOperation(operationId)
+        sendEvent({
+          type: 'complete',
+          deleted: deleted.length,
+          errors: errors.length,
+          errorMessages: errors.length > 0 ? errors : undefined,
+        })
+      } catch (error) {
+        console.error('Failed to delete:', error)
+        sendEvent({ type: 'error', message: 'Failed to delete files' })
+      } finally {
+        controller.close()
+      }
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
 }
 
 export async function handleCreateFolder(request: Request) {

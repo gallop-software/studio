@@ -7,6 +7,7 @@ import {
   getMetaEntry,
   setMetaEntry,
 } from './utils'
+import { isOperationCancelled, clearCancelledOperation } from './images'
 import type { Dimensions } from '../types'
 
 /**
@@ -58,17 +59,24 @@ export async function handleImportUrls(request: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       const sendEvent = (data: object) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        } catch {
+          // Controller may be closed
+        }
       }
 
       try {
-        const { urls } = await request.json() as { urls: string[] }
+        const { urls, operationId } = await request.json() as { urls: string[], operationId?: string }
         
         if (!urls || !Array.isArray(urls) || urls.length === 0) {
           sendEvent({ type: 'error', message: 'No URLs provided' })
           controller.close()
           return
         }
+
+        // Helper to check if operation was cancelled
+        const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
 
         const meta = await loadMeta()
         const added: string[] = []
@@ -79,6 +87,22 @@ export async function handleImportUrls(request: Request) {
         sendEvent({ type: 'start', total })
 
         for (let i = 0; i < urls.length; i++) {
+          // Check for cancellation before each URL
+          if (isCancelled()) {
+            await saveMeta(meta)
+            if (operationId) clearCancelledOperation(operationId)
+            sendEvent({
+              type: 'complete',
+              added: added.length,
+              skipped: skipped.length,
+              errors: errors.length,
+              message: `Stopped. Imported ${added.length} URL${added.length !== 1 ? 's' : ''}.`,
+              cancelled: true,
+            })
+            controller.close()
+            return
+          }
+
           const url = urls[i].trim()
           if (!url) continue
 
@@ -115,6 +139,9 @@ export async function handleImportUrls(request: Request) {
               c: cdnIndex,
             })
             
+            // Save meta incrementally after each successful import
+            await saveMeta(meta)
+            
             added.push(path)
             sendEvent({
               type: 'progress',
@@ -139,6 +166,7 @@ export async function handleImportUrls(request: Request) {
         }
 
         await saveMeta(meta)
+        if (operationId) clearCancelledOperation(operationId)
 
         sendEvent({
           type: 'complete',

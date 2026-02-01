@@ -98,8 +98,8 @@ class StudioApiClient {
     return this.get(`/api/studio/list?path=${encodeURIComponent(path)}`)
   }
 
-  async search(query: string): Promise<ListResponse> {
-    return this.get(`/api/studio/search?q=${encodeURIComponent(query)}`)
+  async search(query: string, path: string = 'public'): Promise<ListResponse> {
+    return this.get(`/api/studio/search?q=${encodeURIComponent(query)}&path=${encodeURIComponent(path)}`)
   }
 
   async listFolders(): Promise<FoldersResponse> {

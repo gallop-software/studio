@@ -8,7 +8,7 @@ import { createServer } from 'net'
 
 // Import handlers from individual modules
 import { handleList, handleSearch, handleListFolders, handleCountImages, handleFolderImages } from '../handlers/list'
-import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleRenameStream, handleMoveStream } from '../handlers/files'
+import { handleUpload, handleDelete, handleDeleteStream, handleCreateFolder, handleRename, handleRenameStream, handleMoveStream } from '../handlers/files'
 import { handleSync, handleSyncStream, handleReprocessStream, handleUnprocessStream, handleDownloadStream, handlePushUpdatesStream, handleCancelUpdates, handleCancelStreamOperation } from '../handlers/images'
 import { handleScanStream, handleDeleteOrphans } from '../handlers/scan'
 import { handleImportUrls, handleGetCdns, handleUpdateCdns } from '../handlers/import'
@@ -127,6 +127,7 @@ export async function startServer(options: ServerOptions) {
 
   // API Routes - DELETE endpoints
   app.post('/api/studio/delete', wrapHandler(handleDelete))
+  app.post('/api/studio/delete-stream', wrapHandler(handleDeleteStream, true))
 
   // Serve static files from workspace's public folder
   // Files are accessed at root path (e.g., /favicon.png, /images/photo.jpg)

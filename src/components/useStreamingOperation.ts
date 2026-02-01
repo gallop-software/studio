@@ -204,7 +204,7 @@ export function useStreamingOperation(deps: StreamingOperationDeps): StreamingOp
                 }))
               } else if (data.type === 'complete') {
                 const wasCancelled = data.cancelled === true
-                const processed = data.processed ?? data.moved ?? data.renamed ?? data.pushed ?? data.downloaded ?? data.current ?? 0
+                const processed = data.processed ?? data.moved ?? data.renamed ?? data.pushed ?? data.downloaded ?? data.added ?? data.imported ?? data.deleted ?? data.current ?? 0
                 
                 setProgressState({
                   current: processed,
