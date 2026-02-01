@@ -937,9 +937,10 @@ export async function handleDownloadStream(request: Request) {
             await saveMeta(meta)
             if (operationId) clearCancelledOperation(operationId)
             sendEvent({
-              type: 'stopped',
+              type: 'complete',
               downloaded: downloaded.length,
               message: `Stopped. ${downloaded.length} image${downloaded.length !== 1 ? 's' : ''} downloaded.`,
+              cancelled: true,
             })
             controller.close()
             return
@@ -969,9 +970,10 @@ export async function handleDownloadStream(request: Request) {
               await saveMeta(meta)
               if (operationId) clearCancelledOperation(operationId)
               sendEvent({
-                type: 'stopped',
+                type: 'complete',
                 downloaded: downloaded.length,
                 message: `Stopped. ${downloaded.length} image${downloaded.length !== 1 ? 's' : ''} downloaded.`,
+                cancelled: true,
               })
               controller.close()
               return
@@ -1086,13 +1088,16 @@ export async function handlePushUpdatesStream(request: Request) {
           return
         }
 
-        const { paths } = await request.json()
+        const { paths, operationId } = await request.json() as { paths: string[], operationId?: string }
         
         if (!paths || !Array.isArray(paths) || paths.length === 0) {
           sendEvent({ type: 'error', message: 'No paths provided' })
           controller.close()
           return
         }
+
+        // Helper to check if operation was cancelled
+        const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
 
         const s3 = new S3Client({
           region: 'auto',
@@ -1112,6 +1117,14 @@ export async function handlePushUpdatesStream(request: Request) {
         sendEvent({ type: 'start', total })
 
         for (let i = 0; i < paths.length; i++) {
+          // Check for cancellation before each file
+          if (isCancelled()) {
+            await saveMeta(meta)
+            if (operationId) clearCancelledOperation(operationId)
+            sendEvent({ type: 'complete', pushed: pushed.length, message: `Stopped. ${pushed.length} file${pushed.length !== 1 ? 's' : ''} pushed.`, cancelled: true })
+            controller.close()
+            return
+          }
           const itemPath = paths[i]
           const key = itemPath.startsWith('public/') ? '/' + itemPath.slice(7) : itemPath
           const entry = meta[key] as { c?: number; u?: 1; o?: { w: number; h: number }; b?: string; sm?: object; md?: object; lg?: object; f?: object } | undefined

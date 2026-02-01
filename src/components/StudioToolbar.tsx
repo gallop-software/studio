@@ -1105,12 +1105,36 @@ export function StudioToolbar() {
       status: 'processing',
     })
 
+    // Track if stop was requested
+    let stopRequested = false
+    
+    // Listen for abort signal to send cancel request (but don't kill the fetch)
+    const onAbort = async () => {
+      stopRequested = true
+      // Show "stopping" status immediately
+      setProgressState(prev => ({
+        ...prev,
+        status: 'stopping',
+      }))
+      // Send cancel request to server
+      try {
+        await fetch('/api/studio/cancel-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operationId }),
+        })
+      } catch {
+        // Ignore cancel request errors
+      }
+    }
+    abortController.signal.addEventListener('abort', onAbort)
+
     try {
       const response = await fetch('/api/studio/download-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageKeys, operationId }),
-        signal: abortController.signal,
+        // Don't pass signal - we want to receive the server's complete message
       })
 
       if (!response.ok || !response.body) {
@@ -1121,33 +1145,6 @@ export function StudioToolbar() {
       const decoder = new TextDecoder()
       let buffer = ''
       let downloadedCount = 0
-
-      // Listen for abort signal to cancel the reader and send cancel to server
-      const onAbort = async () => {
-        // Send cancel request to server
-        try {
-          await fetch('/api/studio/cancel-stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ operationId }),
-          })
-        } catch {
-          // Ignore cancel request errors
-        }
-        
-        reader.cancel()
-        // Show "Stopped" state with Done button - use downloadedCount for accurate count
-        setProgressState(prev => ({
-          ...prev,
-          status: 'stopped',
-          message: `Stopped. ${downloadedCount} file${downloadedCount !== 1 ? 's' : ''} downloaded.`,
-        }))
-        clearSelection()
-        triggerRefresh()
-        abortControllerRef.current = null
-        operationIdRef.current = null
-      }
-      abortController.signal.addEventListener('abort', onAbort)
 
       try {
         while (true) {
@@ -1176,18 +1173,21 @@ export function StudioToolbar() {
                   })
                 } else if (data.type === 'complete') {
                   downloadedCount = data.downloaded || data.total || imageKeys.length
+                  const wasCancelled = data.cancelled === true
                   // Show "X out of Y" if there's a difference between downloaded and total selected
                   let message = data.message
-                  if (downloadTotalSelected > downloadedCount) {
+                  if (!wasCancelled && downloadTotalSelected > downloadedCount) {
                     message = `${downloadedCount} file${downloadedCount !== 1 ? 's' : ''} downloaded out of ${downloadTotalSelected} selected.`
                   }
                   setProgressState({
                     current: downloadedCount,
                     total: downloadedCount,
                     percent: 100,
-                    status: 'complete',
+                    status: wasCancelled ? 'stopped' : 'complete',
                     message,
                   })
+                  clearSelection()
+                  triggerRefresh()
                 } else if (data.type === 'error') {
                   setProgressState({
                     current: 0,
@@ -1204,34 +1204,29 @@ export function StudioToolbar() {
           }
         }
 
-        // Only proceed if not aborted
-        if (!abortController.signal.aborted) {
-          clearSelection()
-          triggerRefresh()
-        }
       } catch (error) {
-        // Ignore errors if aborted (reader.cancel() throws)
-        if (!abortController.signal.aborted) {
+        // Only throw if not a stop request
+        if (!stopRequested) {
           throw error
         }
       } finally {
         abortController.signal.removeEventListener('abort', onAbort)
       }
     } catch (error) {
-      // Don't show error if aborted
-      if (abortController.signal.aborted) {
-        return
+      // Only show error if not a stop request
+      if (!stopRequested) {
+        console.error('Download error:', error)
+        setProgressState({
+          current: 0,
+          total: 0,
+          percent: 0,
+          status: 'error',
+          message: 'Failed to download from CDN.',
+        })
       }
-      console.error('Download error:', error)
-      setProgressState({
-        current: 0,
-        total: 0,
-        percent: 0,
-        status: 'error',
-        message: 'Failed to download from CDN.',
-      })
     } finally {
       abortControllerRef.current = null
+      operationIdRef.current = null
     }
   }, [downloadableFiles, downloadTotalSelected, clearSelection, triggerRefresh, actionState.showDownloadConfirm, actionState.actionPaths, cancelAction])
 
@@ -1255,6 +1250,37 @@ export function StudioToolbar() {
       return
     }
 
+    // Create abort controller for stopping
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    
+    // Generate unique operation ID for server-side cancellation
+    const operationId = `push-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    
+    // Track if stop was requested
+    let stopRequested = false
+    
+    // Listen for abort signal to send cancel request (but don't kill the fetch)
+    const onAbort = async () => {
+      stopRequested = true
+      // Show "stopping" status immediately
+      setProgressState(prev => ({
+        ...prev,
+        status: 'stopping',
+      }))
+      // Send cancel request to server
+      try {
+        await fetch('/api/studio/cancel-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operationId }),
+        })
+      } catch {
+        // Ignore cancel request errors
+      }
+    }
+    abortController.signal.addEventListener('abort', onAbort)
+
     // Show progress modal
     setProgressTitle('Pushing Updates')
     setShowProgress(true)
@@ -1269,7 +1295,8 @@ export function StudioToolbar() {
       const response = await fetch('/api/studio/push-updates-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: updatePaths }),
+        body: JSON.stringify({ paths: updatePaths, operationId }),
+        // Don't pass signal - we want to receive the server's complete message
       })
 
       const reader = response.body?.getReader()
@@ -1278,65 +1305,77 @@ export function StudioToolbar() {
       const decoder = new TextDecoder()
       let buffer = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const data = JSON.parse(line.slice(6))
-            if (data.type === 'progress') {
-              setProgressState({
-                current: data.current,
-                total: data.total,
-                percent: data.percent,
-                status: 'processing',
-                currentFile: data.currentFile,
-              })
-            } else if (data.type === 'cleanup') {
-              setProgressState(prev => ({
-                ...prev,
-                message: data.message,
-              }))
-            } else if (data.type === 'complete') {
-              setProgressState({
-                current: data.total || updatePaths.length,
-                total: data.total || updatePaths.length,
-                percent: 100,
-                status: 'complete',
-                message: data.message,
-              })
-            } else if (data.type === 'error') {
-              setProgressState({
-                current: 0,
-                total: 0,
-                percent: 0,
-                status: 'error',
-                message: data.message,
-              })
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.type === 'progress') {
+                setProgressState({
+                  current: data.current,
+                  total: data.total,
+                  percent: data.percent,
+                  status: 'processing',
+                  currentFile: data.currentFile,
+                })
+              } else if (data.type === 'cleanup') {
+                setProgressState(prev => ({
+                  ...prev,
+                  message: data.message,
+                }))
+              } else if (data.type === 'complete') {
+                const wasCancelled = data.cancelled === true
+                setProgressState({
+                  current: data.pushed || data.total || updatePaths.length,
+                  total: data.pushed || data.total || updatePaths.length,
+                  percent: 100,
+                  status: wasCancelled ? 'stopped' : 'complete',
+                  message: data.message,
+                })
+                clearSelection()
+                triggerRefresh()
+              } else if (data.type === 'error') {
+                setProgressState({
+                  current: 0,
+                  total: 0,
+                  percent: 0,
+                  status: 'error',
+                  message: data.message,
+                })
+              }
+            } catch {
+              // Parse error, skip
             }
-          } catch {
-            // Parse error, skip
           }
         }
+      } catch (error) {
+        if (!stopRequested) {
+          throw error
+        }
+      } finally {
+        abortController.signal.removeEventListener('abort', onAbort)
       }
-
-      clearSelection()
-      triggerRefresh()
     } catch (error) {
-      console.error('Push updates error:', error)
-      setProgressState({
-        current: 0,
-        total: 0,
-        percent: 0,
-        status: 'error',
-        message: 'Failed to push updates.',
-      })
+      if (!stopRequested) {
+        console.error('Push updates error:', error)
+        setProgressState({
+          current: 0,
+          total: 0,
+          percent: 0,
+          status: 'error',
+          message: 'Failed to push updates.',
+        })
+      }
+    } finally {
+      abortControllerRef.current = null
     }
   }, [selectedItems, fileItems, clearSelection, triggerRefresh])
 
@@ -2213,6 +2252,14 @@ export function StudioToolbar() {
             Scan
           </button>
 
+          <button
+            css={styles.btn}
+            onClick={triggerRefresh}
+            title="Refresh view"
+          >
+            <RefreshIcon />
+          </button>
+
           <div css={styles.viewToggle}>
             <button
               css={[styles.viewBtn, viewMode === 'grid' && styles.viewBtnActive]}
@@ -2247,6 +2294,14 @@ function ScanIcon({ spinning }: { spinning?: boolean }) {
   return (
     <svg css={[styles.icon, spinning && styles.iconSpin]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+  )
+}
+
+function RefreshIcon() {
+  return (
+    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
     </svg>
   )
 }
@@ -2303,14 +2358,6 @@ function CancelIcon() {
   return (
     <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  )
-}
-
-function RefreshIcon() {
-  return (
-    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
     </svg>
   )
 }
