@@ -312,7 +312,6 @@ export function StudioDetailView() {
     focusedItem, 
     setFocusedItem, 
     triggerRefresh,
-    refreshKey,
     fileItems,
     // Shared action handlers
     requestDelete,
@@ -350,11 +349,9 @@ export function StudioDetailView() {
   const relativePath = '/' + focusedItem.path.replace(/^public\//, '')
   
   // For preview: use CDN URL if pushed, otherwise use local path
-  const baseImageSrc = focusedItem.cdnPushed && focusedItem.cdnBaseUrl
+  const imageSrc = focusedItem.cdnPushed && focusedItem.cdnBaseUrl
     ? `${focusedItem.cdnBaseUrl}${relativePath}`
     : relativePath
-  // Add cache-busting parameter
-  const imageSrc = `${baseImageSrc}${baseImageSrc.includes('?') ? '&' : '?'}v=${refreshKey}`
   
   // For display URL: use CDN URL if pushed, otherwise use current origin
   const localOrigin = typeof window !== 'undefined' ? window.location.origin : ''

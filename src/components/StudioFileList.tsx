@@ -465,7 +465,6 @@ export function StudioFileList() {
     handleGenerateThumbnail,
     handleSelectAll,
     triggerScan,
-    refreshKey,
   } = useFileList()
 
   if (loading) {
@@ -551,7 +550,6 @@ export function StudioFileList() {
               onClick={(e) => handleItemClick(item, e)}
               onOpen={() => handleOpen(item)}
               onGenerateThumbnail={() => handleGenerateThumbnail(item)}
-              cacheKey={refreshKey}
             />
           ))}
         </tbody>
@@ -564,12 +562,11 @@ interface ListRowProps {
   item: FileItem
   isSelected: boolean
   onClick: (e: React.MouseEvent) => void
-  cacheKey: number
   onOpen: () => void
   onGenerateThumbnail: () => void
 }
 
-function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail, cacheKey }: ListRowProps) {
+function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: ListRowProps) {
   const [showCopied, setShowCopied] = useState(false)
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
@@ -632,7 +629,7 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail, cache
             )
           ) : isImage && item.thumbnail ? (
             <div css={styles.thumbnailWrapper}>
-              <img css={styles.thumbnail} src={`${item.thumbnail}${item.thumbnail.includes('?') ? '&' : '?'}v=${cacheKey}`} alt={item.name} loading="lazy" />
+              <img css={styles.thumbnail} src={item.thumbnail} alt={item.name} loading="lazy" />
             </div>
           ) : (
             <div css={styles.thumbnailWrapper}>
