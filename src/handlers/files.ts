@@ -372,7 +372,7 @@ export async function handleRename(request: Request) {
     }
 
     // Handle cloud-only file: use server-side copy in R2
-    if (isInOurR2 && !hasLocalFile && isImage) {
+    if (isInOurR2 && !hasLocalFile) {
       // Server-side rename in R2 (copy + delete, no download needed)
       await moveInCdn(oldKey, newKey, hasThumbnails)
       
@@ -587,12 +587,22 @@ export async function handleRenameStream(request: Request) {
 
           // Step 2: Update each item in the folder
           let renamed = 1
+          
+          // Helper for cleanup on cancel
+          const handleRenameCancel = async () => {
+            await saveMeta(meta)
+            // Clean up empty folders
+            await deleteEmptyFolders(absoluteOldPath)
+            const oldThumbFolder = path.join(getPublicPath('/images'), oldRelativePath)
+            await deleteEmptyFolders(oldThumbFolder)
+            sendEvent({ type: 'complete', renamed, newPath, cancelled: true })
+            controller.close()
+          }
+          
           for (const item of itemsToUpdate) {
             // Check for cancellation
             if (isCancelled()) {
-              await saveMeta(meta)
-              sendEvent({ type: 'complete', renamed, newPath, cancelled: true })
-              controller.close()
+              await handleRenameCancel()
               return
             }
             const { oldKey, newKey, entry } = item
@@ -620,6 +630,7 @@ export async function handleRenameStream(request: Request) {
             // Update meta entry
             delete meta[oldKey]
             meta[newKey] = entry
+            await saveMeta(meta)
 
             renamed++
             sendEvent({ 
@@ -630,9 +641,6 @@ export async function handleRenameStream(request: Request) {
               message: `Renamed ${path.basename(newKey)}` 
             })
           }
-
-          // Save meta
-          await saveMeta(meta)
 
           // Clean up empty folders (old folder location and old thumbnail location)
           await deleteEmptyFolders(absoluteOldPath)
@@ -656,7 +664,7 @@ export async function handleRenameStream(request: Request) {
         sendEvent({ type: 'start', total: 1, message: 'Renaming file...' })
 
         // Handle cloud-only file (server-side rename in R2)
-        if (isInOurR2 && !hasLocalItem && isImagePath) {
+        if (isInOurR2 && !hasLocalItem) {
           await moveInCdn(oldKey, newKey, hasThumbnails)
           
           delete meta[oldKey]
@@ -863,11 +871,26 @@ export async function handleMoveStream(request: Request) {
         sendEvent({ type: 'start', total: totalFiles })
         let processedFiles = 0
 
+        // Track individual files moved (for accurate count on cancel)
+        let filesMoved = 0
+        
+        // Helper to do cleanup and send cancel complete
+        const handleCancel = async () => {
+          await saveMeta(meta)
+          // Clean up empty source folders
+          for (const folder of sourceFolders) {
+            await deleteEmptyFolders(folder)
+          }
+          // Clean up destination if it became empty
+          await deleteEmptyFolders(absoluteDestination)
+          sendEvent({ type: 'complete', moved: filesMoved, errors: errors.length, errorMessages: errors, cancelled: true })
+          controller.close()
+        }
+        
         for (const expandedItem of expandedItems) {
           // Check for cancellation before processing each item
           if (isCancelled()) {
-            sendEvent({ type: 'complete', moved: moved.length, errors: errors.length, errorMessages: errors, cancelled: true })
-            controller.close()
+            await handleCancel()
             return
           }
 
@@ -878,8 +901,7 @@ export async function handleMoveStream(request: Request) {
             for (const vItem of virtualFolderItems) {
               // Check for cancellation before processing each virtual item
               if (isCancelled()) {
-                sendEvent({ type: 'complete', moved: moved.length, errors: errors.length, errorMessages: errors, cancelled: true })
-                controller.close()
+                await handleCancel()
                 return
               }
               const itemEntry = vItem.entry
@@ -895,10 +917,12 @@ export async function handleMoveStream(request: Request) {
                   // Server-side copy+delete in R2 (no download/upload needed)
                   await moveInCdn(vItem.oldKey, vItem.newKey, itemHasThumbnails)
                   vItemMoved = true
+                  filesMoved++
                 } catch (err) {
                   console.error(`Failed to move cloud item ${vItem.oldKey}:`, err)
                   // File doesn't exist on CDN - remove orphaned meta entry
                   delete meta[vItem.oldKey]
+                  await saveMeta(meta)
                 }
               }
               
@@ -906,6 +930,10 @@ export async function handleMoveStream(request: Request) {
               if (vItemMoved) {
                 delete meta[vItem.oldKey]
                 meta[vItem.newKey] = itemEntry
+                await saveMeta(meta)
+                // Track source folder for cleanup
+                const oldAbsPath = getPublicPath(vItem.oldKey)
+                sourceFolders.add(path.dirname(oldAbsPath))
               }
               
               processedFiles++
@@ -913,7 +941,7 @@ export async function handleMoveStream(request: Request) {
                 type: 'progress',
                 current: processedFiles,
                 total: totalFiles,
-                moved: moved.length,
+                moved: filesMoved,
                 percent: Math.round((processedFiles / totalFiles) * 100),
                 currentFile: path.basename(vItem.newKey),
               })
@@ -926,6 +954,9 @@ export async function handleMoveStream(request: Request) {
             // Clean up thumbnail folder
             const newThumbFolder = path.join(getPublicPath('images'), newKey.slice(1))
             await deleteEmptyFolders(newThumbFolder)
+            // Track old folder for cleanup
+            const oldFolderPath = getPublicPath(oldKey)
+            sourceFolders.add(oldFolderPath)
             
             moved.push(itemPath)
             continue
@@ -961,33 +992,38 @@ export async function handleMoveStream(request: Request) {
             const sourceFolder = path.dirname(getWorkspacePath(safePath))
             sourceFolders.add(sourceFolder)
 
-            if (isRemote && isImage) {
-              // ===== REMOTE IMAGE =====
+            if (isRemote) {
+              // ===== REMOTE FILE (external CDN) =====
+              // Download to local with new path
               const remoteUrl = `${fileCdnUrl}${oldKey}`
               const buffer = await downloadFromRemoteUrl(remoteUrl)
               
               await fs.mkdir(path.dirname(newAbsolutePath), { recursive: true })
               await fs.writeFile(newAbsolutePath, buffer)
               
+              // Create new entry without CDN reference (now local)
               const newEntry: MetaEntry = {
                 o: entry?.o,
                 b: entry?.b,
               }
               delete meta[oldKey]
               meta[newKey] = newEntry
+              await saveMeta(meta)
               moved.push(itemPath)
+              filesMoved++
               processedFiles++
               sendEvent({
                 type: 'progress',
                 current: processedFiles,
                 total: totalFiles,
-                moved: moved.length,
+                moved: filesMoved,
                 percent: Math.round((processedFiles / totalFiles) * 100),
                 currentFile: itemName,
               })
 
-            } else if (isPushedToR2 && isImage) {
-              // ===== CLOUD IMAGE (R2) - server-side move =====
+            } else if (isPushedToR2) {
+              // ===== CLOUD FILE (R2) - server-side move =====
+              // Works for both images and non-images
               await moveInCdn(oldKey, newKey, hasProcessedThumbnails)
               
               // Keep same entry, just update the key
@@ -995,13 +1031,15 @@ export async function handleMoveStream(request: Request) {
               if (entry) {
                 meta[newKey] = entry
               }
+              await saveMeta(meta)
               moved.push(itemPath)
+              filesMoved++
               processedFiles++
               sendEvent({
                 type: 'progress',
                 current: processedFiles,
                 total: totalFiles,
-                moved: moved.length,
+                moved: filesMoved,
                 percent: Math.round((processedFiles / totalFiles) * 100),
                 currentFile: itemName,
               })
@@ -1017,7 +1055,7 @@ export async function handleMoveStream(request: Request) {
                   type: 'progress',
                   current: processedFiles,
                   total: totalFiles,
-                  moved: moved.length,
+                  moved: filesMoved,
                   percent: Math.round((processedFiles / totalFiles) * 100),
                   currentFile: itemName,
                 })
@@ -1034,7 +1072,7 @@ export async function handleMoveStream(request: Request) {
                   type: 'progress',
                   current: processedFiles,
                   total: totalFiles,
-                  moved: moved.length,
+                  moved: filesMoved,
                   percent: Math.round((processedFiles / totalFiles) * 100),
                   currentFile: itemName,
                 })
@@ -1049,7 +1087,7 @@ export async function handleMoveStream(request: Request) {
                   type: 'progress',
                   current: processedFiles,
                   total: totalFiles,
-                  moved: moved.length,
+                  moved: filesMoved,
                   percent: Math.round((processedFiles / totalFiles) * 100),
                   currentFile: itemName,
                 })
@@ -1100,18 +1138,20 @@ export async function handleMoveStream(request: Request) {
 
                   delete meta[oldKey]
                   meta[newKey] = entry
+                  await saveMeta(meta)
                 }
                 
+                moved.push(itemPath)
+                filesMoved++
                 processedFiles++
                 sendEvent({
                   type: 'progress',
                   current: processedFiles,
                   total: totalFiles,
-                  moved: moved.length,
+                  moved: filesMoved,
                   percent: Math.round((processedFiles / totalFiles) * 100),
                   currentFile: itemName,
                 })
-                moved.push(itemPath)
                 
               } else if (stats.isDirectory()) {
                 // ===== LOCAL DIRECTORY - iterate through files =====
@@ -1158,9 +1198,7 @@ export async function handleMoveStream(request: Request) {
                 for (const localFile of localFiles) {
                   // Check for cancellation
                   if (isCancelled()) {
-                    await saveMeta(meta)
-                    sendEvent({ type: 'complete', moved: moved.length, errors: errors.length, errorMessages: errors, cancelled: true })
-                    controller.close()
+                    await handleCancel()
                     return
                   }
                   const fileOldPath = path.join(absolutePath, localFile.relativePath)
@@ -1175,6 +1213,7 @@ export async function handleMoveStream(request: Request) {
                   // Move the file
                   await fs.mkdir(path.dirname(fileNewPath), { recursive: true })
                   await fs.rename(fileOldPath, fileNewPath)
+                  filesMoved++
                   
                   if (localFile.isImage && fileEntry) {
                     // Move thumbnails
@@ -1205,6 +1244,7 @@ export async function handleMoveStream(request: Request) {
                     
                     delete meta[fileOldKey]
                     meta[fileNewKey] = fileEntry
+                    await saveMeta(meta)
                   }
                   
                   processedFiles++
@@ -1212,7 +1252,7 @@ export async function handleMoveStream(request: Request) {
                     type: 'progress',
                     current: processedFiles,
                     total: totalFiles,
-                    moved: moved.length,
+                    moved: filesMoved,
                     percent: Math.round((processedFiles / totalFiles) * 100),
                     currentFile: path.basename(localFile.relativePath),
                   })
@@ -1222,9 +1262,7 @@ export async function handleMoveStream(request: Request) {
                 for (const cloudFile of cloudOnlyFiles) {
                   // Check for cancellation
                   if (isCancelled()) {
-                    await saveMeta(meta)
-                    sendEvent({ type: 'complete', moved: moved.length, errors: errors.length, errorMessages: errors, cancelled: true })
-                    controller.close()
+                    await handleCancel()
                     return
                   }
                   const cloudEntry = cloudFile.entry
@@ -1240,10 +1278,12 @@ export async function handleMoveStream(request: Request) {
                       // Server-side copy+delete in R2 (no download/upload needed)
                       await moveInCdn(cloudFile.oldKey, cloudFile.newKey, cloudHasThumbs)
                       cloudFileMoved = true
+                      filesMoved++
                     } catch (err) {
                       console.error(`Failed to move cloud file ${cloudFile.oldKey}:`, err)
                       // File doesn't exist on CDN - remove from meta since it's orphaned
                       delete meta[cloudFile.oldKey]
+                      await saveMeta(meta)
                     }
                   }
                   
@@ -1251,6 +1291,7 @@ export async function handleMoveStream(request: Request) {
                   if (cloudFileMoved) {
                     delete meta[cloudFile.oldKey]
                     meta[cloudFile.newKey] = cloudEntry
+                    await saveMeta(meta)
                   }
                   
                   processedFiles++
@@ -1258,7 +1299,7 @@ export async function handleMoveStream(request: Request) {
                     type: 'progress',
                     current: processedFiles,
                     total: totalFiles,
-                    moved: moved.length,
+                    moved: filesMoved,
                     percent: Math.round((processedFiles / totalFiles) * 100),
                     currentFile: path.basename(cloudFile.newKey),
                   })
@@ -1283,7 +1324,7 @@ export async function handleMoveStream(request: Request) {
               type: 'progress',
               current: processedFiles,
               total: totalFiles,
-              moved: moved.length,
+              moved: filesMoved,
               percent: Math.round((processedFiles / totalFiles) * 100),
               currentFile: itemName,
             })
@@ -1303,7 +1344,7 @@ export async function handleMoveStream(request: Request) {
 
         sendEvent({
           type: 'complete',
-          moved: moved.length,
+          moved: filesMoved,
           errors: errors.length,
           errorMessages: errors,
         })
@@ -1387,8 +1428,8 @@ export async function handleMove(request: Request) {
       const hasProcessedThumbnails = isProcessed(entry)
 
       try {
-        if (isRemote && isImage) {
-          // ===== REMOTE IMAGE: Download from external URL, save locally, remove c =====
+        if (isRemote) {
+          // ===== REMOTE FILE: Download from external URL, save locally, remove c =====
           const remoteUrl = `${fileCdnUrl}${oldKey}`
           const buffer = await downloadFromRemoteUrl(remoteUrl)
           
@@ -1400,7 +1441,7 @@ export async function handleMove(request: Request) {
           const newEntry: MetaEntry = {
             o: entry?.o,
             b: entry?.b,
-            // Don't copy thumbnail dims since remote images don't have local thumbnails
+            // Don't copy thumbnail dims since remote files don't have local thumbnails
             // Don't copy c since it's now local
           }
           delete meta[oldKey]
@@ -1408,8 +1449,8 @@ export async function handleMove(request: Request) {
           metaChanged = true
           moved.push(itemPath)
 
-        } else if (isPushedToR2 && isImage) {
-          // ===== CLOUD IMAGE (R2): Server-side move =====
+        } else if (isPushedToR2) {
+          // ===== CLOUD FILE (R2): Server-side move =====
           await moveInCdn(oldKey, newKey, hasProcessedThumbnails)
           
           // Update meta with same entry, new key

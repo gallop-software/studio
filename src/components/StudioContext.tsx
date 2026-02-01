@@ -137,7 +137,6 @@ export interface StudioState {
   
   // Stop processing
   stopProcessing: () => void
-  abortController: AbortController | null
   
   // Delete orphans (from scan)
   deleteOrphans: () => Promise<void>
@@ -210,7 +209,6 @@ const defaultState: StudioState = {
   cancelAction: () => {},
   closeProgress: () => {},
   stopProcessing: () => {},
-  abortController: null,
   deleteOrphans: async () => {},
 }
 

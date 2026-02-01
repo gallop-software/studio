@@ -17,6 +17,11 @@ import { handleGenerateFavicon } from '../handlers/favicon'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
+// Get version from package.json
+const packageJsonPath = resolve(__dirname, '../../package.json')
+const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
+const version = packageJson.version
+
 export interface ServerOptions {
   port: number
   workspace: string
@@ -151,10 +156,11 @@ export async function startServer(options: ServerOptions) {
   app.use(express.static(clientDir))
 
   // Start server
+  const title = `Gallop - Studio (${version})`
   app.listen(port, () => {
     console.log(`
 ┌─────────────────────────────────────┐
-│  Studio - Media Manager             │
+│  ${title.padEnd(34)}│
 ├─────────────────────────────────────┤
 │  Workspace: ${workspace.length > 24 ? '...' + workspace.slice(-21) : workspace.padEnd(24)}│
 │  URL: http://localhost:${port}         │

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { ConfirmModal, AlertModal, ProgressModal, InputModal, type ProgressState } from './StudioModal'
+import { useStreamingOperation } from './useStreamingOperation'
 import { StudioFolderPicker } from './StudioFolderPicker'
 import { R2SetupModal } from './R2SetupModal'
 import { AddNewModal } from './AddNewModal'
@@ -326,6 +327,14 @@ export function StudioToolbar() {
   const cloudDropdownRef = useRef<HTMLDivElement>(null)
   const processDropdownRef = useRef<HTMLDivElement>(null)
 
+  // Unified streaming operation hook
+  const streamingOperation = useStreamingOperation({
+    setShowProgress,
+    setProgressTitle,
+    setProgressState,
+    triggerRefresh,
+  })
+
   // Check if we're in the images folder (uploads not allowed there)
   const isInImagesFolder = currentPath === 'public/images' || currentPath.startsWith('public/images/')
 
@@ -638,15 +647,17 @@ export function StudioToolbar() {
   }, [selectedItems, requestProcess, setProcessMode])
 
   const handleStopProcessing = useCallback(() => {
+    // Stop streaming operations via the hook
+    streamingOperation.stop()
+    // Also abort non-streaming operations (handleSyncConfirm)
     if (abortControllerRef.current) {
-      // Show "Stopping..." state
       setProgressState(prev => ({
         ...prev,
         status: 'stopping',
       }))
       abortControllerRef.current.abort()
     }
-  }, [])
+  }, [streamingOperation])
 
   const handleDeleteOrphans = useCallback(async () => {
     const orphanedFiles = progressState.orphanedFiles
@@ -1072,9 +1083,6 @@ export function StudioToolbar() {
     setShowDownloadConfirm(true)
   }, [selectedItems, fileItems])
 
-  // Track current operation ID for cancellation
-  const operationIdRef = useRef<string | null>(null)
-
   const handleDownloadConfirm = useCallback(async () => {
     setShowDownloadConfirm(false)
     
@@ -1083,152 +1091,17 @@ export function StudioToolbar() {
       cancelAction()
     }
     
-    // Create abort controller for stopping
-    const abortController = new AbortController()
-    abortControllerRef.current = abortController
-    
-    // Generate unique operation ID for server-side cancellation
-    const operationId = `download-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    operationIdRef.current = operationId
-    
     // Use actionPaths from shared state if triggered from detail view, otherwise use downloadableFiles
     const filesToDownload = actionState.showDownloadConfirm ? actionState.actionPaths : downloadableFiles
     const imageKeys = filesToDownload.map(p => '/' + p.replace(/^public\//, ''))
 
-    // Show progress modal
-    setProgressTitle('Downloading from CDN')
-    setShowProgress(true)
-    setProgressState({
-      current: 0,
-      total: imageKeys.length,
-      percent: 0,
-      status: 'processing',
+    await streamingOperation.execute({
+      endpoint: '/api/studio/download-stream',
+      body: { imageKeys },
+      title: 'Downloading from CDN',
+      onComplete: () => clearSelection(),
     })
-
-    // Track if stop was requested
-    let stopRequested = false
-    
-    // Listen for abort signal to send cancel request (but don't kill the fetch)
-    const onAbort = async () => {
-      stopRequested = true
-      // Show "stopping" status immediately
-      setProgressState(prev => ({
-        ...prev,
-        status: 'stopping',
-      }))
-      // Send cancel request to server
-      try {
-        await fetch('/api/studio/cancel-stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operationId }),
-        })
-      } catch {
-        // Ignore cancel request errors
-      }
-    }
-    abortController.signal.addEventListener('abort', onAbort)
-
-    try {
-      const response = await fetch('/api/studio/download-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageKeys, operationId }),
-        // Don't pass signal - we want to receive the server's complete message
-      })
-
-      if (!response.ok || !response.body) {
-        throw new Error('Download request failed')
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let downloadedCount = 0
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6))
-                if (data.type === 'progress') {
-                  // Track actual downloaded count (not just iteration count)
-                  if (data.downloaded !== undefined) {
-                    downloadedCount = data.downloaded
-                  }
-                  setProgressState({
-                    current: data.current,
-                    total: data.total,
-                    percent: Math.round((data.current / data.total) * 100),
-                    status: 'processing',
-                    message: data.message,
-                  })
-                } else if (data.type === 'complete') {
-                  downloadedCount = data.downloaded || data.total || imageKeys.length
-                  const wasCancelled = data.cancelled === true
-                  // Show "X out of Y" if there's a difference between downloaded and total selected
-                  let message = data.message
-                  if (!wasCancelled && downloadTotalSelected > downloadedCount) {
-                    message = `${downloadedCount} file${downloadedCount !== 1 ? 's' : ''} downloaded out of ${downloadTotalSelected} selected.`
-                  }
-                  setProgressState({
-                    current: downloadedCount,
-                    total: downloadedCount,
-                    percent: 100,
-                    status: wasCancelled ? 'stopped' : 'complete',
-                    message,
-                  })
-                  clearSelection()
-                  triggerRefresh()
-                } else if (data.type === 'error') {
-                  setProgressState({
-                    current: 0,
-                    total: 0,
-                    percent: 0,
-                    status: 'error',
-                    message: data.message,
-                  })
-                }
-              } catch {
-                // Ignore parse errors
-              }
-            }
-          }
-        }
-
-      } catch (error) {
-        // Only throw if not a stop request
-        if (!stopRequested) {
-          throw error
-        }
-      } finally {
-        abortController.signal.removeEventListener('abort', onAbort)
-      }
-    } catch (error) {
-      // Only show error if not a stop request
-      if (!stopRequested) {
-        console.error('Download error:', error)
-        setProgressState({
-          current: 0,
-          total: 0,
-          percent: 0,
-          status: 'error',
-          message: 'Failed to download from CDN.',
-        })
-      }
-    } finally {
-      abortControllerRef.current = null
-      operationIdRef.current = null
-    }
-  }, [downloadableFiles, downloadTotalSelected, clearSelection, triggerRefresh, actionState.showDownloadConfirm, actionState.actionPaths, cancelAction])
+  }, [downloadableFiles, clearSelection, actionState.showDownloadConfirm, actionState.actionPaths, cancelAction, streamingOperation])
 
   // Push pending updates to cloud
   const handlePushUpdates = useCallback(async () => {
@@ -1250,134 +1123,13 @@ export function StudioToolbar() {
       return
     }
 
-    // Create abort controller for stopping
-    const abortController = new AbortController()
-    abortControllerRef.current = abortController
-    
-    // Generate unique operation ID for server-side cancellation
-    const operationId = `push-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    
-    // Track if stop was requested
-    let stopRequested = false
-    
-    // Listen for abort signal to send cancel request (but don't kill the fetch)
-    const onAbort = async () => {
-      stopRequested = true
-      // Show "stopping" status immediately
-      setProgressState(prev => ({
-        ...prev,
-        status: 'stopping',
-      }))
-      // Send cancel request to server
-      try {
-        await fetch('/api/studio/cancel-stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operationId }),
-        })
-      } catch {
-        // Ignore cancel request errors
-      }
-    }
-    abortController.signal.addEventListener('abort', onAbort)
-
-    // Show progress modal
-    setProgressTitle('Pushing Updates')
-    setShowProgress(true)
-    setProgressState({
-      current: 0,
-      total: updatePaths.length,
-      percent: 0,
-      status: 'processing',
+    await streamingOperation.execute({
+      endpoint: '/api/studio/push-updates-stream',
+      body: { paths: updatePaths },
+      title: 'Pushing Updates',
+      onComplete: () => clearSelection(),
     })
-
-    try {
-      const response = await fetch('/api/studio/push-updates-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: updatePaths, operationId }),
-        // Don't pass signal - we want to receive the server's complete message
-      })
-
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('No response body')
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.type === 'progress') {
-                setProgressState({
-                  current: data.current,
-                  total: data.total,
-                  percent: data.percent,
-                  status: 'processing',
-                  currentFile: data.currentFile,
-                })
-              } else if (data.type === 'cleanup') {
-                setProgressState(prev => ({
-                  ...prev,
-                  message: data.message,
-                }))
-              } else if (data.type === 'complete') {
-                const wasCancelled = data.cancelled === true
-                setProgressState({
-                  current: data.pushed || data.total || updatePaths.length,
-                  total: data.pushed || data.total || updatePaths.length,
-                  percent: 100,
-                  status: wasCancelled ? 'stopped' : 'complete',
-                  message: data.message,
-                })
-                clearSelection()
-                triggerRefresh()
-              } else if (data.type === 'error') {
-                setProgressState({
-                  current: 0,
-                  total: 0,
-                  percent: 0,
-                  status: 'error',
-                  message: data.message,
-                })
-              }
-            } catch {
-              // Parse error, skip
-            }
-          }
-        }
-      } catch (error) {
-        if (!stopRequested) {
-          throw error
-        }
-      } finally {
-        abortController.signal.removeEventListener('abort', onAbort)
-      }
-    } catch (error) {
-      if (!stopRequested) {
-        console.error('Push updates error:', error)
-        setProgressState({
-          current: 0,
-          total: 0,
-          percent: 0,
-          status: 'error',
-          message: 'Failed to push updates.',
-        })
-      }
-    } finally {
-      abortControllerRef.current = null
-    }
-  }, [selectedItems, fileItems, clearSelection, triggerRefresh])
+  }, [selectedItems, fileItems, clearSelection, streamingOperation])
 
   // Cancel pending updates (delete local files)
   const handleCancelUpdates = useCallback(async () => {
@@ -1455,140 +1207,13 @@ export function StudioToolbar() {
   const handleMoveConfirm = useCallback(async (destination: string) => {
     const paths = Array.from(selectedItems)
     
-    // Create abort controller for stopping
-    const abortController = new AbortController()
-    abortControllerRef.current = abortController
-    
-    // Generate operation ID for server-side cancellation
-    const operationId = `move-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    operationIdRef.current = operationId
-    
-    // Show progress modal
-    setProgressTitle('Moving Files')
-    setShowProgress(true)
-    setProgressState({
-      current: 0,
-      total: paths.length,
-      percent: 0,
-      status: 'processing',
+    await streamingOperation.execute({
+      endpoint: '/api/studio/move',
+      body: { paths, destination },
+      title: 'Moving Files',
+      onComplete: () => clearSelection(),
     })
-
-    let movedCount = 0
-
-    try {
-      const response = await fetch('/api/studio/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths, destination, operationId }),
-        signal: abortController.signal,
-      })
-
-      if (!response.body) {
-        throw new Error('No response body')
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      // Listen for abort signal to cancel the reader and send cancel to server
-      const onAbort = async () => {
-        // Send cancel request to server
-        try {
-          await fetch('/api/studio/cancel-stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ operationId }),
-          })
-        } catch {
-          // Ignore cancel request errors
-        }
-        
-        reader.cancel()
-        // Show "Stopped" state with Done button
-        setProgressState(prev => ({
-          ...prev,
-          status: 'stopped',
-          message: `Stopped. ${movedCount} file${movedCount !== 1 ? 's' : ''} moved.`,
-        }))
-        clearSelection()
-        triggerRefresh()
-        abortControllerRef.current = null
-        operationIdRef.current = null
-      }
-      abortController.signal.addEventListener('abort', onAbort)
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            try {
-              const data = JSON.parse(line.slice(6))
-
-              if (data.type === 'start') {
-                setProgressState(prev => ({ ...prev, total: data.total }))
-              } else if (data.type === 'progress') {
-                movedCount = data.current
-                setProgressState({
-                  current: data.current,
-                  total: data.total,
-                  percent: data.percent,
-                  currentFile: data.currentFile,
-                  status: 'processing',
-                })
-              } else if (data.type === 'complete') {
-                setProgressState(prev => ({
-                  ...prev,
-                  status: 'complete',
-                  processed: data.moved,
-                  errors: data.errors,
-                  errorMessages: data.errorMessages,
-                  isMove: true,
-                }))
-                clearSelection()
-                triggerRefresh()
-              } else if (data.type === 'error') {
-                setProgressState(prev => ({
-                  ...prev,
-                  status: 'error',
-                  errorMessage: data.message,
-                }))
-              }
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-      } catch (error) {
-        // Ignore errors if aborted (reader.cancel() throws)
-        if (!abortController.signal.aborted) {
-          throw error
-        }
-      } finally {
-        abortController.signal.removeEventListener('abort', onAbort)
-      }
-    } catch (error) {
-      // Don't show error if aborted
-      if (abortController.signal.aborted) {
-        abortControllerRef.current = null
-        return
-      }
-      console.error('Move error:', error)
-      setProgressState(prev => ({
-        ...prev,
-        status: 'error',
-        errorMessage: 'Failed to move items. Check console for details.',
-      }))
-    }
-    abortControllerRef.current = null
-  }, [selectedItems, clearSelection, triggerRefresh])
+  }, [selectedItems, clearSelection, streamingOperation])
 
   const { searchQuery, setSearchQuery } = useStudio()
   
@@ -1641,287 +1266,25 @@ export function StudioToolbar() {
     if (!selectedFolderPath) return
     setShowRenameFolderModal(false)
     
-    // Create abort controller for stopping
-    const abortController = new AbortController()
-    abortControllerRef.current = abortController
-    
-    // Generate operation ID for server-side cancellation
-    const operationId = `rename-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    operationIdRef.current = operationId
-    
-    setProgressTitle('Renaming Folder')
-    setShowProgress(true)
-    setProgressState({
-      current: 0,
-      total: 0,
-      percent: 0,
-      status: 'processing',
-      message: 'Preparing rename...',
+    await streamingOperation.execute({
+      endpoint: '/api/studio/rename-stream',
+      body: { oldPath: selectedFolderPath, newName },
+      title: 'Renaming Folder',
+      onComplete: () => clearSelection(),
     })
-
-    let renamedCount = 0
-
-    try {
-      const response = await fetch('/api/studio/rename-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPath: selectedFolderPath, newName, operationId }),
-        signal: abortController.signal,
-      })
-
-      if (!response.body) {
-        throw new Error('No response body')
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      // Listen for abort signal to cancel the reader and send cancel to server
-      const onAbort = async () => {
-        // Send cancel request to server
-        try {
-          await fetch('/api/studio/cancel-stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ operationId }),
-          })
-        } catch {
-          // Ignore cancel request errors
-        }
-        
-        reader.cancel()
-        setProgressState(prev => ({
-          ...prev,
-          status: 'stopped',
-          message: `Stopped. ${renamedCount} item${renamedCount !== 1 ? 's' : ''} renamed.`,
-        }))
-        clearSelection()
-        triggerRefresh()
-        abortControllerRef.current = null
-        operationIdRef.current = null
-      }
-      abortController.signal.addEventListener('abort', onAbort)
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            const data = JSON.parse(line.slice(6))
-
-            if (data.type === 'start') {
-              setProgressState({
-                current: 0,
-                total: data.total,
-                percent: 0,
-                status: 'processing',
-                message: data.message,
-              })
-            } else if (data.type === 'progress') {
-              renamedCount = data.renamed ?? data.current
-              setProgressState({
-                current: data.current,
-                total: data.total,
-                percent: Math.round((data.current / data.total) * 100),
-                status: 'processing',
-                message: data.message,
-              })
-            } else if (data.type === 'complete') {
-              setProgressState({
-                current: data.renamed,
-                total: data.renamed,
-                percent: 100,
-                status: 'complete',
-                message: `Renamed ${data.renamed} item(s)`,
-              })
-            } else if (data.type === 'error') {
-              setProgressState(prev => ({
-                ...prev,
-                status: 'error',
-                message: data.message,
-              }))
-            }
-          }
-        }
-
-        // Only proceed if not aborted
-        if (!abortController.signal.aborted) {
-          clearSelection()
-          triggerRefresh()
-        }
-      } catch (error) {
-        // Ignore errors if aborted (reader.cancel() throws)
-        if (!abortController.signal.aborted) {
-          throw error
-        }
-      } finally {
-        abortController.signal.removeEventListener('abort', onAbort)
-      }
-    } catch (error) {
-      // Don't show error if aborted
-      if (abortController.signal.aborted) {
-        abortControllerRef.current = null
-        return
-      }
-      console.error('Failed to rename folder:', error)
-      setProgressState(prev => ({
-        ...prev,
-        status: 'error',
-        message: 'Failed to rename folder',
-      }))
-    }
-    abortControllerRef.current = null
-  }, [selectedFolderPath, clearSelection, triggerRefresh])
+  }, [selectedFolderPath, clearSelection, streamingOperation])
 
   const handleRenameFile = useCallback(async (newName: string) => {
     if (!selectedFilePath) return
     setShowRenameFileModal(false)
     
-    // Create abort controller for stopping
-    const abortController = new AbortController()
-    abortControllerRef.current = abortController
-    
-    // Generate operation ID for server-side cancellation
-    const operationId = `rename-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    operationIdRef.current = operationId
-    
-    setProgressTitle('Renaming File')
-    setShowProgress(true)
-    setProgressState({
-      current: 0,
-      total: 1,
-      percent: 0,
-      status: 'processing',
-      message: 'Renaming file...',
+    await streamingOperation.execute({
+      endpoint: '/api/studio/rename-stream',
+      body: { oldPath: selectedFilePath, newName },
+      title: 'Renaming File',
+      onComplete: () => clearSelection(),
     })
-
-    let renamedCount = 0
-
-    try {
-      const response = await fetch('/api/studio/rename-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPath: selectedFilePath, newName, operationId }),
-        signal: abortController.signal,
-      })
-
-      if (!response.body) {
-        throw new Error('No response body')
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      // Listen for abort signal to cancel the reader and send cancel to server
-      const onAbort = async () => {
-        // Send cancel request to server
-        try {
-          await fetch('/api/studio/cancel-stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ operationId }),
-          })
-        } catch {
-          // Ignore cancel request errors
-        }
-        
-        reader.cancel()
-        setProgressState(prev => ({
-          ...prev,
-          status: 'stopped',
-          message: `Stopped. ${renamedCount} item${renamedCount !== 1 ? 's' : ''} renamed.`,
-        }))
-        clearSelection()
-        triggerRefresh()
-        abortControllerRef.current = null
-        operationIdRef.current = null
-      }
-      abortController.signal.addEventListener('abort', onAbort)
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            const data = JSON.parse(line.slice(6))
-
-            if (data.type === 'start') {
-              setProgressState({
-                current: 0,
-                total: data.total,
-                percent: 0,
-                status: 'processing',
-                message: data.message,
-              })
-            } else if (data.type === 'progress') {
-              renamedCount = data.renamed ?? data.current
-              setProgressState({
-                current: data.current,
-                total: data.total,
-                percent: Math.round((data.current / data.total) * 100),
-                status: 'processing',
-                message: data.message,
-              })
-            } else if (data.type === 'complete') {
-              setProgressState({
-                current: data.renamed,
-                total: data.renamed,
-                percent: 100,
-                status: 'complete',
-                message: `Renamed ${data.renamed} item(s)`,
-              })
-            } else if (data.type === 'error') {
-              setProgressState(prev => ({
-                ...prev,
-                status: 'error',
-                message: data.message,
-              }))
-            }
-          }
-        }
-
-        // Only proceed if not aborted
-        if (!abortController.signal.aborted) {
-          clearSelection()
-          triggerRefresh()
-        }
-      } catch (error) {
-        // Ignore errors if aborted (reader.cancel() throws)
-        if (!abortController.signal.aborted) {
-          throw error
-        }
-      } finally {
-        abortController.signal.removeEventListener('abort', onAbort)
-      }
-    } catch (error) {
-      // Don't show error if aborted
-      if (abortController.signal.aborted) {
-        abortControllerRef.current = null
-        return
-      }
-      console.error('Failed to rename file:', error)
-      setProgressState(prev => ({
-        ...prev,
-        status: 'error',
-        message: 'Failed to rename file',
-      }))
-    }
-    abortControllerRef.current = null
-  }, [selectedFilePath, clearSelection, triggerRefresh])
+  }, [selectedFilePath, clearSelection, streamingOperation])
 
   // Modals that can be triggered from detail view need to render even when focusedItem is set
   const sharedModals = (

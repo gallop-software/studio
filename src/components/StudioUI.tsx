@@ -432,7 +432,6 @@ export function StudioUI({
     cancelAction: actions.cancelAction,
     closeProgress: actions.closeProgress,
     stopProcessing: actions.stopProcessing,
-    abortController: actions.abortController,
     deleteOrphans: actions.deleteOrphans,
   }
 

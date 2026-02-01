@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import type { ActionState, ProgressState } from './StudioContext'
 import type { FileItem } from '../types'
+import { useStreamingOperation } from './useStreamingOperation'
 
 const defaultActionState: ActionState = {
   showProgress: false,
@@ -36,7 +37,6 @@ export function useStudioActions({
   showError,
 }: UseStudioActionsProps) {
   const [actionState, setActionState] = useState<ActionState>(defaultActionState)
-  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Helper to update progress state
   const setProgressState = useCallback((update: Partial<ProgressState> | ((prev: ProgressState) => ProgressState)) => {
@@ -47,6 +47,30 @@ export function useStudioActions({
         : { ...prev.progressState, ...update }
     }))
   }, [])
+
+  // Helper to show/hide progress modal
+  const setShowProgress = useCallback((show: boolean) => {
+    setActionState(prev => ({
+      ...prev,
+      showProgress: show,
+    }))
+  }, [])
+
+  // Helper to set progress title
+  const setProgressTitle = useCallback((title: string) => {
+    setActionState(prev => ({
+      ...prev,
+      progressTitle: title,
+    }))
+  }, [])
+
+  // Unified streaming operation hook
+  const streamingOperation = useStreamingOperation({
+    setShowProgress,
+    setProgressTitle,
+    setProgressState,
+    triggerRefresh,
+  })
 
   // Request handlers (show confirmation modals)
   const requestDelete = useCallback((paths: string[]) => {
@@ -147,10 +171,8 @@ export function useStudioActions({
 
   // Stop processing
   const stopProcessing = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
-  }, [])
+    streamingOperation.stop()
+  }, [streamingOperation])
 
   // Confirm delete
   const confirmDelete = useCallback(async () => {
@@ -184,94 +206,21 @@ export function useStudioActions({
     setActionState(prev => ({
       ...prev,
       showMoveModal: false,
-      showProgress: true,
-      progressTitle: 'Moving Files',
-      progressState: {
-        current: 0,
-        total: paths.length,
-        percent: 0,
-        status: 'processing',
-        message: 'Moving files...',
-      },
     }))
 
-    try {
-      const response = await fetch('/api/studio/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths, destination }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        setProgressState({
-          status: 'error',
-          message: error.error || 'Move failed',
-        })
-        return
-      }
-
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (reader) {
-        let buffer = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6))
-                
-                if (data.type === 'start') {
-                  setProgressState(prev => ({ ...prev, total: data.total }))
-                } else if (data.type === 'progress') {
-                  setProgressState({
-                    current: data.current,
-                    total: data.total,
-                    percent: Math.round((data.current / data.total) * 100),
-                    status: 'processing',
-                    message: data.message,
-                  })
-                } else if (data.type === 'complete') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    status: 'complete',
-                    message: `Moved ${data.moved} file${data.moved !== 1 ? 's' : ''}${data.errors > 0 ? `, ${data.errors} error${data.errors !== 1 ? 's' : ''}` : ''}`,
-                  }))
-                  if (data.errors > 0 && data.errorMessages?.length > 0) {
-                    showError('Move Failed', data.errorMessages.join('\n'))
-                  }
-                  clearSelection()
-                  setFocusedItem(null)
-                  triggerRefresh()
-                } else if (data.type === 'error') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    status: 'error',
-                    message: data.message || 'Unknown error',
-                  }))
-                }
-              } catch { /* ignore parse errors */ }
-            }
-          }
+    await streamingOperation.execute({
+      endpoint: '/api/studio/move',
+      body: { paths, destination },
+      title: 'Moving Files',
+      onComplete: (event) => {
+        if (event.errors && event.errors > 0 && event.errorMessages?.length) {
+          showError('Move Failed', event.errorMessages.join('\n'))
         }
-      }
-    } catch (error) {
-      console.error('Move error:', error)
-      setProgressState(prev => ({
-        ...prev,
-        status: 'error',
-        message: 'Failed to move files. Check console for details.',
-      }))
-    }
-  }, [actionState.actionPaths, clearSelection, setFocusedItem, triggerRefresh, showError, setProgressState])
+        clearSelection()
+        setFocusedItem(null)
+      },
+    })
+  }, [actionState.actionPaths, clearSelection, setFocusedItem, showError, streamingOperation])
 
   // Confirm sync (push to CDN)
   const confirmSync = useCallback(async () => {
@@ -352,146 +301,19 @@ export function useStudioActions({
     
     const isRemove = mode === 'remove'
     const endpoint = isRemove ? '/api/studio/unprocess-stream' : '/api/studio/reprocess-stream'
-    const progressTitle = isRemove ? 'Removing Thumbnails' : 'Generating Thumbnails'
-    const progressMessage = isRemove ? 'Removing thumbnails...' : 'Generating thumbnails...'
-    
-    // Generate unique operation ID for server-side cancellation
-    const operationId = `process-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const title = isRemove ? 'Removing Thumbnails' : 'Generating Thumbnails'
     
     setActionState(prev => ({
       ...prev,
       showProcessConfirm: false,
-      showProgress: true,
-      progressTitle,
-      progressState: {
-        current: 0,
-        total: imageKeys.length,
-        percent: 0,
-        status: 'processing',
-        message: progressMessage,
-      },
     }))
 
-    abortControllerRef.current = new AbortController()
-    const signal = abortControllerRef.current.signal
-    
-    // Track if stop was requested (don't abort fetch - let server finish current item)
-    let stopRequested = false
-    
-    // Send cancel request to server when aborted (but don't kill the fetch)
-    const onAbort = async () => {
-      stopRequested = true
-      // Show "stopping" status immediately
-      setProgressState({ status: 'stopping' })
-      try {
-        await fetch('/api/studio/cancel-stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operationId }),
-        })
-      } catch {
-        // Ignore cancel request errors
-      }
-    }
-    signal.addEventListener('abort', onAbort)
-
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageKeys, operationId }),
-        // Don't pass signal - we want to receive the server's complete message
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        setProgressState({
-          current: 0,
-          total: imageKeys.length,
-          percent: 0,
-          status: 'error',
-          message: error.error || (isRemove ? 'Failed to remove thumbnails' : 'Processing failed'),
-        })
-        return
-      }
-
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (reader) {
-        let buffer = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6))
-                
-                if (data.type === 'start') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    total: data.total,
-                  }))
-                } else if (data.type === 'progress') {
-                  setProgressState({
-                    current: data.current,
-                    total: data.total,
-                    percent: data.percent,
-                    status: 'processing',
-                    message: data.message,
-                  })
-                } else if (data.type === 'cleanup') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    status: 'cleanup',
-                    message: data.message,
-                  }))
-                } else if (data.type === 'complete') {
-                  // Handle cancelled completion vs normal completion
-                  const wasCancelled = data.cancelled === true
-                  setProgressState({
-                    current: data.processed,
-                    total: data.processed,
-                    percent: 100,
-                    status: wasCancelled ? 'stopped' : (data.errors > 0 ? 'error' : 'complete'),
-                    message: data.message,
-                  })
-                  triggerRefresh()
-                } else if (data.type === 'error') {
-                  setProgressState(prev => ({
-                    ...prev,
-                    status: 'error',
-                    message: data.message,
-                  }))
-                }
-              } catch { /* ignore parse errors */ }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      // Only show error if it wasn't a user-initiated stop
-      if (!stopRequested) {
-        console.error('Processing error:', error)
-        setProgressState({
-          current: 0,
-          total: imageKeys.length,
-          percent: 0,
-          status: 'error',
-          message: isRemove ? 'Failed to remove thumbnails. Check console for details.' : 'Processing failed. Check console for details.',
-        })
-      }
-    } finally {
-      signal.removeEventListener('abort', onAbort)
-      abortControllerRef.current = null
-    }
-  }, [actionState.actionPaths, actionState.processMode, triggerRefresh, setProgressState])
+    await streamingOperation.execute({
+      endpoint,
+      body: { imageKeys },
+      title,
+    })
+  }, [actionState.actionPaths, actionState.processMode, streamingOperation])
 
   // Delete orphans
   const deleteOrphans = useCallback(async () => {
@@ -525,7 +347,6 @@ export function useStudioActions({
   return {
     actionState,
     setActionState,
-    abortController: abortControllerRef.current,
     requestDelete,
     requestMove,
     requestSync,

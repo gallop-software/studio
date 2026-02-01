@@ -189,6 +189,11 @@ export async function handleScanStream() {
             
             existingKeys.add(imageKey)
             added.push(imageKey)
+            
+            // Save meta periodically (every 10 files) to avoid losing progress on crash
+            if (added.length % 10 === 0) {
+              await saveMeta(meta)
+            }
           } catch (error) {
             console.error(`Failed to process ${relativePath}:`, error)
             errors.push(relativePath)

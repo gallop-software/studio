@@ -172,14 +172,15 @@ export async function handleSync(request: Request) {
           try { await fs.unlink(originalLocalPath) } catch { /* ignore */ }
         }
 
+        // Save meta after each successful push
+        await saveMeta(meta)
+
         pushed.push(imageKey)
       } catch (error) {
         console.error(`Failed to push ${imageKey}:`, error)
         errors.push(`Failed to push: ${imageKey}`)
       }
     }
-
-    await saveMeta(meta)
     
     // Clean up empty source folders
     for (const folder of sourceFolders) {
@@ -398,6 +399,9 @@ export async function handleUnprocessStream(request: Request) {
               ...(entry.c !== undefined ? { c: entry.c } : {}),
             }
             
+            // Save meta after each successful removal
+            await saveMeta(meta)
+            
             removed.push(imageKey)
             sendEvent({ 
               type: 'progress', 
@@ -594,6 +598,9 @@ export async function handleReprocessStream(request: Request) {
               
               meta[imageKey] = updatedEntry
             }
+            
+            // Save meta after each successful process
+            await saveMeta(meta)
             
             processed.push(imageKey)
             sendEvent({ 
@@ -986,7 +993,8 @@ export async function handleDownloadStream(request: Request) {
             // Write to local filesystem
             await fs.writeFile(localPath, imageBuffer)
             
-            // Delete thumbnails from R2
+            // Delete original and thumbnails from R2
+            await deleteOriginalFromCdn(imageKey)
             await deleteThumbnailsFromCdn(imageKey)
             
             // Check if image was processed (has thumbnails)
@@ -1004,6 +1012,9 @@ export async function handleDownloadStream(request: Request) {
               entry.lg = processedEntry.lg
               entry.f = processedEntry.f
             }
+            
+            // Save meta after each successful download
+            await saveMeta(meta)
             
             downloaded.push(imageKey)
             sendEvent({
@@ -1203,6 +1214,9 @@ export async function handlePushUpdatesStream(request: Request) {
 
             // Remove the update flag
             delete entry.u
+            
+            // Save meta after each successful push
+            await saveMeta(meta)
 
             pushed.push(key)
             sendEvent({
