@@ -849,160 +849,24 @@ export function StudioToolbar() {
     // Convert to file keys
     const imageKeys = selectedFilePaths.map(p => '/' + p.replace(/^public\//, ''))
 
-    // Show progress modal
-    // Create abort controller for stopping
-    const abortController = new AbortController()
-    abortControllerRef.current = abortController
+    if (imageKeys.length === 0) return
 
-    setProgressTitle('Pushing to CDN')
-    setProgressState({
-      current: 0,
-      total: imageKeys.length,
-      percent: 0,
-      status: 'processing',
-      message: 'Pushing to CDN...',
-    })
-    setShowProgress(true)
-
-    let pushed = 0
-    let alreadyOnCdn = 0
-    let errors = 0
-    const errorMessages: string[] = []
-
-    try {
-      // Push images one by one for progress tracking
-      for (let i = 0; i < imageKeys.length; i++) {
-        // Check if aborted
-        if (abortController.signal.aborted) {
-          // Show "Stopped" state with Done button
-          setProgressState(prev => ({
-            ...prev,
-            status: 'stopped',
-            message: `Stopped. ${pushed} file${pushed !== 1 ? 's' : ''} pushed.`,
-          }))
-          clearSelection()
-          triggerRefresh()
-          abortControllerRef.current = null
-          return
-        }
-
-        const imageKey = imageKeys[i]
-
-        // Retry logic for transient network errors
-        let success = false
-        let wasAlreadyPushed = false
-        let lastError: string | undefined
-        
-        for (let attempt = 0; attempt < 3 && !success; attempt++) {
-          // Check if aborted before each attempt
-          if (abortController.signal.aborted) break
-
-          try {
-            const response = await fetch('/api/studio/sync', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ imageKeys: [imageKey] }),
-              signal: abortController.signal,
-            })
-
-            const data = await response.json()
-
-            if (!response.ok) {
-              // Check if it's an R2 configuration error
-              if (data.error?.includes('R2 not configured') || data.error?.includes('CLOUDFLARE_R2')) {
-                setShowProgress(false)
-                setShowR2SetupModal(true)
-                return
-              }
-              lastError = data.error || `Failed: ${imageKey}`
-            } else if (data.pushed?.length > 0) {
-              pushed++
-              success = true
-            } else if (data.alreadyPushed?.length > 0) {
-              wasAlreadyPushed = true
-              success = true
-            } else if (data.errors?.length > 0) {
-              // Server-side errors from handler
-              for (const errMsg of data.errors) {
-                lastError = errMsg
-              }
-            } else {
-              // No action needed
-              success = true
-            }
-          } catch (err) {
-            lastError = `Network error: ${imageKey}`
-            // Wait before retry (exponential backoff: 500ms, 1s)
-            if (attempt < 2) {
-              await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
-            }
-          }
-        }
-        
-        if (wasAlreadyPushed) {
-          alreadyOnCdn++
-        } else if (!success && lastError) {
-          errors++
-          errorMessages.push(lastError)
-        }
-
-        // Update progress AFTER processing each file
-        setProgressState({
-          current: i + 1,
-          total: imageKeys.length,
-          percent: Math.round(((i + 1) / imageKeys.length) * 100),
-          status: 'processing',
-          currentFile: imageKey.replace(/^\//, ''),
-        })
-      }
-
-      // If aborted, don't show complete message (already shown stopped message)
-      if (abortController.signal.aborted) {
+    await streamingOperation.execute({
+      endpoint: '/api/studio/sync-stream',
+      body: { imageKeys },
+      title: 'Pushing to CDN',
+      onComplete: () => {
         clearSelection()
-        triggerRefresh()
-        abortControllerRef.current = null
-        return
-      }
-
-      // Build completion message
-      let message: string | undefined
-      if (pushed === 0 && errors === 0) {
-        message = `${alreadyOnCdn} file${alreadyOnCdn !== 1 ? 's' : ''} already on CDN. 0 new files pushed.`
-      } else if (alreadyOnCdn > 0 && errors === 0) {
-        message = `${pushed} file${pushed !== 1 ? 's' : ''} pushed. ${alreadyOnCdn} already on CDN.`
-      }
-
-      setProgressState({
-        current: imageKeys.length,
-        total: imageKeys.length,
-        percent: 100,
-        status: 'complete',
-        processed: pushed,
-        errors: errors,
-        errorMessages: errorMessages.length > 0 ? errorMessages : undefined,
-        message,
-      })
-      
-      clearSelection()
-      triggerRefresh()
-    } catch (error) {
-      // Don't show error if aborted
-      if (abortController.signal.aborted) {
-        abortControllerRef.current = null
-        return
-      }
-      console.error('Push error:', error)
-      setProgressState({
-        current: 0,
-        total: 0,
-        percent: 0,
-        status: 'error',
-        message: 'Failed to push to CDN.',
-      })
-    } finally {
-      abortControllerRef.current = null
-    }
-  }, [selectedItems, clearSelection, triggerRefresh])
+      },
+      onError: (message) => {
+        // Check if it's an R2 configuration error
+        if (message.includes('R2 not configured') || message.includes('CLOUDFLARE_R2')) {
+          setShowProgress(false)
+          setShowR2SetupModal(true)
+        }
+      },
+    })
+  }, [selectedItems, clearSelection, streamingOperation])
 
   // Track files for download (including folder contents)
   const [downloadableFiles, setDownloadableFiles] = useState<string[]>([])

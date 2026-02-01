@@ -148,6 +148,7 @@ export async function handleList(request: Request) {
               isProtected: true,
               cdnPushed: isPushedToCloud,
               cdnBaseUrl,
+              isCloud: isPushedToCloud && !isRemote,
               isRemote,
               dimensions,
             })
@@ -208,6 +209,7 @@ export async function handleList(request: Request) {
               isProtected: true,
               cdnPushed: isPushedToCloud,
               cdnBaseUrl,
+              isCloud: isPushedToCloud && !isRemote,
               isRemote,
               dimensions,
             })
@@ -489,6 +491,7 @@ export async function handleList(request: Request) {
           hasFull: !!entry.f,
           cdnPushed: isPushedToCloud,
           cdnBaseUrl: fileCdnUrl,
+          isCloud: isPushedToCloud && !isRemote,
           isRemote,
           isProtected: isInsideImagesFolder,
           dimensions: entry.o ? { width: entry.o.w, height: entry.o.h } : undefined,
@@ -582,6 +585,7 @@ export async function handleSearch(request: Request) {
         hasFull: !!entry.f,
         cdnPushed: isPushedToCloud,
         cdnBaseUrl: fileCdnUrl,
+        isCloud: isPushedToCloud && !isRemote,
         isRemote,
         dimensions: entry.o ? { width: entry.o.w, height: entry.o.h } : undefined,
         hasUpdate: entry.u === 1,

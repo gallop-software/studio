@@ -137,6 +137,12 @@ const styles = {
     padding: 16px;
     background: ${colors.background};
   `,
+  contentCloud: css`
+    background: #fff7ed;
+  `,
+  contentRemote: css`
+    background: #fef2f2;
+  `,
   folderIcon: css`
     width: 56px;
     height: 56px;
@@ -651,7 +657,7 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
       )}
 
 
-      <div css={styles.content}>
+      <div css={[styles.content, item.isCloud && styles.contentCloud, item.isRemote && styles.contentRemote]}>
         {/* Copy button - top right of image box */}
         <button
           css={styles.copyBtn}

@@ -199,6 +199,261 @@ export async function handleSync(request: Request) {
   }
 }
 
+/**
+ * Push files to CDN (streaming version with progress)
+ * Handles local files, remote files, and already-pushed files
+ */
+export async function handleSyncStream(request: Request) {
+  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
+  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
+  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME
+  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
+
+  const encoder = new TextEncoder()
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendEvent = (data: object) => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        } catch {
+          // Controller may be closed if client disconnected
+        }
+      }
+
+      try {
+        if (!accountId || !accessKeyId || !secretAccessKey || !bucketName || !publicUrl) {
+          sendEvent({ type: 'error', message: 'R2 not configured. Set CLOUDFLARE_R2_* environment variables.' })
+          controller.close()
+          return
+        }
+
+        const { imageKeys, operationId } = await request.json() as { imageKeys: string[], operationId?: string }
+
+        if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
+          sendEvent({ type: 'error', message: 'No image keys provided' })
+          controller.close()
+          return
+        }
+
+        // Helper to check if operation was cancelled
+        const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
+
+        const meta = await loadMeta()
+        const cdnUrls = getCdnUrls(meta)
+        const cdnIndex = getOrAddCdnIndex(meta, publicUrl)
+
+        const r2 = new S3Client({
+          region: 'auto',
+          endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+          credentials: { accessKeyId, secretAccessKey },
+        })
+
+        const pushed: string[] = []
+        const alreadyPushed: string[] = []
+        const errors: string[] = []
+        const sourceFolders = new Set<string>()
+        const total = imageKeys.length
+
+        sendEvent({ type: 'start', total })
+
+        for (let i = 0; i < imageKeys.length; i++) {
+          // Check for cancellation before each file
+          if (isCancelled()) {
+            await saveMeta(meta)
+            // Clean up empty folders
+            for (const folder of sourceFolders) {
+              await deleteEmptyFolders(folder)
+            }
+            if (operationId) clearCancelledOperation(operationId)
+            sendEvent({
+              type: 'complete',
+              pushed: pushed.length,
+              alreadyPushed: alreadyPushed.length,
+              errors: errors.length,
+              message: `Stopped. ${pushed.length} file${pushed.length !== 1 ? 's' : ''} pushed.`,
+              cancelled: true,
+            })
+            controller.close()
+            return
+          }
+
+          let imageKey = imageKeys[i]
+          // Normalize key to have leading /
+          if (!imageKey.startsWith('/')) {
+            imageKey = `/${imageKey}`
+          }
+
+          const entry = getMetaEntry(meta, imageKey)
+          if (!entry) {
+            errors.push(`Image not found in meta: ${imageKey}. Run Scan first.`)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total,
+              pushed: pushed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: path.basename(imageKey),
+            })
+            continue
+          }
+
+          // Check if already pushed to our R2
+          const existingCdnUrl = entry.c !== undefined ? cdnUrls[entry.c] : undefined
+          const isAlreadyInOurR2 = existingCdnUrl === publicUrl
+
+          if (isAlreadyInOurR2) {
+            alreadyPushed.push(imageKey)
+            sendEvent({
+              type: 'progress',
+              current: i + 1,
+              total,
+              pushed: pushed.length,
+              percent: Math.round(((i + 1) / total) * 100),
+              currentFile: path.basename(imageKey),
+            })
+            continue
+          }
+
+          // Check if this is a remote image (in another CDN)
+          const isRemote = entry.c !== undefined && existingCdnUrl !== publicUrl
+
+          try {
+            let originalBuffer: Buffer
+
+            if (isRemote) {
+              // Download from remote URL
+              const remoteUrl = `${existingCdnUrl}${imageKey}`
+              originalBuffer = await downloadFromRemoteUrl(remoteUrl)
+            } else {
+              // Read from local file
+              const originalLocalPath = getPublicPath(imageKey)
+              try {
+                originalBuffer = await fs.readFile(originalLocalPath)
+              } catch {
+                errors.push(`Original file not found: ${imageKey}`)
+                sendEvent({
+                  type: 'progress',
+                  current: i + 1,
+                  total,
+                  pushed: pushed.length,
+                  percent: Math.round(((i + 1) / total) * 100),
+                  currentFile: path.basename(imageKey),
+                })
+                continue
+              }
+            }
+
+            // Upload original to R2
+            await r2.send(
+              new PutObjectCommand({
+                Bucket: bucketName,
+                Key: imageKey.replace(/^\//, ''),
+                Body: originalBuffer,
+                ContentType: getContentType(imageKey),
+              })
+            )
+
+            // Upload thumbnails (only if processed locally, not for remote imports)
+            if (!isRemote && isProcessed(entry)) {
+              for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+                const localPath = getPublicPath(thumbPath)
+                try {
+                  const fileBuffer = await fs.readFile(localPath)
+                  await r2.send(
+                    new PutObjectCommand({
+                      Bucket: bucketName,
+                      Key: thumbPath.replace(/^\//, ''),
+                      Body: fileBuffer,
+                      ContentType: getContentType(thumbPath),
+                    })
+                  )
+                } catch {
+                  // Thumbnail might not exist
+                }
+              }
+            }
+
+            entry.c = cdnIndex
+
+            // Delete local files (only for non-remote, local images being pushed)
+            if (!isRemote) {
+              const originalLocalPath = getPublicPath(imageKey)
+
+              // Track source folder for cleanup
+              sourceFolders.add(path.dirname(originalLocalPath))
+
+              // Delete local thumbnails
+              for (const thumbPath of getAllThumbnailPaths(imageKey)) {
+                const localPath = getPublicPath(thumbPath)
+                sourceFolders.add(path.dirname(localPath))
+                try { await fs.unlink(localPath) } catch { /* ignore */ }
+              }
+
+              // Delete local original
+              try { await fs.unlink(originalLocalPath) } catch { /* ignore */ }
+            }
+
+            // Save meta after each successful push
+            await saveMeta(meta)
+
+            pushed.push(imageKey)
+          } catch (error) {
+            console.error(`Failed to push ${imageKey}:`, error)
+            errors.push(`Failed to push: ${imageKey}`)
+          }
+
+          sendEvent({
+            type: 'progress',
+            current: i + 1,
+            total,
+            pushed: pushed.length,
+            percent: Math.round(((i + 1) / total) * 100),
+            currentFile: path.basename(imageKey),
+          })
+        }
+
+        // Clean up empty source folders
+        for (const folder of sourceFolders) {
+          await deleteEmptyFolders(folder)
+        }
+
+        // Build completion message
+        let message: string | undefined
+        if (pushed.length === 0 && errors.length === 0) {
+          message = `${alreadyPushed.length} file${alreadyPushed.length !== 1 ? 's' : ''} already on CDN. 0 new files pushed.`
+        } else if (alreadyPushed.length > 0 && errors.length === 0) {
+          message = `${pushed.length} file${pushed.length !== 1 ? 's' : ''} pushed. ${alreadyPushed.length} already on CDN.`
+        }
+
+        if (operationId) clearCancelledOperation(operationId)
+        sendEvent({
+          type: 'complete',
+          pushed: pushed.length,
+          alreadyPushed: alreadyPushed.length,
+          errors: errors.length,
+          errorMessages: errors.length > 0 ? errors : undefined,
+          message,
+        })
+      } catch (error) {
+        console.error('Failed to push:', error)
+        sendEvent({ type: 'error', message: 'Failed to push to CDN' })
+      } finally {
+        controller.close()
+      }
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
+}
+
 export async function handleReprocess(request: Request) {
   const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/\s*$/, '')
   
