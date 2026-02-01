@@ -987,6 +987,8 @@ export async function handleMoveStream(request: Request) {
               const isItemInR2 = isItemInCloud && itemCdnUrl === r2PublicUrl
               const itemHasThumbnails = isProcessed(itemEntry)
               
+              let vItemMoved = false
+              
               if (isItemInR2) {
                 try {
                   const itemLocalPath = getPublicPath(vItem.newKey)
@@ -1017,13 +1019,20 @@ export async function handleMoveStream(request: Request) {
                   if (itemHasThumbnails) {
                     await deleteLocalThumbnails(vItem.newKey)
                   }
+                  
+                  vItemMoved = true
                 } catch (err) {
                   console.error(`Failed to move cloud item ${vItem.oldKey}:`, err)
+                  // File doesn't exist on CDN - remove orphaned meta entry
+                  delete meta[vItem.oldKey]
                 }
               }
               
-              delete meta[vItem.oldKey]
-              meta[vItem.newKey] = itemEntry
+              // Only update meta if file was successfully moved
+              if (vItemMoved) {
+                delete meta[vItem.oldKey]
+                meta[vItem.newKey] = itemEntry
+              }
               
               processedFiles++
               sendEvent({
@@ -1371,6 +1380,8 @@ export async function handleMoveStream(request: Request) {
                   const cloudIsInR2 = cloudIsInCloud && cloudCdnUrl === r2PublicUrl
                   const cloudHasThumbs = isProcessed(cloudEntry)
                   
+                  let cloudFileMoved = false
+                  
                   if (cloudIsInR2) {
                     try {
                       const cloudLocalPath = getPublicPath(cloudFile.newKey)
@@ -1404,13 +1415,20 @@ export async function handleMoveStream(request: Request) {
                       
                       // Clean up temp folder
                       await deleteEmptyFolders(path.dirname(cloudLocalPath))
+                      
+                      cloudFileMoved = true
                     } catch (err) {
                       console.error(`Failed to move cloud file ${cloudFile.oldKey}:`, err)
+                      // File doesn't exist on CDN - remove from meta since it's orphaned
+                      delete meta[cloudFile.oldKey]
                     }
                   }
                   
-                  delete meta[cloudFile.oldKey]
-                  meta[cloudFile.newKey] = cloudEntry
+                  // Only update meta if file was successfully moved
+                  if (cloudFileMoved) {
+                    delete meta[cloudFile.oldKey]
+                    meta[cloudFile.newKey] = cloudEntry
+                  }
                   
                   processedFiles++
                   sendEvent({
