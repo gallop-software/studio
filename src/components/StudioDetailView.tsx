@@ -312,6 +312,7 @@ export function StudioDetailView() {
     focusedItem, 
     setFocusedItem, 
     triggerRefresh,
+    refreshKey,
     fileItems,
     // Shared action handlers
     requestDelete,
@@ -323,6 +324,7 @@ export function StudioDetailView() {
   const [showRenameModal, setShowRenameModal] = useState(false)
   const [showR2SetupModal, setShowR2SetupModal] = useState(false)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
+  const [clearingCache, setClearingCache] = useState(false)
   const [showCopied, setShowCopied] = useState(false)
   const [showFaviconProgress, setShowFaviconProgress] = useState(false)
   const [faviconProgress, setFaviconProgress] = useState<ProgressState>({
@@ -348,9 +350,11 @@ export function StudioDetailView() {
   const relativePath = '/' + focusedItem.path.replace(/^public\//, '')
   
   // For preview: use CDN URL if pushed, otherwise use local path
-  const imageSrc = focusedItem.cdnPushed && focusedItem.cdnBaseUrl
+  const baseImageSrc = focusedItem.cdnPushed && focusedItem.cdnBaseUrl
     ? `${focusedItem.cdnBaseUrl}${relativePath}`
     : relativePath
+  // Add cache-busting parameter
+  const imageSrc = `${baseImageSrc}${baseImageSrc.includes('?') ? '&' : '?'}v=${refreshKey}`
   
   // For display URL: use CDN URL if pushed, otherwise use current origin
   const localOrigin = typeof window !== 'undefined' ? window.location.origin : ''
@@ -398,6 +402,42 @@ export function StudioDetailView() {
           message: 'An error occurred while renaming the file',
         })
       }
+    }
+  }
+
+  const handleClearCache = async () => {
+    if (!focusedItem || !focusedItem.cdnPushed) return
+    
+    setClearingCache(true)
+    try {
+      const response = await fetch('/api/studio/clear-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: [focusedItem.path] }),
+      })
+      
+      const result = await response.json()
+      
+      if (response.ok) {
+        triggerRefresh()
+        setAlertMessage({
+          title: 'Cache Cleared',
+          message: result.message || 'CDN cache cleared successfully.',
+        })
+      } else {
+        setAlertMessage({
+          title: 'Clear Cache Failed',
+          message: result.error || 'Failed to clear cache.',
+        })
+      }
+    } catch (error) {
+      console.error('Clear cache error:', error)
+      setAlertMessage({
+        title: 'Clear Cache Failed',
+        message: 'An error occurred. Check console for details.',
+      })
+    } finally {
+      setClearingCache(false)
     }
   }
 
@@ -666,6 +706,18 @@ export function StudioDetailView() {
                 </svg>
                 Push to CDN
               </button>
+              {focusedItem.cdnPushed && (
+                <button 
+                  css={styles.actionBtn} 
+                  onClick={handleClearCache}
+                  disabled={clearingCache || focusedItem.isProtected}
+                >
+                  <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {clearingCache ? 'Clearing...' : 'Clear Cache'}
+                </button>
+              )}
               <button 
                 css={styles.actionBtn} 
                 onClick={() => requestProcess([focusedItem.path])}
