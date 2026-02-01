@@ -1511,6 +1511,11 @@ export function StudioToolbar() {
             }
           }
         }
+      } catch (error) {
+        // Ignore errors if aborted (reader.cancel() throws)
+        if (!abortController.signal.aborted) {
+          throw error
+        }
       } finally {
         abortController.signal.removeEventListener('abort', onAbort)
       }
@@ -1674,12 +1679,20 @@ export function StudioToolbar() {
             }
           }
         }
+
+        // Only proceed if not aborted
+        if (!abortController.signal.aborted) {
+          clearSelection()
+          triggerRefresh()
+        }
+      } catch (error) {
+        // Ignore errors if aborted (reader.cancel() throws)
+        if (!abortController.signal.aborted) {
+          throw error
+        }
       } finally {
         abortController.signal.removeEventListener('abort', onAbort)
       }
-
-      clearSelection()
-      triggerRefresh()
     } catch (error) {
       // Don't show error if aborted
       if (abortController.signal.aborted) {
@@ -1793,12 +1806,20 @@ export function StudioToolbar() {
             }
           }
         }
+
+        // Only proceed if not aborted
+        if (!abortController.signal.aborted) {
+          clearSelection()
+          triggerRefresh()
+        }
+      } catch (error) {
+        // Ignore errors if aborted (reader.cancel() throws)
+        if (!abortController.signal.aborted) {
+          throw error
+        }
       } finally {
         abortController.signal.removeEventListener('abort', onAbort)
       }
-
-      clearSelection()
-      triggerRefresh()
     } catch (error) {
       // Don't show error if aborted
       if (abortController.signal.aborted) {
