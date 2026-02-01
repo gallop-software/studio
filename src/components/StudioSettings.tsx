@@ -45,6 +45,7 @@ const styles = {
     background-color: rgba(26, 31, 54, 0.4);
     backdrop-filter: blur(4px);
     overflow-y: auto;
+    scroll-behavior: smooth;
     padding: 48px 24px;
   `,
   panel: css`
