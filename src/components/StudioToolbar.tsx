@@ -1420,6 +1420,10 @@ export function StudioToolbar() {
     const abortController = new AbortController()
     abortControllerRef.current = abortController
     
+    // Generate operation ID for server-side cancellation
+    const operationId = `move-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    operationIdRef.current = operationId
+    
     // Show progress modal
     setProgressTitle('Moving Files')
     setShowProgress(true)
@@ -1436,7 +1440,7 @@ export function StudioToolbar() {
       const response = await fetch('/api/studio/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths, destination }),
+        body: JSON.stringify({ paths, destination, operationId }),
         signal: abortController.signal,
       })
 
@@ -1448,8 +1452,19 @@ export function StudioToolbar() {
       const decoder = new TextDecoder()
       let buffer = ''
 
-      // Listen for abort signal to cancel the reader
-      const onAbort = () => {
+      // Listen for abort signal to cancel the reader and send cancel to server
+      const onAbort = async () => {
+        // Send cancel request to server
+        try {
+          await fetch('/api/studio/cancel-stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ operationId }),
+          })
+        } catch {
+          // Ignore cancel request errors
+        }
+        
         reader.cancel()
         // Show "Stopped" state with Done button
         setProgressState(prev => ({
@@ -1460,6 +1475,7 @@ export function StudioToolbar() {
         clearSelection()
         triggerRefresh()
         abortControllerRef.current = null
+        operationIdRef.current = null
       }
       abortController.signal.addEventListener('abort', onAbort)
 
@@ -1590,6 +1606,10 @@ export function StudioToolbar() {
     const abortController = new AbortController()
     abortControllerRef.current = abortController
     
+    // Generate operation ID for server-side cancellation
+    const operationId = `rename-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    operationIdRef.current = operationId
+    
     setProgressTitle('Renaming Folder')
     setShowProgress(true)
     setProgressState({
@@ -1606,7 +1626,7 @@ export function StudioToolbar() {
       const response = await fetch('/api/studio/rename-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPath: selectedFolderPath, newName }),
+        body: JSON.stringify({ oldPath: selectedFolderPath, newName, operationId }),
         signal: abortController.signal,
       })
 
@@ -1618,8 +1638,19 @@ export function StudioToolbar() {
       const decoder = new TextDecoder()
       let buffer = ''
 
-      // Listen for abort signal to cancel the reader
-      const onAbort = () => {
+      // Listen for abort signal to cancel the reader and send cancel to server
+      const onAbort = async () => {
+        // Send cancel request to server
+        try {
+          await fetch('/api/studio/cancel-stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ operationId }),
+          })
+        } catch {
+          // Ignore cancel request errors
+        }
+        
         reader.cancel()
         setProgressState(prev => ({
           ...prev,
@@ -1629,6 +1660,7 @@ export function StudioToolbar() {
         clearSelection()
         triggerRefresh()
         abortControllerRef.current = null
+        operationIdRef.current = null
       }
       abortController.signal.addEventListener('abort', onAbort)
 
@@ -1717,6 +1749,10 @@ export function StudioToolbar() {
     const abortController = new AbortController()
     abortControllerRef.current = abortController
     
+    // Generate operation ID for server-side cancellation
+    const operationId = `rename-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    operationIdRef.current = operationId
+    
     setProgressTitle('Renaming File')
     setShowProgress(true)
     setProgressState({
@@ -1733,7 +1769,7 @@ export function StudioToolbar() {
       const response = await fetch('/api/studio/rename-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPath: selectedFilePath, newName }),
+        body: JSON.stringify({ oldPath: selectedFilePath, newName, operationId }),
         signal: abortController.signal,
       })
 
@@ -1745,8 +1781,19 @@ export function StudioToolbar() {
       const decoder = new TextDecoder()
       let buffer = ''
 
-      // Listen for abort signal to cancel the reader
-      const onAbort = () => {
+      // Listen for abort signal to cancel the reader and send cancel to server
+      const onAbort = async () => {
+        // Send cancel request to server
+        try {
+          await fetch('/api/studio/cancel-stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ operationId }),
+          })
+        } catch {
+          // Ignore cancel request errors
+        }
+        
         reader.cancel()
         setProgressState(prev => ({
           ...prev,
@@ -1756,6 +1803,7 @@ export function StudioToolbar() {
         clearSelection()
         triggerRefresh()
         abortControllerRef.current = null
+        operationIdRef.current = null
       }
       abortController.signal.addEventListener('abort', onAbort)
 

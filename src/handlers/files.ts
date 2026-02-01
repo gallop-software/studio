@@ -23,6 +23,7 @@ import {
 import { getPublicPath, getWorkspacePath } from '../config'
 import { jsonResponse, streamResponse, createSSEStream } from './utils/response'
 import { deleteEmptyFolders } from './utils/folders'
+import { isOperationCancelled } from './images'
 
 export async function handleUpload(request: Request) {
   try {
@@ -440,13 +441,16 @@ export async function handleRenameStream(request: Request) {
       }
 
       try {
-        const { oldPath, newName } = await request.json()
+        const { oldPath, newName, operationId } = await request.json()
 
         if (!oldPath || !newName) {
           sendEvent({ type: 'error', message: 'Path and new name are required' })
           controller.close()
           return
         }
+
+        // Helper to check if operation was cancelled
+        const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
 
         const safePath = oldPath.replace(/\.\./g, '')
         const absoluteOldPath = getWorkspacePath(safePath)
@@ -584,6 +588,13 @@ export async function handleRenameStream(request: Request) {
           // Step 2: Update each item in the folder
           let renamed = 1
           for (const item of itemsToUpdate) {
+            // Check for cancellation
+            if (isCancelled()) {
+              await saveMeta(meta)
+              sendEvent({ type: 'complete', renamed, newPath, cancelled: true })
+              controller.close()
+              return
+            }
             const { oldKey, newKey, entry } = item
             const isInCloud = entry.c !== undefined
             const fileCdnUrl = isInCloud ? cdnUrls[entry.c!] : undefined
@@ -714,7 +725,7 @@ export async function handleMoveStream(request: Request) {
       }
 
       try {
-        const { paths, destination } = await request.json()
+        const { paths, destination, operationId } = await request.json()
 
         if (!paths || !Array.isArray(paths) || paths.length === 0) {
           sendEvent({ type: 'error', message: 'Paths are required' })
@@ -727,6 +738,9 @@ export async function handleMoveStream(request: Request) {
           controller.close()
           return
         }
+
+        // Helper to check if operation was cancelled
+        const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
 
         const safeDestination = destination.replace(/\.\./g, '')
         const absoluteDestination = getWorkspacePath(safeDestination)
@@ -850,11 +864,24 @@ export async function handleMoveStream(request: Request) {
         let processedFiles = 0
 
         for (const expandedItem of expandedItems) {
+          // Check for cancellation before processing each item
+          if (isCancelled()) {
+            sendEvent({ type: 'complete', moved: moved.length, errors: errors.length, errorMessages: errors, cancelled: true })
+            controller.close()
+            return
+          }
+
           const { itemPath, safePath, itemName, oldKey, newKey, newAbsolutePath, isVirtualFolder, virtualFolderItems } = expandedItem
 
           // Handle virtual folder
           if (isVirtualFolder && virtualFolderItems) {
             for (const vItem of virtualFolderItems) {
+              // Check for cancellation before processing each virtual item
+              if (isCancelled()) {
+                sendEvent({ type: 'complete', moved: moved.length, errors: errors.length, errorMessages: errors, cancelled: true })
+                controller.close()
+                return
+              }
               const itemEntry = vItem.entry
               const isItemInCloud = itemEntry.c !== undefined
               const itemCdnUrl = isItemInCloud ? cdnUrls[itemEntry.c!] : undefined
@@ -1129,6 +1156,13 @@ export async function handleMoveStream(request: Request) {
                 
                 // Process each local file
                 for (const localFile of localFiles) {
+                  // Check for cancellation
+                  if (isCancelled()) {
+                    await saveMeta(meta)
+                    sendEvent({ type: 'complete', moved: moved.length, errors: errors.length, errorMessages: errors, cancelled: true })
+                    controller.close()
+                    return
+                  }
                   const fileOldPath = path.join(absolutePath, localFile.relativePath)
                   const fileNewPath = path.join(newAbsolutePath, localFile.relativePath)
                   const fileOldKey = oldPrefix + localFile.relativePath
@@ -1186,6 +1220,13 @@ export async function handleMoveStream(request: Request) {
                 
                 // Process cloud-only files within the directory
                 for (const cloudFile of cloudOnlyFiles) {
+                  // Check for cancellation
+                  if (isCancelled()) {
+                    await saveMeta(meta)
+                    sendEvent({ type: 'complete', moved: moved.length, errors: errors.length, errorMessages: errors, cancelled: true })
+                    controller.close()
+                    return
+                  }
                   const cloudEntry = cloudFile.entry
                   const cloudIsInCloud = cloudEntry.c !== undefined
                   const cloudCdnUrl = cloudIsInCloud ? cdnUrls[cloudEntry.c!] : undefined
