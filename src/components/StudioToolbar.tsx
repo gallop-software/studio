@@ -288,7 +288,7 @@ const styles = {
 }
 
 export function StudioToolbar() {
-  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest, fileItems, requestProcess, actionState } = useStudio()
+  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest, fileItems, requestProcess, requestClearCache, actionState } = useStudio()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [showAddNewModal, setShowAddNewModal] = useState(false)
@@ -1167,74 +1167,12 @@ export function StudioToolbar() {
     }
   }, [selectedItems, fileItems, clearSelection, triggerRefresh])
 
-  // Clear CDN cache for selected files
-  const handleClearCache = useCallback(async () => {
+  // Clear CDN cache handler using shared action
+  const handleClearCache = useCallback(() => {
     if (selectedItems.size === 0) return
     setShowCloudDropdown(false)
-
-    const selectedPaths = Array.from(selectedItems)
-    
-    // Get files that are on CDN
-    const cdnPaths = selectedPaths.filter(p => {
-      const item = fileItems.find(f => f.path === p)
-      return item && item.cdnPushed
-    })
-
-    if (cdnPaths.length === 0) {
-      setAlertMessage({
-        title: 'No CDN Files',
-        message: 'No selected files are on CDN.',
-      })
-      return
-    }
-
-    setProgressTitle('Clearing Cache')
-    setShowProgress(true)
-    setProgressState({
-      current: 0,
-      total: cdnPaths.length,
-      percent: 0,
-      status: 'processing',
-      message: 'Clearing CDN cache...',
-    })
-
-    try {
-      const response = await fetch('/api/studio/clear-cache', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: cdnPaths }),
-      })
-
-      const result = await response.json()
-      
-      if (response.ok) {
-        setProgressState({
-          current: cdnPaths.length,
-          total: cdnPaths.length,
-          percent: 100,
-          status: 'complete',
-          message: result.message || 'Cache cleared.',
-        })
-      } else {
-        setProgressState({
-          current: 0,
-          total: 0,
-          percent: 0,
-          status: 'error',
-          message: result.error || 'Failed to clear cache.',
-        })
-      }
-    } catch (error) {
-      console.error('Clear cache error:', error)
-      setProgressState({
-        current: 0,
-        total: 0,
-        percent: 0,
-        status: 'error',
-        message: 'Failed to clear cache. Check console for details.',
-      })
-    }
-  }, [selectedItems, fileItems])
+    requestClearCache(Array.from(selectedItems), fileItems)
+  }, [selectedItems, fileItems, requestClearCache])
 
   const handleCreateFolder = useCallback(async (folderName: string) => {
     setShowNewFolderModal(false)

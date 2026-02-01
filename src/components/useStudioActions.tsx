@@ -447,6 +447,66 @@ export function useStudioActions({
     }
   }, [actionState.actionPaths, actionState.processMode, triggerRefresh, setProgressState])
 
+  // Clear CDN cache for paths
+  const requestClearCache = useCallback(async (paths: string[], fileItems: FileItem[]) => {
+    // Get files that are on CDN
+    const cdnPaths = paths.filter(p => {
+      const item = fileItems.find(f => f.path === p)
+      return item && item.cdnPushed
+    })
+
+    if (cdnPaths.length === 0) {
+      showError('No CDN Files', 'No selected files are stored on CDN.')
+      return
+    }
+
+    // Show progress
+    setActionState(prev => ({
+      ...prev,
+      showProgress: true,
+      progressTitle: 'Clearing Cache',
+      progressState: { current: 0, total: 1, percent: 0, status: 'processing', message: 'Clearing CDN cache...' },
+    }))
+
+    try {
+      const response = await fetch('/api/studio/clear-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: cdnPaths }),
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        setProgressState({
+          current: 1,
+          total: 1,
+          percent: 100,
+          status: 'complete',
+          message: result.message || 'CDN cache cleared successfully.',
+        })
+        triggerRefresh()
+      } else {
+        setProgressState({
+          current: 1,
+          total: 1,
+          percent: 100,
+          status: 'error',
+          message: result.error || 'Failed to clear cache.',
+        })
+      }
+    } catch (error) {
+      console.error('Clear cache error:', error)
+      setProgressState({
+        current: 1,
+        total: 1,
+        percent: 100,
+        status: 'error',
+        message: 'An error occurred. Check console for details.',
+      })
+    }
+  }, [showError, setProgressState, triggerRefresh])
+
   // Delete orphans
   const deleteOrphans = useCallback(async () => {
     const orphanedFiles = actionState.progressState.orphanedFiles
@@ -484,6 +544,7 @@ export function useStudioActions({
     requestMove,
     requestSync,
     requestProcess,
+    requestClearCache,
     setProcessMode,
     cancelAction,
     closeProgress,

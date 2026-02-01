@@ -409,6 +409,7 @@ export function StudioUI({
     requestMove: actions.requestMove,
     requestSync: actions.requestSync,
     requestProcess: actions.requestProcess,
+    requestClearCache: actions.requestClearCache,
     setProcessMode: actions.setProcessMode,
     confirmDelete: actions.confirmDelete,
     confirmMove: actions.confirmMove,

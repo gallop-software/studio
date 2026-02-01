@@ -119,6 +119,7 @@ export interface StudioState {
   requestMove: (paths: string[]) => void
   requestSync: (paths: string[], fileItems: FileItem[]) => void
   requestProcess: (paths: string[]) => void
+  requestClearCache: (paths: string[], fileItems: FileItem[]) => void
   setProcessMode: (mode: 'generate' | 'remove') => void
   
   // Action confirmations (execute action)
@@ -197,6 +198,7 @@ const defaultState: StudioState = {
   requestMove: () => {},
   requestSync: () => {},
   requestProcess: () => {},
+  requestClearCache: () => {},
   setProcessMode: () => {},
   confirmDelete: async () => {},
   confirmMove: async () => {},
