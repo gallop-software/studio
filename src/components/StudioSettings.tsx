@@ -40,10 +40,12 @@ const styles = {
     left: 0;
     z-index: 10000;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     background-color: rgba(26, 31, 54, 0.4);
     backdrop-filter: blur(4px);
+    overflow-y: auto;
+    padding: 48px 24px;
   `,
   panel: css`
     ${baseReset}
@@ -54,6 +56,7 @@ const styles = {
     width: 100%;
     max-width: 512px;
     padding: 24px;
+    margin: auto 0;
   `,
   header: css`
     display: flex;
