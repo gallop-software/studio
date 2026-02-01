@@ -300,9 +300,11 @@ export async function handleUnprocessStream(request: Request) {
   
   // Parse the request body before creating the stream
   let imageKeys: string[]
+  let operationId: string | undefined
   try {
-    const body = await request.json() as { imageKeys: string[] }
+    const body = await request.json() as { imageKeys: string[], operationId?: string }
     imageKeys = body.imageKeys
+    operationId = body.operationId
     
     if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
       return jsonResponse({ error: 'No image keys provided' }, { status: 400 })
@@ -310,6 +312,9 @@ export async function handleUnprocessStream(request: Request) {
   } catch {
     return jsonResponse({ error: 'Invalid request body' }, { status: 400 })
   }
+  
+  // Helper to check if operation was cancelled
+  const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
   
   const stream = new ReadableStream({
     async start(controller) {
@@ -328,6 +333,15 @@ export async function handleUnprocessStream(request: Request) {
         sendEvent({ type: 'start', total })
 
         for (let i = 0; i < imageKeys.length; i++) {
+          // Check for cancellation before each image
+          if (isCancelled()) {
+            await saveMeta(meta)
+            if (operationId) clearCancelledOperation(operationId)
+            sendEvent({ type: 'complete', processed: removed.length, errors: errors.length, message: `Stopped. Removed thumbnails for ${removed.length} image${removed.length !== 1 ? 's' : ''}.`, cancelled: true })
+            controller.close()
+            return
+          }
+          
           let imageKey = imageKeys[i]
           
           // Normalize key to have leading /
@@ -461,9 +475,11 @@ export async function handleReprocessStream(request: Request) {
   
   // Parse the request body before creating the stream
   let imageKeys: string[]
+  let operationId: string | undefined
   try {
-    const body = await request.json() as { imageKeys: string[] }
+    const body = await request.json() as { imageKeys: string[], operationId?: string }
     imageKeys = body.imageKeys
+    operationId = body.operationId
     
     if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
       return jsonResponse({ error: 'No image keys provided' }, { status: 400 })
@@ -471,6 +487,9 @@ export async function handleReprocessStream(request: Request) {
   } catch {
     return jsonResponse({ error: 'Invalid request body' }, { status: 400 })
   }
+  
+  // Helper to check if operation was cancelled
+  const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
   
   const stream = new ReadableStream({
     async start(controller) {
@@ -488,6 +507,15 @@ export async function handleReprocessStream(request: Request) {
         sendEvent({ type: 'start', total })
 
         for (let i = 0; i < imageKeys.length; i++) {
+          // Check for cancellation before each image
+          if (isCancelled()) {
+            await saveMeta(meta)
+            if (operationId) clearCancelledOperation(operationId)
+            sendEvent({ type: 'complete', processed: processed.length, errors: errors.length, message: `Stopped. Generated thumbnails for ${processed.length} image${processed.length !== 1 ? 's' : ''}.`, cancelled: true })
+            controller.close()
+            return
+          }
+          
           let imageKey = imageKeys[i]
           
           // Normalize key to have leading /

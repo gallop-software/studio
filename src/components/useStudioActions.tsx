@@ -355,6 +355,9 @@ export function useStudioActions({
     const progressTitle = isRemove ? 'Removing Thumbnails' : 'Generating Thumbnails'
     const progressMessage = isRemove ? 'Removing thumbnails...' : 'Generating thumbnails...'
     
+    // Generate unique operation ID for server-side cancellation
+    const operationId = `process-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    
     setActionState(prev => ({
       ...prev,
       showProcessConfirm: false,
@@ -371,12 +374,26 @@ export function useStudioActions({
 
     abortControllerRef.current = new AbortController()
     const signal = abortControllerRef.current.signal
+    
+    // Send cancel request to server when aborted
+    const onAbort = async () => {
+      try {
+        await fetch('/api/studio/cancel-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operationId }),
+        })
+      } catch {
+        // Ignore cancel request errors
+      }
+    }
+    signal.addEventListener('abort', onAbort)
 
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageKeys }),
+        body: JSON.stringify({ imageKeys, operationId }),
         signal,
       })
 
@@ -457,6 +474,7 @@ export function useStudioActions({
           status: 'stopped',
           message: isRemove ? 'Removal stopped by user' : 'Processing stopped by user',
         }))
+        triggerRefresh()
       } else {
         console.error('Processing error:', error)
         setProgressState({
@@ -468,6 +486,7 @@ export function useStudioActions({
         })
       }
     } finally {
+      signal.removeEventListener('abort', onAbort)
       abortControllerRef.current = null
     }
   }, [actionState.actionPaths, actionState.processMode, triggerRefresh, setProgressState])
