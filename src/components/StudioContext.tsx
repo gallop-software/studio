@@ -18,7 +18,7 @@ export interface ProgressState {
   current: number
   total: number
   percent: number
-  status: 'processing' | 'complete' | 'error' | 'stopped' | 'cleanup'
+  status: 'processing' | 'complete' | 'error' | 'stopping' | 'stopped' | 'cleanup'
   currentFile?: string
   message?: string
   processed?: number

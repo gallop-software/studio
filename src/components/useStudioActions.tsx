@@ -375,8 +375,14 @@ export function useStudioActions({
     abortControllerRef.current = new AbortController()
     const signal = abortControllerRef.current.signal
     
-    // Send cancel request to server when aborted
+    // Track if stop was requested (don't abort fetch - let server finish current item)
+    let stopRequested = false
+    
+    // Send cancel request to server when aborted (but don't kill the fetch)
     const onAbort = async () => {
+      stopRequested = true
+      // Show "stopping" status immediately
+      setProgressState({ status: 'stopping' })
       try {
         await fetch('/api/studio/cancel-stream', {
           method: 'POST',
@@ -394,7 +400,7 @@ export function useStudioActions({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageKeys, operationId }),
-        signal,
+        // Don't pass signal - we want to receive the server's complete message
       })
 
       if (!response.ok) {
@@ -447,11 +453,13 @@ export function useStudioActions({
                     message: data.message,
                   }))
                 } else if (data.type === 'complete') {
+                  // Handle cancelled completion vs normal completion
+                  const wasCancelled = data.cancelled === true
                   setProgressState({
                     current: data.processed,
                     total: data.processed,
                     percent: 100,
-                    status: data.errors > 0 ? 'error' : 'complete',
+                    status: wasCancelled ? 'stopped' : (data.errors > 0 ? 'error' : 'complete'),
                     message: data.message,
                   })
                   triggerRefresh()
@@ -468,14 +476,8 @@ export function useStudioActions({
         }
       }
     } catch (error) {
-      if (signal.aborted) {
-        setProgressState(prev => ({
-          ...prev,
-          status: 'stopped',
-          message: isRemove ? 'Removal stopped by user' : 'Processing stopped by user',
-        }))
-        triggerRefresh()
-      } else {
+      // Only show error if it wasn't a user-initiated stop
+      if (!stopRequested) {
         console.error('Processing error:', error)
         setProgressState({
           current: 0,
