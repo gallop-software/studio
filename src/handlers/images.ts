@@ -1070,7 +1070,6 @@ export async function handlePushUpdatesStream(request: Request) {
         if (errors.length > 0) {
           message += ` ${errors.length} file${errors.length !== 1 ? 's' : ''} failed.`
         }
-        message += cacheMessage
 
         sendEvent({
           type: 'complete',
