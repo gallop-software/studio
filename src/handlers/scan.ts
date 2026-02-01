@@ -244,6 +244,7 @@ export async function handleScanStream() {
 
         // Clean up empty folders in the public directory
         sendEvent({ type: 'cleanup', message: 'Cleaning up empty folders...' })
+        let emptyFoldersDeleted = 0
         
         async function cleanEmptyFolders(dir: string): Promise<void> {
           try {
@@ -261,7 +262,16 @@ export async function handleScanStream() {
               await cleanEmptyFolders(fullPath)
               
               // Then try to delete this folder if empty
-              await deleteEmptyFolders(fullPath)
+              try {
+                const subEntries = await fs.readdir(fullPath)
+                const meaningfulEntries = subEntries.filter(e => !e.startsWith('.'))
+                if (meaningfulEntries.length === 0) {
+                  await fs.rm(fullPath, { recursive: true })
+                  emptyFoldersDeleted++
+                }
+              } catch {
+                // Folder might already be deleted or not accessible
+              }
             }
           } catch {
             // Directory might not exist or not readable
@@ -271,8 +281,33 @@ export async function handleScanStream() {
         await cleanEmptyFolders(getPublicPath())
         
         // Also clean up empty folders inside the images directory
+        async function cleanImagesEmptyFolders(dir: string): Promise<boolean> {
+          try {
+            const entries = await fs.readdir(dir, { withFileTypes: true })
+            let isEmpty = true
+            
+            for (const entry of entries) {
+              if (entry.isDirectory()) {
+                const subDirEmpty = await cleanImagesEmptyFolders(path.join(dir, entry.name))
+                if (!subDirEmpty) isEmpty = false
+              } else if (!entry.name.startsWith('.')) {
+                isEmpty = false
+              }
+            }
+            
+            if (isEmpty && dir !== imagesDir) {
+              await fs.rm(dir, { recursive: true })
+              emptyFoldersDeleted++
+            }
+            
+            return isEmpty
+          } catch {
+            return true
+          }
+        }
+        
         try {
-          await cleanupEmptyFoldersRecursive(imagesDir)
+          await cleanImagesEmptyFolders(imagesDir)
         } catch {
           // images dir might not exist
         }
@@ -331,6 +366,7 @@ export async function handleScanStream() {
           orphanedFiles: orphanedFiles.length > 0 ? orphanedFiles : undefined,
           pendingUpdates: pendingUpdates.length,
           orphanedEntries: orphanedEntries.length,
+          emptyFoldersDeleted: emptyFoldersDeleted > 0 ? emptyFoldersDeleted : undefined,
         })
       } catch (error) {
         console.error('Scan failed:', error)

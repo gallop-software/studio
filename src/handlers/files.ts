@@ -370,44 +370,10 @@ export async function handleRename(request: Request) {
       // Good - new path doesn't exist
     }
 
-    // Handle cloud-only file: download, save locally, then proceed
+    // Handle cloud-only file: use server-side copy in R2
     if (isInOurR2 && !hasLocalFile && isImage) {
-      // Download original from R2
-      const buffer = await downloadFromCdn(oldKey)
-      await fs.mkdir(path.dirname(absoluteNewPath), { recursive: true })
-      await fs.writeFile(absoluteNewPath, buffer)
-      
-      // Download and save thumbnails with new names
-      if (hasThumbnails) {
-        const newThumbPaths = getAllThumbnailPaths(newKey)
-        const oldThumbPaths = getAllThumbnailPaths(oldKey)
-        
-        for (let i = 0; i < oldThumbPaths.length; i++) {
-          try {
-            const thumbBuffer = await downloadFromCdn(oldThumbPaths[i])
-            const newThumbLocalPath = getPublicPath(newThumbPaths[i])
-            await fs.mkdir(path.dirname(newThumbLocalPath), { recursive: true })
-            await fs.writeFile(newThumbLocalPath, thumbBuffer)
-          } catch {
-            // Thumbnail might not exist
-          }
-        }
-      }
-      
-      // Delete old files from CDN
-      await deleteFromCdn(oldKey, hasThumbnails)
-      
-      // Upload with new key
-      await uploadOriginalToCdn(newKey)
-      if (hasThumbnails) {
-        await uploadToCdn(newKey)
-      }
-      
-      // Clean up local files
-      try { await fs.unlink(absoluteNewPath) } catch { /* ignore */ }
-      if (hasThumbnails) {
-        await deleteLocalThumbnails(newKey)
-      }
+      // Server-side rename in R2 (copy + delete, no download needed)
+      await moveInCdn(oldKey, newKey, hasThumbnails)
       
       // Update meta
       delete meta[oldKey]
@@ -441,22 +407,11 @@ export async function handleRename(request: Request) {
         }
       }
 
-      // If file was in our R2, rename in cloud too
+      // If file was in our R2, rename in cloud too (server-side)
       if (isInOurR2) {
-        // Read new local file and upload with new key
-        const buffer = await fs.readFile(absoluteNewPath)
-        await fs.mkdir(path.dirname(absoluteNewPath), { recursive: true })
+        await moveInCdn(oldKey, newKey, hasThumbnails)
         
-        // Delete old from CDN
-        await deleteFromCdn(oldKey, hasThumbnails)
-        
-        // Upload with new key
-        await uploadOriginalToCdn(newKey)
-        if (hasThumbnails) {
-          await uploadToCdn(newKey)
-        }
-        
-        // Clean up local files (they're now on CDN)
+        // Clean up local files (they're now on CDN only)
         try { await fs.unlink(absoluteNewPath) } catch { /* ignore */ }
         await deleteLocalThumbnails(newKey)
       }
@@ -635,72 +590,19 @@ export async function handleRenameStream(request: Request) {
             const isInOurR2 = isInCloud && fileCdnUrl === publicUrl
             const hasThumbnails = isProcessed(entry)
 
-            // If in our R2, we need to re-upload with new key
+            // If in our R2, rename using server-side copy
             if (isInOurR2) {
-              const localFilePath = getPublicPath(newKey)
-              
-              // Check if local file exists after folder rename
-              let hasLocalFile = false
               try {
-                await fs.access(localFilePath)
-                hasLocalFile = true
-              } catch {
-                // Need to download from cloud with old key
-              }
-
-              if (hasLocalFile) {
-                // Delete old from CDN
-                await deleteFromCdn(oldKey, hasThumbnails)
+                await moveInCdn(oldKey, newKey, hasThumbnails)
                 
-                // Upload with new key
-                await uploadOriginalToCdn(newKey)
-                if (hasThumbnails) {
-                  await uploadToCdn(newKey)
-                }
-                
-                // Clean up local files
+                // Clean up any local files that might exist after folder rename
+                const localFilePath = getPublicPath(newKey)
                 try { await fs.unlink(localFilePath) } catch { /* ignore */ }
                 if (hasThumbnails) {
                   await deleteLocalThumbnails(newKey)
                 }
-              } else {
-                // Cloud-only within folder - download, re-upload, delete old
-                try {
-                  const buffer = await downloadFromCdn(oldKey)
-                  await fs.mkdir(path.dirname(localFilePath), { recursive: true })
-                  await fs.writeFile(localFilePath, buffer)
-                  
-                  // Download thumbnails too
-                  if (hasThumbnails) {
-                    const oldThumbPaths = getAllThumbnailPaths(oldKey)
-                    const newThumbPaths = getAllThumbnailPaths(newKey)
-                    for (let i = 0; i < oldThumbPaths.length; i++) {
-                      try {
-                        const thumbBuffer = await downloadFromCdn(oldThumbPaths[i])
-                        const newThumbLocalPath = getPublicPath(newThumbPaths[i])
-                        await fs.mkdir(path.dirname(newThumbLocalPath), { recursive: true })
-                        await fs.writeFile(newThumbLocalPath, thumbBuffer)
-                      } catch { /* skip missing thumbnails */ }
-                    }
-                  }
-                  
-                  // Delete old from CDN
-                  await deleteFromCdn(oldKey, hasThumbnails)
-                  
-                  // Upload with new key
-                  await uploadOriginalToCdn(newKey)
-                  if (hasThumbnails) {
-                    await uploadToCdn(newKey)
-                  }
-                  
-                  // Clean up local files
-                  try { await fs.unlink(localFilePath) } catch { /* ignore */ }
-                  if (hasThumbnails) {
-                    await deleteLocalThumbnails(newKey)
-                  }
-                } catch (err) {
-                  console.error(`Failed to re-upload ${oldKey}:`, err)
-                }
+              } catch (err) {
+                console.error(`Failed to rename in CDN ${oldKey}:`, err)
               }
             }
 
@@ -742,36 +644,9 @@ export async function handleRenameStream(request: Request) {
 
         sendEvent({ type: 'start', total: 1, message: 'Renaming file...' })
 
-        // Handle cloud-only file
+        // Handle cloud-only file (server-side rename in R2)
         if (isInOurR2 && !hasLocalItem && isImagePath) {
-          const buffer = await downloadFromCdn(oldKey)
-          await fs.mkdir(path.dirname(absoluteNewPath), { recursive: true })
-          await fs.writeFile(absoluteNewPath, buffer)
-          
-          if (hasThumbnails) {
-            const newThumbPaths = getAllThumbnailPaths(newKey)
-            const oldThumbPaths = getAllThumbnailPaths(oldKey)
-            
-            for (let i = 0; i < oldThumbPaths.length; i++) {
-              try {
-                const thumbBuffer = await downloadFromCdn(oldThumbPaths[i])
-                const newThumbLocalPath = getPublicPath(newThumbPaths[i])
-                await fs.mkdir(path.dirname(newThumbLocalPath), { recursive: true })
-                await fs.writeFile(newThumbLocalPath, thumbBuffer)
-              } catch { /* skip */ }
-            }
-          }
-          
-          await deleteFromCdn(oldKey, hasThumbnails)
-          await uploadOriginalToCdn(newKey)
-          if (hasThumbnails) {
-            await uploadToCdn(newKey)
-          }
-          
-          try { await fs.unlink(absoluteNewPath) } catch { /* ignore */ }
-          if (hasThumbnails) {
-            await deleteLocalThumbnails(newKey)
-          }
+          await moveInCdn(oldKey, newKey, hasThumbnails)
           
           delete meta[oldKey]
           if (entry) meta[newKey] = entry
@@ -803,12 +678,10 @@ export async function handleRenameStream(request: Request) {
           }
 
           if (isInOurR2) {
-            await deleteFromCdn(oldKey, hasThumbnails)
-            await uploadOriginalToCdn(newKey)
-            if (hasThumbnails) {
-              await uploadToCdn(newKey)
-            }
+            // Server-side rename in R2
+            await moveInCdn(oldKey, newKey, hasThumbnails)
             
+            // Clean up local files (they're now on CDN only)
             try { await fs.unlink(absoluteNewPath) } catch { /* ignore */ }
             await deleteLocalThumbnails(newKey)
           }
