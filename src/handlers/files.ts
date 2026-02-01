@@ -923,7 +923,26 @@ export async function handleMoveStream(request: Request) {
               }
               return count
             }
-            totalFiles += await countFilesRecursive(absolutePath)
+            const localFileCount = await countFilesRecursive(absolutePath)
+            
+            // Also count cloud-only files in meta that aren't local
+            const folderPrefix = oldKey + '/'
+            let cloudOnlyCount = 0
+            for (const metaKey of Object.keys(meta)) {
+              if (metaKey.startsWith(folderPrefix)) {
+                const relPath = metaKey.slice(folderPrefix.length)
+                const localPath = path.join(absolutePath, relPath)
+                try {
+                  await fs.access(localPath)
+                  // File exists locally, already counted
+                } catch {
+                  // Cloud-only file
+                  cloudOnlyCount++
+                }
+              }
+            }
+            
+            totalFiles += localFileCount + cloudOnlyCount
             expandedItems.push({ itemPath, safePath, itemName, oldKey, newKey, newAbsolutePath, isVirtualFolder: false })
           } else if (!hasLocalItem) {
             // Check for virtual folder
