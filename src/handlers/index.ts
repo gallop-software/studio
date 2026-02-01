@@ -17,7 +17,8 @@ export {
   handleUpload, 
   handleDelete, 
   handleCreateFolder, 
-  handleRename, 
+  handleRename,
+  handleRenameStream,
   handleMove, 
   handleMoveStream 
 } from './files'

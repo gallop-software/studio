@@ -21,6 +21,11 @@ const slideIn = keyframes`
   }
 `
 
+const spin = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+`
+
 const styles = {
   overlay: css`
     position: fixed;
@@ -164,6 +169,8 @@ interface InputModalProps {
   placeholder?: string
   confirmLabel?: string
   cancelLabel?: string
+  isLoading?: boolean
+  loadingLabel?: string
   onConfirm: (value: string) => void
   onCancel: () => void
 }
@@ -200,6 +207,8 @@ export function InputModal({
   placeholder,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  isLoading = false,
+  loadingLabel = 'Processing...',
   onConfirm,
   onCancel,
 }: InputModalProps) {
@@ -207,13 +216,13 @@ export function InputModal({
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (value.trim()) {
+    if (value.trim() && !isLoading) {
       onConfirm(value.trim())
     }
   }
   
   return (
-    <div css={styles.overlay} onClick={onCancel}>
+    <div css={styles.overlay} onClick={isLoading ? undefined : onCancel}>
       <div css={styles.modal} onClick={(e) => e.stopPropagation()}>
         <form onSubmit={handleSubmit}>
           <div css={styles.header}>
@@ -229,14 +238,29 @@ export function InputModal({
               onChange={(e) => setValue(e.target.value)}
               placeholder={placeholder}
               autoFocus
+              disabled={isLoading}
             />
           </div>
           <div css={styles.footer}>
-            <button type="button" css={[styles.btn, styles.btnCancel]} onClick={onCancel}>
+            <button type="button" css={[styles.btn, styles.btnCancel]} onClick={onCancel} disabled={isLoading}>
               {cancelLabel}
             </button>
-            <button type="submit" css={[styles.btn, styles.btnConfirm]} disabled={!value.trim()}>
-              {confirmLabel}
+            <button type="submit" css={[styles.btn, styles.btnConfirm]} disabled={!value.trim() || isLoading}>
+              {isLoading ? (
+                <>
+                  <span css={css`
+                    display: inline-block;
+                    width: 14px;
+                    height: 14px;
+                    border: 2px solid currentColor;
+                    border-right-color: transparent;
+                    border-radius: 50%;
+                    animation: ${spin} 0.75s linear infinite;
+                    margin-right: 6px;
+                  `} />
+                  {loadingLabel}
+                </>
+              ) : confirmLabel}
             </button>
           </div>
         </form>

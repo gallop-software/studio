@@ -1547,67 +1547,178 @@ export function StudioToolbar() {
   const handleRenameFolder = useCallback(async (newName: string) => {
     if (!selectedFolderPath) return
     setShowRenameFolderModal(false)
+    setProgressTitle('Renaming Folder')
+    setShowProgress(true)
+    setProgressState({
+      current: 0,
+      total: 0,
+      percent: 0,
+      status: 'processing',
+      message: 'Preparing rename...',
+    })
+
     try {
-      const response = await fetch('/api/studio/rename', {
+      const response = await fetch('/api/studio/rename-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPath: selectedFolderPath, newName }),
       })
-      if (response.ok) {
-        clearSelection()
-        triggerRefresh()
+
+      if (!response.body) {
+        throw new Error('No response body')
       }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = JSON.parse(line.slice(6))
+
+          if (data.type === 'start') {
+            setProgressState({
+              current: 0,
+              total: data.total,
+              percent: 0,
+              status: 'processing',
+              message: data.message,
+            })
+          } else if (data.type === 'progress') {
+            setProgressState({
+              current: data.current,
+              total: data.total,
+              percent: Math.round((data.current / data.total) * 100),
+              status: 'processing',
+              message: data.message,
+            })
+          } else if (data.type === 'complete') {
+            setProgressState({
+              current: data.renamed,
+              total: data.renamed,
+              percent: 100,
+              status: 'complete',
+              message: `Renamed ${data.renamed} item(s)`,
+            })
+          } else if (data.type === 'error') {
+            setProgressState(prev => ({
+              ...prev,
+              status: 'error',
+              message: data.message,
+            }))
+          }
+        }
+      }
+
+      clearSelection()
+      triggerRefresh()
     } catch (error) {
       console.error('Failed to rename folder:', error)
+      setProgressState(prev => ({
+        ...prev,
+        status: 'error',
+        message: 'Failed to rename folder',
+      }))
     }
   }, [selectedFolderPath, clearSelection, triggerRefresh])
 
   const handleRenameFile = useCallback(async (newName: string) => {
     if (!selectedFilePath) return
     setShowRenameFileModal(false)
+    setProgressTitle('Renaming File')
+    setShowProgress(true)
+    setProgressState({
+      current: 0,
+      total: 1,
+      percent: 0,
+      status: 'processing',
+      message: 'Renaming file...',
+    })
+
     try {
-      const response = await fetch('/api/studio/rename', {
+      const response = await fetch('/api/studio/rename-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPath: selectedFilePath, newName }),
       })
-      if (response.ok) {
-        clearSelection()
-        triggerRefresh()
+
+      if (!response.body) {
+        throw new Error('No response body')
       }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = JSON.parse(line.slice(6))
+
+          if (data.type === 'start') {
+            setProgressState({
+              current: 0,
+              total: data.total,
+              percent: 0,
+              status: 'processing',
+              message: data.message,
+            })
+          } else if (data.type === 'progress') {
+            setProgressState({
+              current: data.current,
+              total: data.total,
+              percent: Math.round((data.current / data.total) * 100),
+              status: 'processing',
+              message: data.message,
+            })
+          } else if (data.type === 'complete') {
+            setProgressState({
+              current: data.renamed,
+              total: data.renamed,
+              percent: 100,
+              status: 'complete',
+              message: `Renamed ${data.renamed} item(s)`,
+            })
+          } else if (data.type === 'error') {
+            setProgressState(prev => ({
+              ...prev,
+              status: 'error',
+              message: data.message,
+            }))
+          }
+        }
+      }
+
+      clearSelection()
+      triggerRefresh()
     } catch (error) {
       console.error('Failed to rename file:', error)
+      setProgressState(prev => ({
+        ...prev,
+        status: 'error',
+        message: 'Failed to rename file',
+      }))
     }
   }, [selectedFilePath, clearSelection, triggerRefresh])
 
-  // Hide toolbar actions when viewing detail
-  if (focusedItem) {
-    return null
-  }
-
-  return (
+  // Modals that can be triggered from detail view need to render even when focusedItem is set
+  const sharedModals = (
     <>
-      {showDeleteConfirm && (
-        <ConfirmModal
-          title="Delete Items"
-          message={`Are you sure you want to delete ${selectedItems.size} item(s)? This action cannot be undone.`}
-          confirmLabel="Delete"
-          variant="danger"
-          onConfirm={handleDeleteConfirm}
-          onCancel={() => setShowDeleteConfirm(false)}
-        />
-      )}
-
-      {showSyncConfirm && (
-        <ConfirmModal
-          title="Push to CDN"
-          message={`Push ${syncImageCount} image${syncImageCount !== 1 ? 's' : ''} to Cloudflare R2?${syncHasRemote ? ' Remote images will be downloaded first.' : ''}${syncHasLocal ? ' After pushing, local files will be deleted.' : ''}`}
-          confirmLabel="Push"
-          onConfirm={handleSyncConfirm}
-          onCancel={() => setShowSyncConfirm(false)}
-        />
-      )}
-
       {(showDownloadConfirm || actionState.showDownloadConfirm) && (
         <ConfirmModal
           title="Download from CDN"
@@ -1646,6 +1757,38 @@ export function StudioToolbar() {
             })
             triggerRefresh()
           }}
+        />
+      )}
+    </>
+  )
+
+  // Hide toolbar actions when viewing detail, but keep shared modals
+  if (focusedItem) {
+    return sharedModals
+  }
+
+  return (
+    <>
+      {sharedModals}
+
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title="Delete Items"
+          message={`Are you sure you want to delete ${selectedItems.size} item(s)? This action cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
+
+      {showSyncConfirm && (
+        <ConfirmModal
+          title="Push to CDN"
+          message={`Push ${syncImageCount} image${syncImageCount !== 1 ? 's' : ''} to Cloudflare R2?${syncHasRemote ? ' Remote images will be downloaded first.' : ''}${syncHasLocal ? ' After pushing, local files will be deleted.' : ''}`}
+          confirmLabel="Push"
+          onConfirm={handleSyncConfirm}
+          onCancel={() => setShowSyncConfirm(false)}
         />
       )}
 

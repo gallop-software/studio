@@ -330,6 +330,14 @@ export function StudioDetailView() {
     actionState,
   } = useStudio()
   const [showRenameModal, setShowRenameModal] = useState(false)
+  const [showRenameProgress, setShowRenameProgress] = useState(false)
+  const [renameProgress, setRenameProgress] = useState<ProgressState>({
+    current: 0,
+    total: 1,
+    percent: 0,
+    status: 'processing',
+    message: 'Renaming...',
+  })
   const [showR2SetupModal, setShowR2SetupModal] = useState(false)
   const [alertMessage, setAlertMessage] = useState<{ title: string; message: string } | null>(null)
   const [showCopied, setShowCopied] = useState(false)
@@ -391,10 +399,19 @@ export function StudioDetailView() {
   }
 
   const handleRename = async (newName: string) => {
-    setShowRenameModal(false)
     if (newName && newName !== focusedItem.name) {
+      setShowRenameModal(false)
+      setShowRenameProgress(true)
+      setRenameProgress({
+        current: 0,
+        total: 1,
+        percent: 0,
+        status: 'processing',
+        message: 'Renaming file...',
+      })
+
       try {
-        const response = await fetch('/api/studio/rename', {
+        const response = await fetch('/api/studio/rename-stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -403,25 +420,82 @@ export function StudioDetailView() {
           }),
         })
         
-        if (response.ok) {
-          const data = await response.json()
-          // Update focused item with new path so it stays open after refresh
-          const newPath = data.newPath
+        if (!response.body) {
+          throw new Error('No response body')
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let finalNewPath = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = JSON.parse(line.slice(6))
+
+            if (data.type === 'start') {
+              setRenameProgress({
+                current: 0,
+                total: data.total,
+                percent: 0,
+                status: 'processing',
+                message: data.message,
+              })
+            } else if (data.type === 'progress') {
+              setRenameProgress({
+                current: data.current,
+                total: data.total,
+                percent: Math.round((data.current / data.total) * 100),
+                status: 'processing',
+                message: data.message,
+              })
+            } else if (data.type === 'complete') {
+              finalNewPath = data.newPath
+              setRenameProgress({
+                current: data.renamed,
+                total: data.renamed,
+                percent: 100,
+                status: 'complete',
+                message: `Renamed successfully`,
+              })
+            } else if (data.type === 'error') {
+              setRenameProgress(prev => ({
+                ...prev,
+                status: 'error',
+                message: data.message,
+              }))
+              setAlertMessage({
+                title: 'Rename Failed',
+                message: data.message,
+              })
+            }
+          }
+        }
+
+        // Update focused item with new path
+        if (finalNewPath) {
           setFocusedItem({
             ...focusedItem,
-            path: newPath,
-            name: newPath.split('/').pop() || newName,
+            path: finalNewPath,
+            name: finalNewPath.split('/').pop() || newName,
           })
           triggerRefresh()
-        } else {
-          const data = await response.json()
-          setAlertMessage({
-            title: 'Rename Failed',
-            message: data.error || 'Failed to rename file',
-          })
         }
       } catch (error) {
         console.error('Rename error:', error)
+        setRenameProgress(prev => ({
+          ...prev,
+          status: 'error',
+          message: 'Failed to rename',
+        }))
         setAlertMessage({
           title: 'Rename Failed',
           message: 'An error occurred while renaming the file',
@@ -567,6 +641,17 @@ export function StudioDetailView() {
           confirmLabel="Rename"
           onConfirm={handleRename}
           onCancel={() => setShowRenameModal(false)}
+        />
+      )}
+
+      {showRenameProgress && (
+        <ProgressModal
+          title="Renaming"
+          progress={renameProgress}
+          onClose={() => {
+            setShowRenameProgress(false)
+            triggerRefresh()
+          }}
         />
       )}
 

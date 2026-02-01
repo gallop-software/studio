@@ -473,6 +473,363 @@ export async function handleRename(request: Request) {
   }
 }
 
+export async function handleRenameStream(request: Request) {
+  const encoder = new TextEncoder()
+  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '')
+  
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendEvent = (data: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      try {
+        const { oldPath, newName } = await request.json()
+
+        if (!oldPath || !newName) {
+          sendEvent({ type: 'error', message: 'Path and new name are required' })
+          controller.close()
+          return
+        }
+
+        const safePath = oldPath.replace(/\.\./g, '')
+        const absoluteOldPath = getWorkspacePath(safePath)
+
+        if (!absoluteOldPath.startsWith(getPublicPath())) {
+          sendEvent({ type: 'error', message: 'Invalid path' })
+          controller.close()
+          return
+        }
+
+        const oldRelativePath = safePath.replace(/^public\//, '')
+        const isImagePath = isImageFile(path.basename(oldPath))
+
+        // Check if item exists and if it's a file or folder
+        let hasLocalItem = false
+        let isFile = true
+        let isVirtualFolder = false
+        try {
+          const stats = await fs.stat(absoluteOldPath)
+          hasLocalItem = true
+          isFile = stats.isFile()
+        } catch {
+          // Check if it's a cloud-only file or virtual folder
+          const meta = await loadMeta()
+          const oldKey = '/' + oldRelativePath
+          const entry = meta[oldKey] as MetaEntry | undefined
+          
+          if (entry) {
+            // Cloud-only file
+            isFile = true
+          } else {
+            // Check if it's a virtual folder (folder that only exists in meta keys)
+            const folderPrefix = oldKey + '/'
+            const hasChildrenInMeta = Object.keys(meta).some(key => key.startsWith(folderPrefix))
+            
+            if (hasChildrenInMeta) {
+              // Virtual folder - exists only in meta
+              isFile = false
+              isVirtualFolder = true
+            } else {
+              sendEvent({ type: 'error', message: 'File or folder not found' })
+              controller.close()
+              return
+            }
+          }
+        }
+
+        // Slugify name based on type
+        const sanitizedName = isFile ? slugifyFilename(newName) : slugifyFolderName(newName)
+        if (!sanitizedName) {
+          sendEvent({ type: 'error', message: 'Invalid name' })
+          controller.close()
+          return
+        }
+
+        const parentDir = path.dirname(absoluteOldPath)
+        const absoluteNewPath = path.join(parentDir, sanitizedName)
+        const newRelativePath = path.join(path.dirname(oldRelativePath), sanitizedName)
+        const newPath = path.join(path.dirname(safePath), sanitizedName)
+
+        // Check if destination exists
+        const meta = await loadMeta()
+        const cdnUrls = getCdnUrls(meta)
+
+        // For files, check new key doesn't exist
+        if (isFile) {
+          const newKey = '/' + newRelativePath
+          if (meta[newKey]) {
+            sendEvent({ type: 'error', message: 'An item with this name already exists' })
+            controller.close()
+            return
+          }
+        }
+
+        // Only check local path if not a virtual folder
+        if (!isVirtualFolder) {
+          try {
+            await fs.access(absoluteNewPath)
+            sendEvent({ type: 'error', message: 'An item with this name already exists' })
+            controller.close()
+            return
+          } catch {
+            // Good - doesn't exist
+          }
+        }
+
+        // For virtual folders, check if new prefix would conflict with existing meta keys
+        if (isVirtualFolder) {
+          const newPrefix = '/' + newRelativePath + '/'
+          const hasConflict = Object.keys(meta).some(key => key.startsWith(newPrefix))
+          if (hasConflict) {
+            sendEvent({ type: 'error', message: 'A folder with this name already exists' })
+            controller.close()
+            return
+          }
+        }
+
+        // ========== FOLDER RENAME ==========
+        if (!isFile) {
+          // Collect all items in the folder that need meta updates
+          const oldPrefix = '/' + oldRelativePath + '/'
+          const newPrefix = '/' + newRelativePath + '/'
+          
+          // Find all meta entries under this folder
+          const itemsToUpdate: Array<{ oldKey: string; newKey: string; entry: MetaEntry }> = []
+          for (const [key, entry] of Object.entries(meta)) {
+            if (key.startsWith(oldPrefix) && entry && typeof entry === 'object') {
+              const newKey = key.replace(oldPrefix, newPrefix)
+              itemsToUpdate.push({ oldKey: key, newKey, entry: entry as MetaEntry })
+            }
+          }
+
+          const total = itemsToUpdate.length + 1 // +1 for the folder rename itself
+          sendEvent({ type: 'start', total, message: `Renaming folder with ${itemsToUpdate.length} item(s)...` })
+
+          // Step 1: Rename the local folder and thumbnail folders
+          if (hasLocalItem) {
+            await fs.rename(absoluteOldPath, absoluteNewPath)
+            
+            // Also rename thumbnail directories
+            // Thumbnails are at /images/folder/... so we need to rename those too
+            const imagesDir = getPublicPath('/images')
+            const oldThumbFolder = path.join(imagesDir, oldRelativePath)
+            const newThumbFolder = path.join(imagesDir, newRelativePath)
+            try {
+              await fs.access(oldThumbFolder)
+              await fs.mkdir(path.dirname(newThumbFolder), { recursive: true })
+              await fs.rename(oldThumbFolder, newThumbFolder)
+            } catch {
+              // Thumbnail folder might not exist
+            }
+          }
+          sendEvent({ type: 'progress', current: 1, total, renamed: 1, message: 'Renamed folder' })
+
+          // Step 2: Update each item in the folder
+          let renamed = 1
+          for (const item of itemsToUpdate) {
+            const { oldKey, newKey, entry } = item
+            const isInCloud = entry.c !== undefined
+            const fileCdnUrl = isInCloud ? cdnUrls[entry.c!] : undefined
+            const isInOurR2 = isInCloud && fileCdnUrl === publicUrl
+            const hasThumbnails = isProcessed(entry)
+
+            // If in our R2, we need to re-upload with new key
+            if (isInOurR2) {
+              const localFilePath = getPublicPath(newKey)
+              
+              // Check if local file exists after folder rename
+              let hasLocalFile = false
+              try {
+                await fs.access(localFilePath)
+                hasLocalFile = true
+              } catch {
+                // Need to download from cloud with old key
+              }
+
+              if (hasLocalFile) {
+                // Delete old from CDN
+                await deleteFromCdn(oldKey, hasThumbnails)
+                
+                // Upload with new key
+                await uploadOriginalToCdn(newKey)
+                if (hasThumbnails) {
+                  await uploadToCdn(newKey)
+                }
+                
+                // Clean up local files
+                try { await fs.unlink(localFilePath) } catch { /* ignore */ }
+                if (hasThumbnails) {
+                  await deleteLocalThumbnails(newKey)
+                }
+              } else {
+                // Cloud-only within folder - download, re-upload, delete old
+                try {
+                  const buffer = await downloadFromCdn(oldKey)
+                  await fs.mkdir(path.dirname(localFilePath), { recursive: true })
+                  await fs.writeFile(localFilePath, buffer)
+                  
+                  // Download thumbnails too
+                  if (hasThumbnails) {
+                    const oldThumbPaths = getAllThumbnailPaths(oldKey)
+                    const newThumbPaths = getAllThumbnailPaths(newKey)
+                    for (let i = 0; i < oldThumbPaths.length; i++) {
+                      try {
+                        const thumbBuffer = await downloadFromCdn(oldThumbPaths[i])
+                        const newThumbLocalPath = getPublicPath(newThumbPaths[i])
+                        await fs.mkdir(path.dirname(newThumbLocalPath), { recursive: true })
+                        await fs.writeFile(newThumbLocalPath, thumbBuffer)
+                      } catch { /* skip missing thumbnails */ }
+                    }
+                  }
+                  
+                  // Delete old from CDN
+                  await deleteFromCdn(oldKey, hasThumbnails)
+                  
+                  // Upload with new key
+                  await uploadOriginalToCdn(newKey)
+                  if (hasThumbnails) {
+                    await uploadToCdn(newKey)
+                  }
+                  
+                  // Clean up local files
+                  try { await fs.unlink(localFilePath) } catch { /* ignore */ }
+                  if (hasThumbnails) {
+                    await deleteLocalThumbnails(newKey)
+                  }
+                } catch (err) {
+                  console.error(`Failed to re-upload ${oldKey}:`, err)
+                }
+              }
+            }
+
+            // Update meta entry
+            delete meta[oldKey]
+            meta[newKey] = entry
+
+            renamed++
+            sendEvent({ 
+              type: 'progress', 
+              current: renamed, 
+              total, 
+              renamed,
+              message: `Renamed ${path.basename(newKey)}` 
+            })
+          }
+
+          // Save meta
+          await saveMeta(meta)
+
+          // Clean up empty folders (old folder location and old thumbnail location)
+          await deleteEmptyFolders(absoluteOldPath)
+          const oldThumbFolder = path.join(getPublicPath('/images'), oldRelativePath)
+          await deleteEmptyFolders(oldThumbFolder)
+
+          sendEvent({ type: 'complete', renamed, newPath })
+          controller.close()
+          return
+        }
+
+        // ========== SINGLE FILE RENAME ==========
+        const oldKey = '/' + oldRelativePath
+        const newKey = '/' + newRelativePath
+        const entry = meta[oldKey] as MetaEntry | undefined
+        const isInCloud = entry?.c !== undefined
+        const fileCdnUrl = isInCloud && entry?.c !== undefined ? cdnUrls[entry.c] : undefined
+        const isInOurR2 = isInCloud && fileCdnUrl === publicUrl
+        const hasThumbnails = entry ? isProcessed(entry) : false
+
+        sendEvent({ type: 'start', total: 1, message: 'Renaming file...' })
+
+        // Handle cloud-only file
+        if (isInOurR2 && !hasLocalItem && isImagePath) {
+          const buffer = await downloadFromCdn(oldKey)
+          await fs.mkdir(path.dirname(absoluteNewPath), { recursive: true })
+          await fs.writeFile(absoluteNewPath, buffer)
+          
+          if (hasThumbnails) {
+            const newThumbPaths = getAllThumbnailPaths(newKey)
+            const oldThumbPaths = getAllThumbnailPaths(oldKey)
+            
+            for (let i = 0; i < oldThumbPaths.length; i++) {
+              try {
+                const thumbBuffer = await downloadFromCdn(oldThumbPaths[i])
+                const newThumbLocalPath = getPublicPath(newThumbPaths[i])
+                await fs.mkdir(path.dirname(newThumbLocalPath), { recursive: true })
+                await fs.writeFile(newThumbLocalPath, thumbBuffer)
+              } catch { /* skip */ }
+            }
+          }
+          
+          await deleteFromCdn(oldKey, hasThumbnails)
+          await uploadOriginalToCdn(newKey)
+          if (hasThumbnails) {
+            await uploadToCdn(newKey)
+          }
+          
+          try { await fs.unlink(absoluteNewPath) } catch { /* ignore */ }
+          if (hasThumbnails) {
+            await deleteLocalThumbnails(newKey)
+          }
+          
+          delete meta[oldKey]
+          if (entry) meta[newKey] = entry
+          await saveMeta(meta)
+          
+          sendEvent({ type: 'complete', renamed: 1, newPath })
+          controller.close()
+          return
+        }
+
+        // Handle local file rename
+        if (hasLocalItem) {
+          await fs.rename(absoluteOldPath, absoluteNewPath)
+        }
+
+        if (isImagePath && entry) {
+          const oldThumbPaths = getAllThumbnailPaths(oldKey)
+          const newThumbPaths = getAllThumbnailPaths(newKey)
+
+          for (let i = 0; i < oldThumbPaths.length; i++) {
+            const oldThumbPath = getPublicPath(oldThumbPaths[i])
+            const newThumbPath = getPublicPath(newThumbPaths[i])
+            
+            await fs.mkdir(path.dirname(newThumbPath), { recursive: true })
+            
+            try {
+              await fs.rename(oldThumbPath, newThumbPath)
+            } catch { /* skip */ }
+          }
+
+          if (isInOurR2) {
+            await deleteFromCdn(oldKey, hasThumbnails)
+            await uploadOriginalToCdn(newKey)
+            if (hasThumbnails) {
+              await uploadToCdn(newKey)
+            }
+            
+            try { await fs.unlink(absoluteNewPath) } catch { /* ignore */ }
+            await deleteLocalThumbnails(newKey)
+          }
+
+          delete meta[oldKey]
+          meta[newKey] = entry
+          await saveMeta(meta)
+        }
+
+        sendEvent({ type: 'complete', renamed: 1, newPath })
+        controller.close()
+      } catch (error) {
+        console.error('Rename stream error:', error)
+        sendEvent({ type: 'error', message: 'Failed to rename' })
+        controller.close()
+      }
+    }
+  })
+
+  return streamResponse(stream)
+}
+
 export async function handleMoveStream(request: Request) {
   const encoder = new TextEncoder()
   
@@ -516,32 +873,163 @@ export async function handleMoveStream(request: Request) {
         const moved: string[] = []
         const errors: string[] = []
         const sourceFolders = new Set<string>()
-        const total = paths.length
+        
+        // Pre-calculate total files to move (expand folders and virtual folders)
+        let totalFiles = 0
+        const expandedItems: Array<{
+          itemPath: string
+          safePath: string
+          itemName: string
+          oldKey: string
+          newKey: string
+          newAbsolutePath: string
+          isVirtualFolder: boolean
+          virtualFolderItems?: Array<{ oldKey: string; newKey: string; entry: MetaEntry }>
+        }> = []
 
-        sendEvent({ type: 'start', total })
-
-        for (let i = 0; i < paths.length; i++) {
-          const itemPath = paths[i]
+        for (const itemPath of paths) {
           const safePath = itemPath.replace(/\.\./g, '')
           const itemName = path.basename(safePath)
-          const newAbsolutePath = path.join(absoluteDestination, itemName)
-
-          // Build meta keys
           const oldRelativePath = safePath.replace(/^public\/?/, '')
           const destWithoutPublic = safeDestination.replace(/^public\/?/, '')
           const newRelativePath = destWithoutPublic ? path.join(destWithoutPublic, itemName) : itemName
           const oldKey = '/' + oldRelativePath
           const newKey = '/' + newRelativePath
+          const newAbsolutePath = path.join(absoluteDestination, itemName)
+          const absolutePath = getWorkspacePath(safePath)
+          
+          // Check if it's a physical item
+          let hasLocalItem = false
+          let isDirectory = false
+          try {
+            const stats = await fs.stat(absolutePath)
+            hasLocalItem = true
+            isDirectory = stats.isDirectory()
+          } catch {
+            // Check if it's a virtual folder
+          }
+          
+          if (hasLocalItem && isDirectory) {
+            // Count files in physical directory
+            const countFilesRecursive = async (dir: string): Promise<number> => {
+              let count = 0
+              const entries = await fs.readdir(dir, { withFileTypes: true })
+              for (const entry of entries) {
+                if (entry.isDirectory()) {
+                  count += await countFilesRecursive(path.join(dir, entry.name))
+                } else {
+                  count++
+                }
+              }
+              return count
+            }
+            totalFiles += await countFilesRecursive(absolutePath)
+            expandedItems.push({ itemPath, safePath, itemName, oldKey, newKey, newAbsolutePath, isVirtualFolder: false })
+          } else if (!hasLocalItem) {
+            // Check for virtual folder
+            const folderPrefix = oldKey + '/'
+            const virtualItems: Array<{ oldKey: string; newKey: string; entry: MetaEntry }> = []
+            for (const [key, metaEntry] of Object.entries(meta)) {
+              if (key.startsWith(folderPrefix) && metaEntry && typeof metaEntry === 'object') {
+                const relativePath = key.slice(folderPrefix.length)
+                const destNewKey = newKey + '/' + relativePath
+                virtualItems.push({ oldKey: key, newKey: destNewKey, entry: metaEntry as MetaEntry })
+              }
+            }
+            if (virtualItems.length > 0) {
+              totalFiles += virtualItems.length
+              expandedItems.push({ itemPath, safePath, itemName, oldKey, newKey, newAbsolutePath, isVirtualFolder: true, virtualFolderItems: virtualItems })
+              // Track source folder for cleanup
+              sourceFolders.add(absolutePath)
+            } else {
+              // Single file (local or cloud)
+              totalFiles++
+              expandedItems.push({ itemPath, safePath, itemName, oldKey, newKey, newAbsolutePath, isVirtualFolder: false })
+            }
+          } else {
+            // Single local file
+            totalFiles++
+            expandedItems.push({ itemPath, safePath, itemName, oldKey, newKey, newAbsolutePath, isVirtualFolder: false })
+          }
+        }
+
+        sendEvent({ type: 'start', total: totalFiles })
+        let processedFiles = 0
+
+        for (const expandedItem of expandedItems) {
+          const { itemPath, safePath, itemName, oldKey, newKey, newAbsolutePath, isVirtualFolder, virtualFolderItems } = expandedItem
+
+          // Handle virtual folder
+          if (isVirtualFolder && virtualFolderItems) {
+            for (const vItem of virtualFolderItems) {
+              const itemEntry = vItem.entry
+              const isItemInCloud = itemEntry.c !== undefined
+              const itemCdnUrl = isItemInCloud ? cdnUrls[itemEntry.c!] : undefined
+              const isItemInR2 = isItemInCloud && itemCdnUrl === r2PublicUrl
+              const itemHasThumbnails = isProcessed(itemEntry)
+              
+              if (isItemInR2) {
+                try {
+                  const itemLocalPath = getPublicPath(vItem.newKey)
+                  const buffer = await downloadFromCdn(vItem.oldKey)
+                  await fs.mkdir(path.dirname(itemLocalPath), { recursive: true })
+                  await fs.writeFile(itemLocalPath, buffer)
+                  
+                  if (itemHasThumbnails) {
+                    const oldThumbPaths = getAllThumbnailPaths(vItem.oldKey)
+                    const newThumbPaths = getAllThumbnailPaths(vItem.newKey)
+                    for (let t = 0; t < oldThumbPaths.length; t++) {
+                      try {
+                        const thumbBuffer = await downloadFromCdn(oldThumbPaths[t])
+                        const newThumbLocalPath = getPublicPath(newThumbPaths[t])
+                        await fs.mkdir(path.dirname(newThumbLocalPath), { recursive: true })
+                        await fs.writeFile(newThumbLocalPath, thumbBuffer)
+                      } catch { /* skip missing thumbnails */ }
+                    }
+                  }
+                  
+                  await deleteFromCdn(vItem.oldKey, itemHasThumbnails)
+                  await uploadOriginalToCdn(vItem.newKey)
+                  if (itemHasThumbnails) {
+                    await uploadToCdn(vItem.newKey)
+                  }
+                  
+                  try { await fs.unlink(itemLocalPath) } catch { /* ignore */ }
+                  if (itemHasThumbnails) {
+                    await deleteLocalThumbnails(vItem.newKey)
+                  }
+                } catch (err) {
+                  console.error(`Failed to move cloud item ${vItem.oldKey}:`, err)
+                }
+              }
+              
+              delete meta[vItem.oldKey]
+              meta[vItem.newKey] = itemEntry
+              
+              processedFiles++
+              sendEvent({
+                type: 'progress',
+                current: processedFiles,
+                total: totalFiles,
+                moved: moved.length,
+                percent: Math.round((processedFiles / totalFiles) * 100),
+                currentFile: path.basename(vItem.newKey),
+              })
+            }
+            moved.push(itemPath)
+            continue
+          }
 
           // Check if destination already exists in meta
           if (meta[newKey]) {
             errors.push(`${itemName} already exists in destination`)
+            processedFiles++
             sendEvent({
               type: 'progress',
-              current: i + 1,
-              total,
+              current: processedFiles,
+              total: totalFiles,
               moved: moved.length,
-              percent: Math.round(((i + 1) / total) * 100),
+              percent: Math.round((processedFiles / totalFiles) * 100),
               currentFile: itemName,
             })
             continue
@@ -577,12 +1065,13 @@ export async function handleMoveStream(request: Request) {
               delete meta[oldKey]
               meta[newKey] = newEntry
               moved.push(itemPath)
+              processedFiles++
               sendEvent({
                 type: 'progress',
-                current: i + 1,
-                total,
+                current: processedFiles,
+                total: totalFiles,
                 moved: moved.length,
-                percent: Math.round(((i + 1) / total) * 100),
+                percent: Math.round((processedFiles / totalFiles) * 100),
                 currentFile: itemName,
               })
 
@@ -621,12 +1110,13 @@ export async function handleMoveStream(request: Request) {
               delete meta[oldKey]
               meta[newKey] = newEntry
               moved.push(itemPath)
+              processedFiles++
               sendEvent({
                 type: 'progress',
-                current: i + 1,
-                total,
+                current: processedFiles,
+                total: totalFiles,
                 moved: moved.length,
-                percent: Math.round(((i + 1) / total) * 100),
+                percent: Math.round((processedFiles / totalFiles) * 100),
                 currentFile: itemName,
               })
 
@@ -636,27 +1126,30 @@ export async function handleMoveStream(request: Request) {
 
               if (absoluteDestination.startsWith(absolutePath + path.sep)) {
                 errors.push(`Cannot move ${itemName} into itself`)
+                processedFiles++
                 sendEvent({
                   type: 'progress',
-                  current: i + 1,
-                  total,
+                  current: processedFiles,
+                  total: totalFiles,
                   moved: moved.length,
-                  percent: Math.round(((i + 1) / total) * 100),
+                  percent: Math.round((processedFiles / totalFiles) * 100),
                   currentFile: itemName,
                 })
                 continue
               }
 
+              // Check if local file/folder exists
               try {
                 await fs.access(absolutePath)
               } catch {
                 errors.push(`${itemName} not found`)
+                processedFiles++
                 sendEvent({
                   type: 'progress',
-                  current: i + 1,
-                  total,
+                  current: processedFiles,
+                  total: totalFiles,
                   moved: moved.length,
-                  percent: Math.round(((i + 1) / total) * 100),
+                  percent: Math.round((processedFiles / totalFiles) * 100),
                   currentFile: itemName,
                 })
                 continue
@@ -665,12 +1158,13 @@ export async function handleMoveStream(request: Request) {
               try {
                 await fs.access(newAbsolutePath)
                 errors.push(`${itemName} already exists in destination`)
+                processedFiles++
                 sendEvent({
                   type: 'progress',
-                  current: i + 1,
-                  total,
+                  current: processedFiles,
+                  total: totalFiles,
                   moved: moved.length,
-                  percent: Math.round(((i + 1) / total) * 100),
+                  percent: Math.round((processedFiles / totalFiles) * 100),
                   currentFile: itemName,
                 })
                 continue
@@ -717,27 +1211,66 @@ export async function handleMoveStream(request: Request) {
                     delete meta[key]
                   }
                 }
+                
+                // Also move the thumbnail folder
+                // oldKey is like "/layout-3/layout-2", we need "layout-3/layout-2" for thumbnail path
+                const oldThumbRelPath = oldKey.slice(1) // remove leading /
+                const newThumbRelPath = newKey.slice(1)
+                const imagesDir = getPublicPath('images')
+                const oldThumbFolder = path.join(imagesDir, oldThumbRelPath)
+                const newThumbFolder = path.join(imagesDir, newThumbRelPath)
+                try {
+                  await fs.access(oldThumbFolder)
+                  // Track old thumbnail folder for cleanup
+                  sourceFolders.add(oldThumbFolder)
+                  await fs.mkdir(path.dirname(newThumbFolder), { recursive: true })
+                  await fs.rename(oldThumbFolder, newThumbFolder)
+                } catch {
+                  // Thumbnail folder might not exist
+                }
               }
 
               moved.push(itemPath)
+              
+              // For directories, count files moved
+              if (stats.isDirectory()) {
+                const countFilesInDir = async (dir: string): Promise<number> => {
+                  let count = 0
+                  const entries = await fs.readdir(dir, { withFileTypes: true })
+                  for (const entry of entries) {
+                    if (entry.isDirectory()) {
+                      count += await countFilesInDir(path.join(dir, entry.name))
+                    } else {
+                      count++
+                    }
+                  }
+                  return count
+                }
+                const filesInDir = await countFilesInDir(newAbsolutePath)
+                processedFiles += filesInDir
+              } else {
+                processedFiles++
+              }
+              
               sendEvent({
                 type: 'progress',
-                current: i + 1,
-                total,
+                current: processedFiles,
+                total: totalFiles,
                 moved: moved.length,
-                percent: Math.round(((i + 1) / total) * 100),
+                percent: Math.round((processedFiles / totalFiles) * 100),
                 currentFile: itemName,
               })
             }
           } catch (err) {
             console.error(`Failed to move ${itemName}:`, err)
             errors.push(`Failed to move ${itemName}`)
+            processedFiles++
             sendEvent({
               type: 'progress',
-              current: i + 1,
-              total,
+              current: processedFiles,
+              total: totalFiles,
               moved: moved.length,
-              percent: Math.round(((i + 1) / total) * 100),
+              percent: Math.round((processedFiles / totalFiles) * 100),
               currentFile: itemName,
             })
           }
@@ -971,6 +1504,20 @@ export async function handleMove(request: Request) {
                 delete meta[key]
                 metaChanged = true
               }
+            }
+            
+            // Also move the thumbnail folder
+            const imagesDir = getPublicPath('images')
+            const oldThumbFolder = path.join(imagesDir, oldRelativePath)
+            const newThumbFolder = path.join(imagesDir, newRelativePath)
+            try {
+              await fs.access(oldThumbFolder)
+              // Track old thumbnail folder for cleanup
+              sourceFolders.add(oldThumbFolder)
+              await fs.mkdir(path.dirname(newThumbFolder), { recursive: true })
+              await fs.rename(oldThumbFolder, newThumbFolder)
+            } catch {
+              // Thumbnail folder might not exist
             }
           }
 

@@ -8,7 +8,7 @@ import { createServer } from 'net'
 
 // Import handlers from individual modules
 import { handleList, handleSearch, handleListFolders, handleCountImages, handleFolderImages } from '../handlers/list'
-import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleMoveStream } from '../handlers/files'
+import { handleUpload, handleDelete, handleCreateFolder, handleRename, handleRenameStream, handleMoveStream } from '../handlers/files'
 import { handleSync, handleReprocessStream, handleUnprocessStream, handleDownloadStream, handlePushUpdatesStream, handleCancelUpdates, handleCancelStreamOperation } from '../handlers/images'
 import { handleScanStream, handleDeleteOrphans } from '../handlers/scan'
 import { handleImportUrls, handleGetCdns, handleUpdateCdns } from '../handlers/import'
@@ -104,6 +104,7 @@ export async function startServer(options: ServerOptions) {
   app.post('/api/studio/upload', wrapRawHandler(handleUpload))
   app.post('/api/studio/create-folder', wrapHandler(handleCreateFolder))
   app.post('/api/studio/rename', wrapHandler(handleRename))
+  app.post('/api/studio/rename-stream', wrapHandler(handleRenameStream, true))
   app.post('/api/studio/move', wrapHandler(handleMoveStream, true))
   app.post('/api/studio/sync', wrapHandler(handleSync, true))
   app.post('/api/studio/reprocess-stream', wrapHandler(handleReprocessStream, true))
