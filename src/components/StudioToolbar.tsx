@@ -288,7 +288,7 @@ const styles = {
 }
 
 export function StudioToolbar() {
-  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest, fileItems, requestProcess, requestClearCache, actionState } = useStudio()
+  const { selectedItems, viewMode, setViewMode, clearSelection, currentPath, triggerRefresh, focusedItem, scanRequested, clearScanRequest, fileItems, requestProcess, actionState } = useStudio()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [showAddNewModal, setShowAddNewModal] = useState(false)
@@ -1167,13 +1167,6 @@ export function StudioToolbar() {
     }
   }, [selectedItems, fileItems, clearSelection, triggerRefresh])
 
-  // Clear CDN cache handler using shared action
-  const handleClearCache = useCallback(() => {
-    if (selectedItems.size === 0) return
-    setShowCloudDropdown(false)
-    requestClearCache(Array.from(selectedItems), fileItems)
-  }, [selectedItems, fileItems, requestClearCache])
-
   const handleCreateFolder = useCallback(async (folderName: string) => {
     setShowNewFolderModal(false)
     
@@ -1573,13 +1566,6 @@ export function StudioToolbar() {
                     Download
                   </button>
                 )}
-                <button
-                  css={styles.cloudDropdownItem}
-                  onClick={handleClearCache}
-                >
-                  <RefreshIcon />
-                  Clear Cache
-                </button>
               </div>
             )}
           </div>

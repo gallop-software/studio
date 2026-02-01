@@ -31,8 +31,7 @@ export {
   handleProcessAllStream, 
   handleDownloadStream,
   handlePushUpdatesStream,
-  handleCancelUpdates,
-  handleClearCache
+  handleCancelUpdates
 } from './images'
 
 // Scan handler

@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs'
 import path from 'path'
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { jsonResponse } from './utils/response'
 import { getAllThumbnailPaths, isProcessed } from '../types'
 import {
@@ -20,9 +20,6 @@ import {
   downloadFromRemoteUrl,
 } from './utils'
 import { getPublicPath } from '../config'
-import {
-  purgeCloudflareCache,
-} from './utils'
 import { deleteEmptyFolders, cleanupEmptyFoldersRecursive } from './utils/folders'
 
 export async function handleSync(request: Request) {
@@ -60,7 +57,6 @@ export async function handleSync(request: Request) {
 
     const pushed: string[] = []
     const errors: string[] = []
-    const urlsToPurge: string[] = []
     const sourceFolders = new Set<string>()
 
     for (let imageKey of imageKeys) {
@@ -114,7 +110,6 @@ export async function handleSync(request: Request) {
             ContentType: getContentType(imageKey),
           })
         )
-        urlsToPurge.push(`${publicUrl}${imageKey}`)
 
         // Upload thumbnails (only if processed locally, not for remote imports)
         if (!isRemote && isProcessed(entry)) {
@@ -130,7 +125,6 @@ export async function handleSync(request: Request) {
                   ContentType: getContentType(thumbPath),
                 })
               )
-              urlsToPurge.push(`${publicUrl}${thumbPath}`)
             } catch {
               // Thumbnail might not exist
             }
@@ -171,21 +165,11 @@ export async function handleSync(request: Request) {
     for (const folder of sourceFolders) {
       await deleteEmptyFolders(folder)
     }
-    
-    // Purge Cloudflare cache for uploaded files
-    let cacheMessage: string | undefined
-    if (urlsToPurge.length > 0) {
-      const cacheResult = await purgeCloudflareCache(urlsToPurge)
-      if (cacheResult.message) {
-        cacheMessage = cacheResult.message
-      }
-    }
 
     return jsonResponse({
       success: true,
       pushed,
       errors: errors.length > 0 ? errors : undefined,
-      cacheMessage,
     })
   } catch (error) {
     console.error('Failed to push:', error)
@@ -207,7 +191,6 @@ export async function handleReprocess(request: Request) {
     const cdnUrls = getCdnUrls(meta)
     const processed: string[] = []
     const errors: string[] = []
-    const urlsToPurge: string[] = []
 
     for (let imageKey of imageKeys) {
       // Normalize key to have leading /
@@ -254,12 +237,9 @@ export async function handleReprocess(request: Request) {
         if (isInOurR2) {
           // Re-upload thumbnails to R2 and clean up local files
           updatedEntry.c = existingCdnIndex
+          // Delete existing thumbnails from CDN first to clear cache
+          await deleteThumbnailsFromCdn(imageKey)
           await uploadToCdn(imageKey)
-          
-          // Collect URLs to purge
-          for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-            urlsToPurge.push(`${publicUrl}${thumbPath}`)
-          }
           
           await deleteLocalThumbnails(imageKey)
           // Delete local original
@@ -278,21 +258,11 @@ export async function handleReprocess(request: Request) {
     }
 
     await saveMeta(meta)
-    
-    // Purge Cloudflare cache for re-uploaded thumbnails
-    let cacheMessage: string | undefined
-    if (urlsToPurge.length > 0) {
-      const cacheResult = await purgeCloudflareCache(urlsToPurge)
-      if (cacheResult.message) {
-        cacheMessage = cacheResult.message
-      }
-    }
 
     return jsonResponse({
       success: true,
       processed,
       errors: errors.length > 0 ? errors : undefined,
-      cacheMessage,
     })
   } catch (error) {
     console.error('Failed to reprocess:', error)
@@ -329,7 +299,6 @@ export async function handleUnprocessStream(request: Request) {
         const removed: string[] = []
         const skipped: string[] = []
         const errors: string[] = []
-        const urlsToPurge: string[] = []
 
         const total = imageKeys.length
         sendEvent({ type: 'start', total })
@@ -374,11 +343,6 @@ export async function handleUnprocessStream(request: Request) {
             // Delete cloud thumbnails if in our R2
             if (isInOurR2) {
               await deleteThumbnailsFromCdn(imageKey)
-              
-              // Collect URLs to purge from cache
-              for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-                urlsToPurge.push(`${publicUrl}${thumbPath}`)
-              }
             }
             
             // Update meta - keep o, b, c but remove thumbnail dimensions
@@ -397,15 +361,6 @@ export async function handleUnprocessStream(request: Request) {
 
         sendEvent({ type: 'cleanup', message: 'Saving metadata...' })
         await saveMeta(meta)
-        
-        let cacheMessage = ''
-        if (urlsToPurge.length > 0) {
-          sendEvent({ type: 'cleanup', message: 'Purging CDN cache...' })
-          const cacheResult = await purgeCloudflareCache(urlsToPurge)
-          if (cacheResult.message) {
-            cacheMessage = ` ${cacheResult.message}`
-          }
-        }
 
         // Clean up empty folders in the images directory
         sendEvent({ type: 'cleanup', message: 'Cleaning up empty folders...' })
@@ -425,7 +380,6 @@ export async function handleUnprocessStream(request: Request) {
         if (errors.length > 0) {
           message += ` ${errors.length} image${errors.length !== 1 ? 's' : ''} failed.`
         }
-        message += cacheMessage
 
         sendEvent({ 
           type: 'complete', 
@@ -481,7 +435,6 @@ export async function handleReprocessStream(request: Request) {
         const cdnUrls = getCdnUrls(meta)
         const processed: string[] = []
         const errors: string[] = []
-        const urlsToPurge: string[] = []
 
         const total = imageKeys.length
         sendEvent({ type: 'start', total })
@@ -560,11 +513,9 @@ export async function handleReprocessStream(request: Request) {
               
               if (isInOurR2) {
                 updatedEntry.c = existingCdnIndex
+                // Delete existing thumbnails from CDN first to clear cache
+                await deleteThumbnailsFromCdn(imageKey)
                 await uploadToCdn(imageKey)
-                
-                for (const thumbPath of getAllThumbnailPaths(imageKey)) {
-                  urlsToPurge.push(`${publicUrl}${thumbPath}`)
-                }
                 
                 await deleteLocalThumbnails(imageKey)
                 try { await fs.unlink(originalPath) } catch { /* ignore */ }
@@ -582,22 +533,12 @@ export async function handleReprocessStream(request: Request) {
 
         sendEvent({ type: 'cleanup', message: 'Saving metadata...' })
         await saveMeta(meta)
-        
-        let cacheMessage = ''
-        if (urlsToPurge.length > 0) {
-          sendEvent({ type: 'cleanup', message: 'Purging CDN cache...' })
-          const cacheResult = await purgeCloudflareCache(urlsToPurge)
-          if (cacheResult.message) {
-            cacheMessage = ` ${cacheResult.message}`
-          }
-        }
 
         // Build completion message
         let message = `Generated thumbnails for ${processed.length} image${processed.length !== 1 ? 's' : ''}.`
         if (errors.length > 0) {
           message += ` ${errors.length} image${errors.length !== 1 ? 's' : ''} failed.`
         }
-        message += cacheMessage
 
         sendEvent({ 
           type: 'complete', 
@@ -640,7 +581,6 @@ export async function handleProcessAllStream() {
         const processed: string[] = []
         const errors: string[] = []
         const orphansRemoved: string[] = []
-        const urlsToPurge: string[] = []
 
         // Count images in different states
         let alreadyProcessed = 0
@@ -734,12 +674,9 @@ export async function handleProcessAllStream() {
 
             // If image was in our R2, upload new thumbnails and clean up local files
             if (isInOurR2) {
+              // Delete existing thumbnails from CDN first to clear cache
+              await deleteThumbnailsFromCdn(key)
               await uploadToCdn(key)
-              
-              // Collect URLs to purge
-              for (const thumbPath of getAllThumbnailPaths(key)) {
-                urlsToPurge.push(`${publicUrl}${thumbPath}`)
-              }
               
               await deleteLocalThumbnails(key)
               // Delete local original
@@ -834,15 +771,6 @@ export async function handleProcessAllStream() {
         }
         
         await saveMeta(meta)
-        
-        // Purge Cloudflare cache for re-uploaded thumbnails
-        let cacheMessage = ''
-        if (urlsToPurge.length > 0) {
-          const cacheResult = await purgeCloudflareCache(urlsToPurge)
-          if (cacheResult.message) {
-            cacheMessage = cacheResult.message
-          }
-        }
 
         sendEvent({ 
           type: 'complete', 
@@ -850,7 +778,6 @@ export async function handleProcessAllStream() {
           alreadyProcessed,
           orphansRemoved: orphansRemoved.length,
           errors: errors.length,
-          cacheMessage,
         })
       } catch (error) {
         console.error('Failed to process all:', error)
@@ -1044,7 +971,6 @@ export async function handlePushUpdatesStream(request: Request) {
         const pushed: string[] = []
         const skipped: string[] = []
         const errors: string[] = []
-        const urlsToPurge: string[] = []
         const total = paths.length
 
         sendEvent({ type: 'start', total })
@@ -1080,8 +1006,18 @@ export async function handlePushUpdatesStream(request: Request) {
             const buffer = await fs.readFile(localPath)
             const contentType = getContentType(path.basename(key))
 
-            // Upload to R2 (overwrite)
+            // Delete from CDN first to clear cache
             const uploadKey = key.startsWith('/') ? key.slice(1) : key
+            try {
+              await s3.send(new DeleteObjectCommand({
+                Bucket: bucketName,
+                Key: uploadKey,
+              }))
+            } catch {
+              // Ignore delete errors - file might not exist
+            }
+
+            // Upload to R2
             await s3.send(new PutObjectCommand({
               Bucket: bucketName,
               Key: uploadKey,
@@ -1091,6 +1027,9 @@ export async function handlePushUpdatesStream(request: Request) {
 
             // If image is processed, also update thumbnails
             if (isProcessed(entry)) {
+              // Delete existing thumbnails from CDN first
+              await deleteThumbnailsFromCdn(key)
+              
               // Re-process to generate new thumbnails from local file
               const processedEntry = await processImage(buffer, key)
               Object.assign(entry, processedEntry)
@@ -1100,11 +1039,6 @@ export async function handlePushUpdatesStream(request: Request) {
               
               // Delete local thumbnails
               await deleteLocalThumbnails(key)
-              
-              // Add thumbnail URLs to purge
-              for (const thumbPath of getAllThumbnailPaths(key)) {
-                urlsToPurge.push(`${publicUrl}${thumbPath}`)
-              }
             }
 
             // Delete local file (it's now on cloud)
@@ -1112,9 +1046,6 @@ export async function handlePushUpdatesStream(request: Request) {
 
             // Remove the update flag
             delete entry.u
-
-            // Add original URL to purge
-            urlsToPurge.push(`${publicUrl}${key}`)
 
             pushed.push(key)
           } catch (error) {
@@ -1131,19 +1062,6 @@ export async function handlePushUpdatesStream(request: Request) {
         }
 
         await saveMeta(meta)
-
-        let cacheMessage = ''
-        if (urlsToPurge.length > 0) {
-          sendEvent({ type: 'cleanup', message: 'Purging CDN cache...' })
-          const cacheResult = await purgeCloudflareCache(urlsToPurge)
-          if (cacheResult.status === 'not_configured') {
-            cacheMessage = ` ${cacheResult.message}`
-          } else if (cacheResult.status === 'failed') {
-            cacheMessage = ` ${cacheResult.message}`
-          } else if (cacheResult.status === 'success' && cacheResult.message) {
-            cacheMessage = ` ${cacheResult.message}`
-          }
-        }
 
         let message = `Pushed ${pushed.length} update${pushed.length !== 1 ? 's' : ''} to cloud.`
         if (skipped.length > 0) {
@@ -1239,61 +1157,5 @@ export async function handleCancelUpdates(request: Request) {
   } catch (error) {
     console.error('Cancel updates error:', error)
     return jsonResponse({ error: 'Failed to cancel updates' }, { status: 500 })
-  }
-}
-
-/**
- * Clear CDN cache for selected files
- */
-export async function handleClearCache(request: Request) {
-  const publicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '')
-  
-  try {
-    const { paths } = await request.json() as { paths: string[] }
-    
-    if (!paths || !Array.isArray(paths) || paths.length === 0) {
-      return jsonResponse({ error: 'No paths provided' }, { status: 400 })
-    }
-
-    const meta = await loadMeta()
-    const cdnUrls = getCdnUrls(meta)
-    const urlsToPurge: string[] = []
-
-    for (const itemPath of paths) {
-      const key = itemPath.startsWith('public/') ? '/' + itemPath.slice(7) : itemPath
-      const entry = meta[key] as { c?: number; sm?: object; md?: object; lg?: object; f?: object } | undefined
-      
-      if (!entry || entry.c === undefined) continue
-      
-      const cdnUrl = cdnUrls[entry.c]?.replace(/\/$/, '')
-      if (!cdnUrl) continue
-      
-      // Add original URL
-      urlsToPurge.push(`${cdnUrl}${key}`)
-      
-      // Add thumbnail URLs if they exist
-      if (entry.sm || entry.md || entry.lg || entry.f) {
-        for (const thumbPath of getAllThumbnailPaths(key)) {
-          urlsToPurge.push(`${cdnUrl}${thumbPath}`)
-        }
-      }
-    }
-
-    if (urlsToPurge.length === 0) {
-      return jsonResponse({
-        success: true,
-        message: 'No CDN files to clear cache for.',
-      })
-    }
-
-    const cacheResult = await purgeCloudflareCache(urlsToPurge)
-    
-    return jsonResponse({
-      success: cacheResult.status === 'success',
-      message: cacheResult.message || `Cleared cache for ${urlsToPurge.length} URLs.`,
-    })
-  } catch (error) {
-    console.error('Clear cache error:', error)
-    return jsonResponse({ error: 'Failed to clear cache' }, { status: 500 })
   }
 }

@@ -34,10 +34,6 @@ CLOUDFLARE_R2_ACCESS_KEY_ID=your_access_key
 CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_secret_key
 CLOUDFLARE_R2_BUCKET_NAME=your_bucket
 CLOUDFLARE_R2_PUBLIC_URL=https://your-cdn.example.com
-
-# Cloudflare Cache Purge
-CLOUDFLARE_ZONE_ID=your_zone_id
-CLOUDFLARE_API_TOKEN=your_api_token
 ```
 
 Add `.env.studio` to your `.gitignore`.
@@ -70,8 +66,6 @@ Studio opens in your browser on an available port (default 3001).
 | `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | For CDN | R2 API secret key |
 | `CLOUDFLARE_R2_BUCKET_NAME` | For CDN | R2 bucket name |
 | `CLOUDFLARE_R2_PUBLIC_URL` | For CDN | Public URL for your R2 bucket or custom domain |
-| `CLOUDFLARE_ZONE_ID` | For CDN | Cloudflare zone ID for cache purge |
-| `CLOUDFLARE_API_TOKEN` | For CDN | API token with Cache Purge permission |
 
 ## Setting Up Cloudflare R2
 
@@ -79,15 +73,6 @@ Studio opens in your browser on an available port (default 3001).
 2. Go to R2 → Manage R2 API Tokens → Create API Token
 3. Copy the Access Key ID and Secret Access Key
 4. Enable public access or set up a custom domain
-
-## Setting Up Cache Purge (Custom Domains)
-
-If using a custom domain for your CDN:
-
-1. Go to Cloudflare Dashboard → select your domain → copy Zone ID from sidebar
-2. Go to Account → API Tokens → Create Token
-3. Add permission: Zone → Cache Purge → Edit
-4. Copy the token value
 
 ## Metadata
 
