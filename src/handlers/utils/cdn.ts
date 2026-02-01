@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3'
 import { getAllThumbnailPaths } from '../../types'
 import { getContentType } from './files'
 import { getPublicPath } from '../../config'
@@ -220,4 +220,51 @@ export async function deleteOriginalFromCdn(imageKey: string): Promise<void> {
   } catch {
     // May not exist
   }
+}
+
+/**
+ * Copy a file within R2 CDN (server-side, no download/upload)
+ * Used for rename/move operations - much faster than download+upload
+ */
+export async function copyInCdn(oldKey: string, newKey: string): Promise<void> {
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME
+  if (!bucketName) throw new Error('R2 bucket not configured')
+
+  const r2 = getR2Client()
+  const oldKeyClean = oldKey.replace(/^\//, '')
+  const newKeyClean = newKey.replace(/^\//, '')
+
+  await r2.send(
+    new CopyObjectCommand({
+      Bucket: bucketName,
+      CopySource: `${bucketName}/${oldKeyClean}`,
+      Key: newKeyClean,
+    })
+  )
+}
+
+/**
+ * Move a file within R2 CDN (copy + delete, server-side)
+ * Handles original and thumbnails
+ */
+export async function moveInCdn(oldKey: string, newKey: string, hasThumbnails: boolean): Promise<void> {
+  // Copy original
+  await copyInCdn(oldKey, newKey)
+  
+  // Copy thumbnails if they exist
+  if (hasThumbnails) {
+    const oldThumbPaths = getAllThumbnailPaths(oldKey)
+    const newThumbPaths = getAllThumbnailPaths(newKey)
+    
+    for (let i = 0; i < oldThumbPaths.length; i++) {
+      try {
+        await copyInCdn(oldThumbPaths[i], newThumbPaths[i])
+      } catch {
+        // Thumbnail might not exist
+      }
+    }
+  }
+  
+  // Delete old files
+  await deleteFromCdn(oldKey, hasThumbnails)
 }

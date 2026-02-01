@@ -18,6 +18,7 @@ import {
   processImage,
   slugifyFilename,
   slugifyFolderName,
+  moveInCdn,
 } from './utils'
 import { getPublicPath, getWorkspacePath } from '../config'
 import { jsonResponse, streamResponse, createSSEStream } from './utils/response'
@@ -991,35 +992,8 @@ export async function handleMoveStream(request: Request) {
               
               if (isItemInR2) {
                 try {
-                  const itemLocalPath = getPublicPath(vItem.newKey)
-                  const buffer = await downloadFromCdn(vItem.oldKey)
-                  await fs.mkdir(path.dirname(itemLocalPath), { recursive: true })
-                  await fs.writeFile(itemLocalPath, buffer)
-                  
-                  if (itemHasThumbnails) {
-                    const oldThumbPaths = getAllThumbnailPaths(vItem.oldKey)
-                    const newThumbPaths = getAllThumbnailPaths(vItem.newKey)
-                    for (let t = 0; t < oldThumbPaths.length; t++) {
-                      try {
-                        const thumbBuffer = await downloadFromCdn(oldThumbPaths[t])
-                        const newThumbLocalPath = getPublicPath(newThumbPaths[t])
-                        await fs.mkdir(path.dirname(newThumbLocalPath), { recursive: true })
-                        await fs.writeFile(newThumbLocalPath, thumbBuffer)
-                      } catch { /* skip missing thumbnails */ }
-                    }
-                  }
-                  
-                  await deleteFromCdn(vItem.oldKey, itemHasThumbnails)
-                  await uploadOriginalToCdn(vItem.newKey)
-                  if (itemHasThumbnails) {
-                    await uploadToCdn(vItem.newKey)
-                  }
-                  
-                  try { await fs.unlink(itemLocalPath) } catch { /* ignore */ }
-                  if (itemHasThumbnails) {
-                    await deleteLocalThumbnails(vItem.newKey)
-                  }
-                  
+                  // Server-side copy+delete in R2 (no download/upload needed)
+                  await moveInCdn(vItem.oldKey, vItem.newKey, itemHasThumbnails)
                   vItemMoved = true
                 } catch (err) {
                   console.error(`Failed to move cloud item ${vItem.oldKey}:`, err)
@@ -1113,46 +1087,14 @@ export async function handleMoveStream(request: Request) {
               })
 
             } else if (isPushedToR2 && isImage) {
-              // ===== CLOUD IMAGE (R2) =====
-              const buffer = await downloadFromCdn(oldKey)
+              // ===== CLOUD IMAGE (R2) - server-side move =====
+              await moveInCdn(oldKey, newKey, hasProcessedThumbnails)
               
-              await fs.mkdir(path.dirname(newAbsolutePath), { recursive: true })
-              await fs.writeFile(newAbsolutePath, buffer)
-              
-              let newEntry: MetaEntry = {
-                o: entry?.o,
-                b: entry?.b,
-              }
-              
-              if (hasProcessedThumbnails) {
-                const processedEntry = await processImage(buffer, newKey)
-                newEntry = { ...newEntry, ...processedEntry }
-              }
-              
-              await uploadOriginalToCdn(newKey)
-              
-              if (hasProcessedThumbnails) {
-                await uploadToCdn(newKey)
-              }
-              
-              await deleteFromCdn(oldKey, hasProcessedThumbnails)
-              
-              try { await fs.unlink(newAbsolutePath) } catch { /* ignore */ }
-              if (hasProcessedThumbnails) {
-                await deleteLocalThumbnails(newKey)
-              }
-              
-              // Clean up temp folders created for cloud file processing
-              await deleteEmptyFolders(path.dirname(newAbsolutePath))
-              if (hasProcessedThumbnails) {
-                const newThumbRelPath = newKey.slice(1)
-                await deleteEmptyFolders(path.join(getPublicPath('images'), newThumbRelPath))
-              }
-              
-              newEntry.c = entry?.c
-              
+              // Keep same entry, just update the key
               delete meta[oldKey]
-              meta[newKey] = newEntry
+              if (entry) {
+                meta[newKey] = entry
+              }
               moved.push(itemPath)
               processedFiles++
               sendEvent({
@@ -1343,18 +1285,15 @@ export async function handleMoveStream(request: Request) {
                       } catch { /* skip */ }
                     }
                     
-                    // Check if synced to cloud - re-upload with new key
+                    // Check if synced to cloud - move in CDN with new key
                     const fileIsInCloud = fileEntry.c !== undefined
                     const fileCdnUrl = fileIsInCloud ? cdnUrls[fileEntry.c!] : undefined
                     const fileIsInR2 = fileIsInCloud && fileCdnUrl === r2PublicUrl
                     const fileHasThumbs = isProcessed(fileEntry)
                     
                     if (fileIsInR2) {
-                      await deleteFromCdn(fileOldKey, fileHasThumbs)
-                      await uploadOriginalToCdn(fileNewKey)
-                      if (fileHasThumbs) {
-                        await uploadToCdn(fileNewKey)
-                      }
+                      // Server-side copy+delete in R2 (faster than re-upload)
+                      await moveInCdn(fileOldKey, fileNewKey, fileHasThumbs)
                     }
                     
                     delete meta[fileOldKey]
@@ -1384,38 +1323,8 @@ export async function handleMoveStream(request: Request) {
                   
                   if (cloudIsInR2) {
                     try {
-                      const cloudLocalPath = getPublicPath(cloudFile.newKey)
-                      const buffer = await downloadFromCdn(cloudFile.oldKey)
-                      await fs.mkdir(path.dirname(cloudLocalPath), { recursive: true })
-                      await fs.writeFile(cloudLocalPath, buffer)
-                      
-                      if (cloudHasThumbs) {
-                        const oldThumbPaths = getAllThumbnailPaths(cloudFile.oldKey)
-                        const newThumbPaths = getAllThumbnailPaths(cloudFile.newKey)
-                        for (let t = 0; t < oldThumbPaths.length; t++) {
-                          try {
-                            const thumbBuffer = await downloadFromCdn(oldThumbPaths[t])
-                            const newThumbLocalPath = getPublicPath(newThumbPaths[t])
-                            await fs.mkdir(path.dirname(newThumbLocalPath), { recursive: true })
-                            await fs.writeFile(newThumbLocalPath, thumbBuffer)
-                          } catch { /* skip */ }
-                        }
-                      }
-                      
-                      await deleteFromCdn(cloudFile.oldKey, cloudHasThumbs)
-                      await uploadOriginalToCdn(cloudFile.newKey)
-                      if (cloudHasThumbs) {
-                        await uploadToCdn(cloudFile.newKey)
-                      }
-                      
-                      try { await fs.unlink(cloudLocalPath) } catch { /* ignore */ }
-                      if (cloudHasThumbs) {
-                        await deleteLocalThumbnails(cloudFile.newKey)
-                      }
-                      
-                      // Clean up temp folder
-                      await deleteEmptyFolders(path.dirname(cloudLocalPath))
-                      
+                      // Server-side copy+delete in R2 (no download/upload needed)
+                      await moveInCdn(cloudFile.oldKey, cloudFile.newKey, cloudHasThumbs)
                       cloudFileMoved = true
                     } catch (err) {
                       console.error(`Failed to move cloud file ${cloudFile.oldKey}:`, err)
@@ -1582,57 +1491,14 @@ export async function handleMove(request: Request) {
           moved.push(itemPath)
 
         } else if (isPushedToR2 && isImage) {
-          // ===== CLOUD IMAGE (R2): Download, move, re-upload, delete old =====
+          // ===== CLOUD IMAGE (R2): Server-side move =====
+          await moveInCdn(oldKey, newKey, hasProcessedThumbnails)
           
-          // Download original from R2
-          const buffer = await downloadFromCdn(oldKey)
-          
-          // Save to new local location
-          await fs.mkdir(path.dirname(newAbsolutePath), { recursive: true })
-          await fs.writeFile(newAbsolutePath, buffer)
-          
-          // Create new meta entry
-          let newEntry: MetaEntry = {
-            o: entry?.o,
-            b: entry?.b,
-          }
-          
-          // If processed, regenerate thumbnails
-          if (hasProcessedThumbnails) {
-            const processedEntry = await processImage(buffer, newKey)
-            newEntry = { ...newEntry, ...processedEntry }
-          }
-          
-          // Upload original to new R2 location
-          await uploadOriginalToCdn(newKey)
-          
-          // If processed, upload thumbnails to R2
-          if (hasProcessedThumbnails) {
-            await uploadToCdn(newKey)
-          }
-          
-          // Delete old files from R2
-          await deleteFromCdn(oldKey, hasProcessedThumbnails)
-          
-          // Delete local files (keep cloud-only state)
-          try { await fs.unlink(newAbsolutePath) } catch { /* ignore */ }
-          if (hasProcessedThumbnails) {
-            await deleteLocalThumbnails(newKey)
-          }
-          
-          // Clean up temp folders created for cloud file processing
-          await deleteEmptyFolders(path.dirname(newAbsolutePath))
-          if (hasProcessedThumbnails) {
-            const newThumbRelPath = newKey.slice(1)
-            await deleteEmptyFolders(path.join(getPublicPath('images'), newThumbRelPath))
-          }
-          
-          // Set c to same CDN index
-          newEntry.c = entry?.c
-          
-          // Update meta
+          // Update meta with same entry, new key
           delete meta[oldKey]
-          meta[newKey] = newEntry
+          if (entry) {
+            meta[newKey] = entry
+          }
           metaChanged = true
           moved.push(itemPath)
 
