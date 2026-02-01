@@ -1416,6 +1416,10 @@ export function StudioToolbar() {
   const handleMoveConfirm = useCallback(async (destination: string) => {
     const paths = Array.from(selectedItems)
     
+    // Create abort controller for stopping
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    
     // Show progress modal
     setProgressTitle('Moving Files')
     setShowProgress(true)
@@ -1426,11 +1430,14 @@ export function StudioToolbar() {
       status: 'processing',
     })
 
+    let movedCount = 0
+
     try {
       const response = await fetch('/api/studio/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paths, destination }),
+        signal: abortController.signal,
       })
 
       if (!response.body) {
@@ -1441,53 +1448,78 @@ export function StudioToolbar() {
       const decoder = new TextDecoder()
       let buffer = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      // Listen for abort signal to cancel the reader
+      const onAbort = () => {
+        reader.cancel()
+        // Show "Stopped" state with Done button
+        setProgressState(prev => ({
+          ...prev,
+          status: 'stopped',
+          message: `Stopped. ${movedCount} file${movedCount !== 1 ? 's' : ''} moved.`,
+        }))
+        clearSelection()
+        triggerRefresh()
+        abortControllerRef.current = null
+      }
+      abortController.signal.addEventListener('abort', onAbort)
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const data = JSON.parse(line.slice(6))
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
 
-            if (data.type === 'start') {
-              setProgressState(prev => ({ ...prev, total: data.total }))
-            } else if (data.type === 'progress') {
-              setProgressState({
-                current: data.current,
-                total: data.total,
-                percent: data.percent,
-                currentFile: data.currentFile,
-                status: 'processing',
-              })
-            } else if (data.type === 'complete') {
-              setProgressState(prev => ({
-                ...prev,
-                status: 'complete',
-                processed: data.moved,
-                errors: data.errors,
-                errorMessages: data.errorMessages,
-                isMove: true,
-              }))
-              clearSelection()
-              triggerRefresh()
-            } else if (data.type === 'error') {
-              setProgressState(prev => ({
-                ...prev,
-                status: 'error',
-                errorMessage: data.message,
-              }))
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === 'start') {
+                setProgressState(prev => ({ ...prev, total: data.total }))
+              } else if (data.type === 'progress') {
+                movedCount = data.current
+                setProgressState({
+                  current: data.current,
+                  total: data.total,
+                  percent: data.percent,
+                  currentFile: data.currentFile,
+                  status: 'processing',
+                })
+              } else if (data.type === 'complete') {
+                setProgressState(prev => ({
+                  ...prev,
+                  status: 'complete',
+                  processed: data.moved,
+                  errors: data.errors,
+                  errorMessages: data.errorMessages,
+                  isMove: true,
+                }))
+                clearSelection()
+                triggerRefresh()
+              } else if (data.type === 'error') {
+                setProgressState(prev => ({
+                  ...prev,
+                  status: 'error',
+                  errorMessage: data.message,
+                }))
+              }
+            } catch {
+              // Ignore parse errors
             }
-          } catch {
-            // Ignore parse errors
           }
         }
+      } finally {
+        abortController.signal.removeEventListener('abort', onAbort)
       }
     } catch (error) {
+      // Don't show error if aborted
+      if (abortController.signal.aborted) {
+        abortControllerRef.current = null
+        return
+      }
       console.error('Move error:', error)
       setProgressState(prev => ({
         ...prev,
@@ -1495,6 +1527,7 @@ export function StudioToolbar() {
         errorMessage: 'Failed to move items. Check console for details.',
       }))
     }
+    abortControllerRef.current = null
   }, [selectedItems, clearSelection, triggerRefresh])
 
   const { searchQuery, setSearchQuery } = useStudio()
@@ -1547,6 +1580,11 @@ export function StudioToolbar() {
   const handleRenameFolder = useCallback(async (newName: string) => {
     if (!selectedFolderPath) return
     setShowRenameFolderModal(false)
+    
+    // Create abort controller for stopping
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    
     setProgressTitle('Renaming Folder')
     setShowProgress(true)
     setProgressState({
@@ -1557,11 +1595,14 @@ export function StudioToolbar() {
       message: 'Preparing rename...',
     })
 
+    let renamedCount = 0
+
     try {
       const response = await fetch('/api/studio/rename-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPath: selectedFolderPath, newName }),
+        signal: abortController.signal,
       })
 
       if (!response.body) {
@@ -1572,55 +1613,79 @@ export function StudioToolbar() {
       const decoder = new TextDecoder()
       let buffer = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      // Listen for abort signal to cancel the reader
+      const onAbort = () => {
+        reader.cancel()
+        setProgressState(prev => ({
+          ...prev,
+          status: 'stopped',
+          message: `Stopped. ${renamedCount} item${renamedCount !== 1 ? 's' : ''} renamed.`,
+        }))
+        clearSelection()
+        triggerRefresh()
+        abortControllerRef.current = null
+      }
+      abortController.signal.addEventListener('abort', onAbort)
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = JSON.parse(line.slice(6))
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
 
-          if (data.type === 'start') {
-            setProgressState({
-              current: 0,
-              total: data.total,
-              percent: 0,
-              status: 'processing',
-              message: data.message,
-            })
-          } else if (data.type === 'progress') {
-            setProgressState({
-              current: data.current,
-              total: data.total,
-              percent: Math.round((data.current / data.total) * 100),
-              status: 'processing',
-              message: data.message,
-            })
-          } else if (data.type === 'complete') {
-            setProgressState({
-              current: data.renamed,
-              total: data.renamed,
-              percent: 100,
-              status: 'complete',
-              message: `Renamed ${data.renamed} item(s)`,
-            })
-          } else if (data.type === 'error') {
-            setProgressState(prev => ({
-              ...prev,
-              status: 'error',
-              message: data.message,
-            }))
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = JSON.parse(line.slice(6))
+
+            if (data.type === 'start') {
+              setProgressState({
+                current: 0,
+                total: data.total,
+                percent: 0,
+                status: 'processing',
+                message: data.message,
+              })
+            } else if (data.type === 'progress') {
+              renamedCount = data.renamed ?? data.current
+              setProgressState({
+                current: data.current,
+                total: data.total,
+                percent: Math.round((data.current / data.total) * 100),
+                status: 'processing',
+                message: data.message,
+              })
+            } else if (data.type === 'complete') {
+              setProgressState({
+                current: data.renamed,
+                total: data.renamed,
+                percent: 100,
+                status: 'complete',
+                message: `Renamed ${data.renamed} item(s)`,
+              })
+            } else if (data.type === 'error') {
+              setProgressState(prev => ({
+                ...prev,
+                status: 'error',
+                message: data.message,
+              }))
+            }
           }
         }
+      } finally {
+        abortController.signal.removeEventListener('abort', onAbort)
       }
 
       clearSelection()
       triggerRefresh()
     } catch (error) {
+      // Don't show error if aborted
+      if (abortController.signal.aborted) {
+        abortControllerRef.current = null
+        return
+      }
       console.error('Failed to rename folder:', error)
       setProgressState(prev => ({
         ...prev,
@@ -1628,11 +1693,17 @@ export function StudioToolbar() {
         message: 'Failed to rename folder',
       }))
     }
+    abortControllerRef.current = null
   }, [selectedFolderPath, clearSelection, triggerRefresh])
 
   const handleRenameFile = useCallback(async (newName: string) => {
     if (!selectedFilePath) return
     setShowRenameFileModal(false)
+    
+    // Create abort controller for stopping
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    
     setProgressTitle('Renaming File')
     setShowProgress(true)
     setProgressState({
@@ -1643,11 +1714,14 @@ export function StudioToolbar() {
       message: 'Renaming file...',
     })
 
+    let renamedCount = 0
+
     try {
       const response = await fetch('/api/studio/rename-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPath: selectedFilePath, newName }),
+        signal: abortController.signal,
       })
 
       if (!response.body) {
@@ -1658,55 +1732,79 @@ export function StudioToolbar() {
       const decoder = new TextDecoder()
       let buffer = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      // Listen for abort signal to cancel the reader
+      const onAbort = () => {
+        reader.cancel()
+        setProgressState(prev => ({
+          ...prev,
+          status: 'stopped',
+          message: `Stopped. ${renamedCount} item${renamedCount !== 1 ? 's' : ''} renamed.`,
+        }))
+        clearSelection()
+        triggerRefresh()
+        abortControllerRef.current = null
+      }
+      abortController.signal.addEventListener('abort', onAbort)
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = JSON.parse(line.slice(6))
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
 
-          if (data.type === 'start') {
-            setProgressState({
-              current: 0,
-              total: data.total,
-              percent: 0,
-              status: 'processing',
-              message: data.message,
-            })
-          } else if (data.type === 'progress') {
-            setProgressState({
-              current: data.current,
-              total: data.total,
-              percent: Math.round((data.current / data.total) * 100),
-              status: 'processing',
-              message: data.message,
-            })
-          } else if (data.type === 'complete') {
-            setProgressState({
-              current: data.renamed,
-              total: data.renamed,
-              percent: 100,
-              status: 'complete',
-              message: `Renamed ${data.renamed} item(s)`,
-            })
-          } else if (data.type === 'error') {
-            setProgressState(prev => ({
-              ...prev,
-              status: 'error',
-              message: data.message,
-            }))
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = JSON.parse(line.slice(6))
+
+            if (data.type === 'start') {
+              setProgressState({
+                current: 0,
+                total: data.total,
+                percent: 0,
+                status: 'processing',
+                message: data.message,
+              })
+            } else if (data.type === 'progress') {
+              renamedCount = data.renamed ?? data.current
+              setProgressState({
+                current: data.current,
+                total: data.total,
+                percent: Math.round((data.current / data.total) * 100),
+                status: 'processing',
+                message: data.message,
+              })
+            } else if (data.type === 'complete') {
+              setProgressState({
+                current: data.renamed,
+                total: data.renamed,
+                percent: 100,
+                status: 'complete',
+                message: `Renamed ${data.renamed} item(s)`,
+              })
+            } else if (data.type === 'error') {
+              setProgressState(prev => ({
+                ...prev,
+                status: 'error',
+                message: data.message,
+              }))
+            }
           }
         }
+      } finally {
+        abortController.signal.removeEventListener('abort', onAbort)
       }
 
       clearSelection()
       triggerRefresh()
     } catch (error) {
+      // Don't show error if aborted
+      if (abortController.signal.aborted) {
+        abortControllerRef.current = null
+        return
+      }
       console.error('Failed to rename file:', error)
       setProgressState(prev => ({
         ...prev,
@@ -1714,6 +1812,7 @@ export function StudioToolbar() {
         message: 'Failed to rename file',
       }))
     }
+    abortControllerRef.current = null
   }, [selectedFilePath, clearSelection, triggerRefresh])
 
   // Modals that can be triggered from detail view need to render even when focusedItem is set
