@@ -1382,6 +1382,10 @@ export async function handleMoveStream(request: Request) {
         for (const folder of sourceFolders) {
           await deleteEmptyFolders(folder)
         }
+        
+        // Clean up destination folder if it was created but is now empty
+        // (happens when moving virtual folders with server-side copy)
+        await deleteEmptyFolders(absoluteDestination)
 
         sendEvent({
           type: 'complete',
@@ -1601,6 +1605,10 @@ export async function handleMove(request: Request) {
     for (const folder of sourceFolders) {
       await deleteEmptyFolders(folder)
     }
+    
+    // Clean up destination folder if it was created but is now empty
+    // (happens when moving virtual folders with server-side copy)
+    await deleteEmptyFolders(absoluteDestination)
 
     return jsonResponse({
       success: errors.length === 0,
