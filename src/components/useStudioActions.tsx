@@ -117,7 +117,7 @@ export function useStudioActions({
       ...prev,
       actionPaths: paths,
       showProcessConfirm: true,
-      processMode: 'generate',  // Reset to default when opening modal
+      // Keep processMode as-is - it should be set by setProcessMode before this call
     }))
   }, [])
 
