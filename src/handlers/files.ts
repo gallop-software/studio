@@ -1016,6 +1016,15 @@ export async function handleMoveStream(request: Request) {
                 currentFile: path.basename(vItem.newKey),
               })
             }
+            
+            // Clean up temp folders created for virtual folder cloud file processing
+            // Clean up the new folder location (where temp files were downloaded)
+            const newFolderPath = getPublicPath(newKey)
+            await deleteEmptyFolders(newFolderPath)
+            // Clean up thumbnail folder
+            const newThumbFolder = path.join(getPublicPath('images'), newKey.slice(1))
+            await deleteEmptyFolders(newThumbFolder)
+            
             moved.push(itemPath)
             continue
           }
@@ -1103,6 +1112,13 @@ export async function handleMoveStream(request: Request) {
               try { await fs.unlink(newAbsolutePath) } catch { /* ignore */ }
               if (hasProcessedThumbnails) {
                 await deleteLocalThumbnails(newKey)
+              }
+              
+              // Clean up temp folders created for cloud file processing
+              await deleteEmptyFolders(path.dirname(newAbsolutePath))
+              if (hasProcessedThumbnails) {
+                const newThumbRelPath = newKey.slice(1)
+                await deleteEmptyFolders(path.join(getPublicPath('images'), newThumbRelPath))
               }
               
               newEntry.c = entry?.c
@@ -1427,6 +1443,13 @@ export async function handleMove(request: Request) {
           try { await fs.unlink(newAbsolutePath) } catch { /* ignore */ }
           if (hasProcessedThumbnails) {
             await deleteLocalThumbnails(newKey)
+          }
+          
+          // Clean up temp folders created for cloud file processing
+          await deleteEmptyFolders(path.dirname(newAbsolutePath))
+          if (hasProcessedThumbnails) {
+            const newThumbRelPath = newKey.slice(1)
+            await deleteEmptyFolders(path.join(getPublicPath('images'), newThumbRelPath))
           }
           
           // Set c to same CDN index
