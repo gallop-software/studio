@@ -1354,9 +1354,9 @@ export async function handlePushUpdatesStream(request: Request) {
           return
         }
 
-        const { paths, operationId } = await request.json() as { paths: string[], operationId?: string }
+        const { paths: inputPaths, operationId } = await request.json() as { paths: string[], operationId?: string }
         
-        if (!paths || !Array.isArray(paths) || paths.length === 0) {
+        if (!inputPaths || !Array.isArray(inputPaths) || inputPaths.length === 0) {
           sendEvent({ type: 'error', message: 'No paths provided' })
           controller.close()
           return
@@ -1374,11 +1374,37 @@ export async function handlePushUpdatesStream(request: Request) {
         const meta = await loadMeta()
         const cdnUrls = getCdnUrls(meta)
         const r2PublicUrl = publicUrl.replace(/\/$/, '')
+
+        // Expand folder paths to individual file paths with pending updates
+        const paths: string[] = []
+        for (const inputPath of inputPaths) {
+          const key = inputPath.startsWith('public/') ? '/' + inputPath.slice(7) : inputPath
+          // Check if this is a folder path (no extension or ends without extension-like pattern)
+          const isFolder = !key.match(/\.[a-zA-Z0-9]+$/)
+          
+          if (isFolder) {
+            // Find all files in meta that start with this folder path and have u: 1
+            const folderPrefix = key.endsWith('/') ? key : key + '/'
+            for (const [metaKey, entry] of Object.entries(meta)) {
+              if (metaKey.startsWith(folderPrefix) && entry && typeof entry === 'object' && 'u' in entry && entry.u === 1) {
+                paths.push(metaKey)
+              }
+            }
+          } else {
+            paths.push(inputPath)
+          }
+        }
         
         const pushed: string[] = []
         const skipped: string[] = []
         const errors: string[] = []
         const total = paths.length
+
+        if (total === 0) {
+          sendEvent({ type: 'complete', pushed: 0, message: 'No files with pending updates found.' })
+          controller.close()
+          return
+        }
 
         sendEvent({ type: 'start', total })
 
@@ -1564,13 +1590,34 @@ export async function handleCancelStreamOperation(request: Request) {
  */
 export async function handleCancelUpdates(request: Request) {
   try {
-    const { paths } = await request.json()
+    const { paths: inputPaths } = await request.json()
     
-    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+    if (!inputPaths || !Array.isArray(inputPaths) || inputPaths.length === 0) {
       return jsonResponse({ error: 'No paths provided' }, { status: 400 })
     }
 
     const meta = await loadMeta()
+
+    // Expand folder paths to individual file paths with pending updates
+    const paths: string[] = []
+    for (const inputPath of inputPaths) {
+      const key = inputPath.startsWith('public/') ? '/' + inputPath.slice(7) : inputPath
+      // Check if this is a folder path (no extension or ends without extension-like pattern)
+      const isFolder = !key.match(/\.[a-zA-Z0-9]+$/)
+      
+      if (isFolder) {
+        // Find all files in meta that start with this folder path and have u: 1
+        const folderPrefix = key.endsWith('/') ? key : key + '/'
+        for (const [metaKey, entry] of Object.entries(meta)) {
+          if (metaKey.startsWith(folderPrefix) && entry && typeof entry === 'object' && 'u' in entry && entry.u === 1) {
+            paths.push(metaKey)
+          }
+        }
+      } else {
+        paths.push(inputPath)
+      }
+    }
+
     const cancelled: string[] = []
     const skipped: string[] = []
     const errors: string[] = []

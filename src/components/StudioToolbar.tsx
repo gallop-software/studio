@@ -969,10 +969,10 @@ export function StudioToolbar() {
 
     const selectedPaths = Array.from(selectedItems)
 
-    // Get files with hasUpdate
+    // Get files with hasUpdate OR folders with updateCount > 0
     const updatePaths = selectedPaths.filter(p => {
       const item = fileItems.find(f => f.path === p)
-      return item && item.hasUpdate
+      return item && (item.hasUpdate || (item.type === 'folder' && item.updateCount && item.updateCount > 0))
     })
 
     if (updatePaths.length === 0) {
@@ -997,10 +997,10 @@ export function StudioToolbar() {
 
     const selectedPaths = Array.from(selectedItems)
 
-    // Get files with hasUpdate
+    // Get files with hasUpdate OR folders with updateCount > 0
     const updatePaths = selectedPaths.filter(p => {
       const item = fileItems.find(f => f.path === p)
-      return item && item.hasUpdate
+      return item && (item.hasUpdate || (item.type === 'folder' && item.updateCount && item.updateCount > 0))
     })
 
     if (updatePaths.length === 0) return
@@ -1105,10 +1105,10 @@ export function StudioToolbar() {
     return item && item.type === 'file' && item.cdnPushed && !item.isRemote
   })
 
-  // Check if any selected items have pending updates
+  // Check if any selected items have pending updates (files with hasUpdate or folders with updateCount > 0)
   const hasUpdateSelection = hasSelection && Array.from(selectedItems).some(path => {
     const item = fileItems.find(f => f.path === path)
-    return item && item.hasUpdate
+    return item && (item.hasUpdate || (item.type === 'folder' && item.updateCount && item.updateCount > 0))
   })
 
   // Check if exactly one folder is selected (for rename)
