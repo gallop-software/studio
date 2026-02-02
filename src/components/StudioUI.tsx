@@ -439,7 +439,7 @@ export function StudioUI({
       <div css={styles.container}>
         <div css={styles.header}>
           <div css={styles.headerLeft}>
-            <h1 css={styles.title}>Gallop.Studio</h1>
+            <h1 css={styles.title}>gallop.studio</h1>
           </div>
           <div css={styles.headerCenter}>
             <Breadcrumbs
