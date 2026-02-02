@@ -44,11 +44,12 @@ const styles = {
     position: relative;
   `,
   title: css`
-    font-size: ${fontSize.lg};
+    font-size: ${fontSize.base};
     font-weight: 600;
     color: ${colors.text};
     margin: 0;
-    letter-spacing: -0.02em;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
     flex-shrink: 0;
   `,
   headerLeft: css`
