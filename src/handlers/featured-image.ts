@@ -167,11 +167,12 @@ export async function handleGenerateFeaturedImage(request: Request) {
           const height = metadata.height || 0;
 
           // Add to _studio.json
+          // Only set 'o' (original dimensions), not 'f' (full thumbnail)
+          // because the featured image is stored at root level, not in /images/
           const meta = await loadMeta();
           const metaKey = `/${projectName}.jpg`;
           setMetaEntry(meta, metaKey, {
             o: { w: width, h: height },
-            f: { w: width, h: height },
           });
           await saveMeta(meta);
 

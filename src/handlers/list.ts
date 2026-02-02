@@ -1,32 +1,39 @@
-import { promises as fs } from 'fs'
-import path from 'path'
-import type { FileItem, MetaEntry } from '../types'
-import { loadMeta, isImageFile, getCdnUrls, getFileEntries } from './utils'
-import { getThumbnailPath, isProcessed } from '../types'
-import { getPublicPath, getWorkspacePath } from '../config'
-import { jsonResponse } from './utils/response'
+import { promises as fs } from "fs";
+import path from "path";
+import type { FileItem, MetaEntry } from "../types";
+import { loadMeta, isImageFile, getCdnUrls, getFileEntries } from "./utils";
+import { getThumbnailPath, isProcessed } from "../types";
+import { getPublicPath, getWorkspacePath } from "../config";
+import { jsonResponse } from "./utils/response";
 
 /**
  * Get all thumbnail file info for a processed meta entry
  * Returns the thumbnail paths that exist based on which dimension properties are present
  */
-function getExistingThumbnails(originalPath: string, entry: MetaEntry): Array<{ path: string; size: 'f' | 'lg' | 'md' | 'sm' }> {
-  const thumbnails: Array<{ path: string; size: 'f' | 'lg' | 'md' | 'sm' }> = []
-  
+function getExistingThumbnails(
+  originalPath: string,
+  entry: MetaEntry
+): Array<{ path: string; size: "f" | "lg" | "md" | "sm" }> {
+  const thumbnails: Array<{ path: string; size: "f" | "lg" | "md" | "sm" }> =
+    [];
+
   if (entry.f) {
-    thumbnails.push({ path: getThumbnailPath(originalPath, 'full'), size: 'f' })
+    thumbnails.push({
+      path: getThumbnailPath(originalPath, "full"),
+      size: "f",
+    });
   }
   if (entry.lg) {
-    thumbnails.push({ path: getThumbnailPath(originalPath, 'lg'), size: 'lg' })
+    thumbnails.push({ path: getThumbnailPath(originalPath, "lg"), size: "lg" });
   }
   if (entry.md) {
-    thumbnails.push({ path: getThumbnailPath(originalPath, 'md'), size: 'md' })
+    thumbnails.push({ path: getThumbnailPath(originalPath, "md"), size: "md" });
   }
   if (entry.sm) {
-    thumbnails.push({ path: getThumbnailPath(originalPath, 'sm'), size: 'sm' })
+    thumbnails.push({ path: getThumbnailPath(originalPath, "sm"), size: "sm" });
   }
-  
-  return thumbnails
+
+  return thumbnails;
 }
 
 /**
@@ -37,33 +44,38 @@ function countFileTypes(
   fileEntries: [string, MetaEntry][],
   cdnUrls: string[],
   r2PublicUrl: string
-): { cloudCount: number; remoteCount: number; localCount: number; updateCount: number } {
-  let cloudCount = 0
-  let remoteCount = 0
-  let localCount = 0
-  let updateCount = 0
-  
+): {
+  cloudCount: number;
+  remoteCount: number;
+  localCount: number;
+  updateCount: number;
+} {
+  let cloudCount = 0;
+  let remoteCount = 0;
+  let localCount = 0;
+  let updateCount = 0;
+
   for (const [key, entry] of fileEntries) {
     if (key.startsWith(folderPrefix)) {
       if (entry.c !== undefined) {
         // Check if it's our R2 or a remote URL (normalize trailing slashes)
-        const cdnUrl = cdnUrls[entry.c]?.replace(/\/$/, '') || ''
+        const cdnUrl = cdnUrls[entry.c]?.replace(/\/$/, "") || "";
         if (cdnUrl === r2PublicUrl) {
-          cloudCount++
+          cloudCount++;
         } else {
-          remoteCount++
+          remoteCount++;
         }
       } else {
-        localCount++
+        localCount++;
       }
       // Count pending updates
       if (entry.u === 1) {
-        updateCount++
+        updateCount++;
       }
     }
   }
-  
-  return { cloudCount, remoteCount, localCount, updateCount }
+
+  return { cloudCount, remoteCount, localCount, updateCount };
 }
 
 /**
@@ -71,78 +83,92 @@ function countFileTypes(
  * Folders are derived from file paths in meta AND filesystem
  */
 export async function handleList(request: Request) {
-  const searchParams = new URL(request.url).searchParams
-  const requestedPath = searchParams.get('path') || 'public'
+  const searchParams = new URL(request.url).searchParams;
+  const requestedPath = searchParams.get("path") || "public";
 
   try {
-    const meta = await loadMeta()
-    const fileEntries = getFileEntries(meta)
-    const cdnUrls = getCdnUrls(meta)
-    const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '') || ''
-    
+    const meta = await loadMeta();
+    const fileEntries = getFileEntries(meta);
+    const cdnUrls = getCdnUrls(meta);
+    const r2PublicUrl =
+      process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, "") || "";
+
     // Normalize the requested path to match meta keys
     // requestedPath is like "public" or "public/photos"
     // meta keys are like "/photos/image.jpg"
-    const relativePath = requestedPath.replace(/^public\/?/, '')
-    const pathPrefix = relativePath ? `/${relativePath}/` : '/'
+    const relativePath = requestedPath.replace(/^public\/?/, "");
+    const pathPrefix = relativePath ? `/${relativePath}/` : "/";
 
-    const items: FileItem[] = []
-    const seenFolders = new Set<string>()
-    const metaKeys = fileEntries.map(([key]) => key)
-    
+    const items: FileItem[] = [];
+    const seenFolders = new Set<string>();
+    const metaKeys = fileEntries.map(([key]) => key);
+
     // Check if we're inside the images folder (protected area)
-    const isInsideImagesFolder = relativePath === 'images' || relativePath.startsWith('images/')
-    
+    const isInsideImagesFolder =
+      relativePath === "images" || relativePath.startsWith("images/");
+
     // For the images folder, derive contents from meta entries with thumbnails
     if (isInsideImagesFolder) {
       // Get the path within images folder (e.g., "images/subfolder" -> "subfolder")
-      const imagesSubPath = relativePath.replace(/^images\/?/, '')
-      const imagesPrefix = imagesSubPath ? `/${imagesSubPath}/` : '/'
-      
+      const imagesSubPath = relativePath.replace(/^images\/?/, "");
+      const imagesPrefix = imagesSubPath ? `/${imagesSubPath}/` : "/";
+
       // Collect all thumbnails from processed entries
-      const allThumbnails: Array<{ path: string; size: 'f' | 'lg' | 'md' | 'sm'; originalKey: string }> = []
-      
+      const allThumbnails: Array<{
+        path: string;
+        size: "f" | "lg" | "md" | "sm";
+        originalKey: string;
+      }> = [];
+
       for (const [key, entry] of fileEntries) {
         if (isProcessed(entry)) {
-          const thumbnails = getExistingThumbnails(key, entry)
+          const thumbnails = getExistingThumbnails(key, entry);
           for (const thumb of thumbnails) {
-            allThumbnails.push({ ...thumb, originalKey: key })
+            allThumbnails.push({ ...thumb, originalKey: key });
           }
         }
       }
-      
+
       // Filter thumbnails that are in the current images subfolder
       for (const thumb of allThumbnails) {
         // thumb.path is like "/images/photos/image.jpg" or "/images/photos/image-lg.jpg"
         // We need to check if it's under the current images path
-        const thumbRelative = thumb.path.replace(/^\/images\/?/, '')
-        
+        const thumbRelative = thumb.path.replace(/^\/images\/?/, "");
+
         // Get the original entry to check if it's on CDN
-        const originalEntry = fileEntries.find(([k]) => k === thumb.originalKey)?.[1]
-        const cdnIndex = originalEntry?.c
-        const cdnBaseUrl = cdnIndex !== undefined ? cdnUrls[cdnIndex] : undefined
+        const originalEntry = fileEntries.find(
+          ([k]) => k === thumb.originalKey
+        )?.[1];
+        const cdnIndex = originalEntry?.c;
+        const cdnBaseUrl =
+          cdnIndex !== undefined ? cdnUrls[cdnIndex] : undefined;
         // Build the full thumbnail URL (with CDN base if applicable)
-        const thumbnailUrl = cdnBaseUrl ? `${cdnBaseUrl}${thumb.path}` : thumb.path
+        const thumbnailUrl = cdnBaseUrl
+          ? `${cdnBaseUrl}${thumb.path}`
+          : thumb.path;
         // Determine if it's pushed to CDN and if it's remote (not our R2)
-        const isPushedToCloud = cdnIndex !== undefined
-        const normalizedCdnBaseUrl = cdnBaseUrl?.replace(/\/$/, '') || ''
-        const isRemote = isPushedToCloud && normalizedCdnBaseUrl !== r2PublicUrl
-        
+        const isPushedToCloud = cdnIndex !== undefined;
+        const normalizedCdnBaseUrl = cdnBaseUrl?.replace(/\/$/, "") || "";
+        const isRemote =
+          isPushedToCloud && normalizedCdnBaseUrl !== r2PublicUrl;
+
         // Get dimensions for this thumbnail size
-        const thumbDims = originalEntry?.[thumb.size]
-        const dimensions = thumbDims ? { width: thumbDims.w, height: thumbDims.h } : undefined
-        
+        const thumbDims = originalEntry?.[thumb.size];
+        const dimensions = thumbDims
+          ? { width: thumbDims.w, height: thumbDims.h }
+          : undefined;
+
         // Check if this is directly in the current folder or in a subfolder
-        if (imagesSubPath === '') {
+        if (imagesSubPath === "") {
           // We're at /images root
-          const slashIndex = thumbRelative.indexOf('/')
+          const slashIndex = thumbRelative.indexOf("/");
           if (slashIndex === -1) {
             // Direct file in images root
-            const fileName = thumbRelative
+            const fileName = thumbRelative;
             items.push({
               name: fileName,
               path: `public/images/${fileName}`,
-              type: 'file',
+              type: "file",
               thumbnail: thumbnailUrl,
               hasThumbnail: false,
               isProtected: true,
@@ -151,59 +177,63 @@ export async function handleList(request: Request) {
               isCloud: isPushedToCloud && !isRemote,
               isRemote,
               dimensions,
-            })
+            });
           } else {
             // In a subfolder - add the folder
-            const folderName = thumbRelative.slice(0, slashIndex)
+            const folderName = thumbRelative.slice(0, slashIndex);
             if (!seenFolders.has(folderName)) {
-              seenFolders.add(folderName)
+              seenFolders.add(folderName);
               // Count thumbnails in this folder with cloud/local breakdown
-              const folderPrefix = `/${folderName}/`
-              const folderThumbs = allThumbnails.filter(t => 
-                t.path.replace(/^\/images/, '').startsWith(folderPrefix)
-              )
-              let folderCloudCount = 0
-              let folderRemoteCount = 0
-              let folderLocalCount = 0
+              const folderPrefix = `/${folderName}/`;
+              const folderThumbs = allThumbnails.filter((t) =>
+                t.path.replace(/^\/images/, "").startsWith(folderPrefix)
+              );
+              let folderCloudCount = 0;
+              let folderRemoteCount = 0;
+              let folderLocalCount = 0;
               for (const ft of folderThumbs) {
-                const origEntry = meta[ft.originalKey] as MetaEntry | undefined
+                const origEntry = meta[ft.originalKey] as MetaEntry | undefined;
                 if (origEntry?.c !== undefined) {
-                  const entryCdnUrl = cdnUrls[origEntry.c]?.replace(/\/?$/, '')
+                  const entryCdnUrl = cdnUrls[origEntry.c]?.replace(/\/?$/, "");
                   if (r2PublicUrl && entryCdnUrl === r2PublicUrl) {
-                    folderCloudCount++
+                    folderCloudCount++;
                   } else {
-                    folderRemoteCount++
+                    folderRemoteCount++;
                   }
                 } else {
-                  folderLocalCount++
+                  folderLocalCount++;
                 }
               }
               items.push({
                 name: folderName,
                 path: `public/images/${folderName}`,
-                type: 'folder',
+                type: "folder",
                 fileCount: folderThumbs.length,
                 cloudCount: folderCloudCount,
                 remoteCount: folderRemoteCount,
                 localCount: folderLocalCount,
                 isProtected: true,
-              })
+              });
             }
           }
         } else {
           // We're in a subfolder of images
-          if (!thumbRelative.startsWith(imagesSubPath + '/') && thumbRelative !== imagesSubPath) continue
-          
-          const remaining = thumbRelative.slice(imagesSubPath.length + 1)
-          if (!remaining) continue
-          
-          const slashIndex = remaining.indexOf('/')
+          if (
+            !thumbRelative.startsWith(imagesSubPath + "/") &&
+            thumbRelative !== imagesSubPath
+          )
+            continue;
+
+          const remaining = thumbRelative.slice(imagesSubPath.length + 1);
+          if (!remaining) continue;
+
+          const slashIndex = remaining.indexOf("/");
           if (slashIndex === -1) {
             // Direct file
             items.push({
               name: remaining,
               path: `public/images/${imagesSubPath}/${remaining}`,
-              type: 'file',
+              type: "file",
               thumbnail: thumbnailUrl,
               hasThumbnail: false,
               isProtected: true,
@@ -212,275 +242,332 @@ export async function handleList(request: Request) {
               isCloud: isPushedToCloud && !isRemote,
               isRemote,
               dimensions,
-            })
+            });
           } else {
             // Subfolder
-            const folderName = remaining.slice(0, slashIndex)
+            const folderName = remaining.slice(0, slashIndex);
             if (!seenFolders.has(folderName)) {
-              seenFolders.add(folderName)
-              const folderPrefix = `${imagesSubPath}/${folderName}/`
-              const folderThumbs = allThumbnails.filter(t => 
-                t.path.replace(/^\/images\//, '').startsWith(folderPrefix)
-              )
-              let subCloudCount = 0
-              let subRemoteCount = 0
-              let subLocalCount = 0
+              seenFolders.add(folderName);
+              const folderPrefix = `${imagesSubPath}/${folderName}/`;
+              const folderThumbs = allThumbnails.filter((t) =>
+                t.path.replace(/^\/images\//, "").startsWith(folderPrefix)
+              );
+              let subCloudCount = 0;
+              let subRemoteCount = 0;
+              let subLocalCount = 0;
               for (const ft of folderThumbs) {
-                const origEntry = meta[ft.originalKey] as MetaEntry | undefined
+                const origEntry = meta[ft.originalKey] as MetaEntry | undefined;
                 if (origEntry?.c !== undefined) {
-                  const entryCdnUrl = cdnUrls[origEntry.c]?.replace(/\/?$/, '')
+                  const entryCdnUrl = cdnUrls[origEntry.c]?.replace(/\/?$/, "");
                   if (r2PublicUrl && entryCdnUrl === r2PublicUrl) {
-                    subCloudCount++
+                    subCloudCount++;
                   } else {
-                    subRemoteCount++
+                    subRemoteCount++;
                   }
                 } else {
-                  subLocalCount++
+                  subLocalCount++;
                 }
               }
               items.push({
                 name: folderName,
                 path: `public/images/${imagesSubPath}/${folderName}`,
-                type: 'folder',
+                type: "folder",
                 fileCount: folderThumbs.length,
                 cloudCount: subCloudCount,
                 remoteCount: subRemoteCount,
                 localCount: subLocalCount,
                 isProtected: true,
-              })
+              });
             }
           }
         }
       }
-      
-      return jsonResponse({ items })
+
+      return jsonResponse({ items });
     }
-    
+
     // Not in images folder - check filesystem for folders (including empty ones)
-    const absoluteDir = getWorkspacePath(requestedPath)
+    const absoluteDir = getWorkspacePath(requestedPath);
     try {
-      const dirEntries = await fs.readdir(absoluteDir, { withFileTypes: true })
+      const dirEntries = await fs.readdir(absoluteDir, { withFileTypes: true });
       for (const entry of dirEntries) {
-        if (entry.name.startsWith('.')) continue
-        
+        if (entry.name.startsWith(".")) continue;
+
         if (entry.isDirectory()) {
           if (!seenFolders.has(entry.name)) {
-            seenFolders.add(entry.name)
-            
+            seenFolders.add(entry.name);
+
             // Check if this folder is the images folder
-            const isImagesFolder = entry.name === 'images' && !relativePath
-            const folderPath = relativePath ? `public/${relativePath}/${entry.name}` : `public/${entry.name}`
-            
+            const isImagesFolder = entry.name === "images" && !relativePath;
+            const folderPath = relativePath
+              ? `public/${relativePath}/${entry.name}`
+              : `public/${entry.name}`;
+
             // Count files in this folder
-            let fileCount = 0
-            let cloudCount = 0
-            let remoteCount = 0
-            let localCount = 0
-            let updateCount = 0
-            
+            let fileCount = 0;
+            let cloudCount = 0;
+            let remoteCount = 0;
+            let localCount = 0;
+            let updateCount = 0;
+
             if (isImagesFolder) {
               // Count thumbnails from meta for images folder
               for (const [key, metaEntry] of fileEntries) {
                 if (isProcessed(metaEntry)) {
-                  const thumbCount = getExistingThumbnails(key, metaEntry).length
-                  fileCount += thumbCount
+                  const thumbCount = getExistingThumbnails(
+                    key,
+                    metaEntry
+                  ).length;
+                  fileCount += thumbCount;
                   // Thumbnails are on CDN if original is on CDN
                   if (metaEntry.c !== undefined) {
-                    const entryCdnUrl = cdnUrls[metaEntry.c]?.replace(/\/?$/, '')
+                    const entryCdnUrl = cdnUrls[metaEntry.c]?.replace(
+                      /\/?$/,
+                      ""
+                    );
                     if (r2PublicUrl && entryCdnUrl === r2PublicUrl) {
-                      cloudCount += thumbCount
+                      cloudCount += thumbCount;
                     } else {
-                      remoteCount += thumbCount
+                      remoteCount += thumbCount;
                     }
                   } else {
-                    localCount += thumbCount
+                    localCount += thumbCount;
                   }
                 }
               }
             } else {
               // Count files from meta for regular folders
-              const folderPrefix = pathPrefix === '/' ? `/${entry.name}/` : `${pathPrefix}${entry.name}/`
+              const folderPrefix =
+                pathPrefix === "/"
+                  ? `/${entry.name}/`
+                  : `${pathPrefix}${entry.name}/`;
               for (const k of metaKeys) {
-                if (k.startsWith(folderPrefix)) fileCount++
+                if (k.startsWith(folderPrefix)) fileCount++;
               }
               // Count cloud vs remote vs local
-              const counts = countFileTypes(folderPrefix, fileEntries, cdnUrls, r2PublicUrl)
-              cloudCount = counts.cloudCount
-              remoteCount = counts.remoteCount
-              localCount = counts.localCount
-              updateCount = counts.updateCount
+              const counts = countFileTypes(
+                folderPrefix,
+                fileEntries,
+                cdnUrls,
+                r2PublicUrl
+              );
+              cloudCount = counts.cloudCount;
+              remoteCount = counts.remoteCount;
+              localCount = counts.localCount;
+              updateCount = counts.updateCount;
             }
-            
+
             items.push({
               name: entry.name,
               path: folderPath,
-              type: 'folder',
+              type: "folder",
               fileCount,
               cloudCount,
               remoteCount,
               localCount,
               updateCount,
               isProtected: isImagesFolder,
-            })
+            });
           }
         }
       }
     } catch {
       // Directory might not exist (all files in cloud)
     }
-    
+
     // Always show images folder at root level if any processed images exist
-    if (!relativePath && !seenFolders.has('images')) {
-      let thumbnailCount = 0
-      let imgCloudCount = 0
-      let imgRemoteCount = 0
-      let imgLocalCount = 0
+    if (!relativePath && !seenFolders.has("images")) {
+      let thumbnailCount = 0;
+      let imgCloudCount = 0;
+      let imgRemoteCount = 0;
+      let imgLocalCount = 0;
       for (const [key, entry] of fileEntries) {
         if (isProcessed(entry)) {
-          const thumbCount = getExistingThumbnails(key, entry).length
-          thumbnailCount += thumbCount
+          const thumbCount = getExistingThumbnails(key, entry).length;
+          thumbnailCount += thumbCount;
           // Thumbnails are on CDN if original is on CDN
           if (entry.c !== undefined) {
-            const entryCdnUrl = cdnUrls[entry.c]?.replace(/\/?$/, '')
+            const entryCdnUrl = cdnUrls[entry.c]?.replace(/\/?$/, "");
             if (r2PublicUrl && entryCdnUrl === r2PublicUrl) {
-              imgCloudCount += thumbCount
+              imgCloudCount += thumbCount;
             } else {
-              imgRemoteCount += thumbCount
+              imgRemoteCount += thumbCount;
             }
           } else {
-            imgLocalCount += thumbCount
+            imgLocalCount += thumbCount;
           }
         }
       }
       if (thumbnailCount > 0) {
         items.push({
-          name: 'images',
-          path: 'public/images',
-          type: 'folder',
+          name: "images",
+          path: "public/images",
+          type: "folder",
           fileCount: thumbnailCount,
           cloudCount: imgCloudCount,
           remoteCount: imgRemoteCount,
           localCount: imgLocalCount,
           isProtected: true,
-        })
+        });
       }
     }
-    
+
     // If meta is empty and no folders found, return empty with a flag
     if (fileEntries.length === 0 && items.length === 0) {
-      return jsonResponse({ items: [], isEmpty: true })
+      return jsonResponse({ items: [], isEmpty: true });
     }
 
     for (const [key, entry] of fileEntries) {
       // Check if this file is under the current path
-      if (!key.startsWith(pathPrefix) && pathPrefix !== '/') continue
-      if (pathPrefix === '/' && !key.startsWith('/')) continue
+      if (!key.startsWith(pathPrefix) && pathPrefix !== "/") continue;
+      if (pathPrefix === "/" && !key.startsWith("/")) continue;
 
       // Get the part after the current path
-      const remaining = pathPrefix === '/' ? key.slice(1) : key.slice(pathPrefix.length)
-      
+      const remaining =
+        pathPrefix === "/" ? key.slice(1) : key.slice(pathPrefix.length);
+
       // Skip if empty (shouldn't happen)
-      if (!remaining) continue
+      if (!remaining) continue;
 
       // Check if there's a subfolder
-      const slashIndex = remaining.indexOf('/')
-      
+      const slashIndex = remaining.indexOf("/");
+
       if (slashIndex !== -1) {
         // This is in a subfolder - show the folder
-        const folderName = remaining.slice(0, slashIndex)
-        
+        const folderName = remaining.slice(0, slashIndex);
+
         if (!seenFolders.has(folderName)) {
-          seenFolders.add(folderName)
-          
+          seenFolders.add(folderName);
+
           // Count files in this folder from meta
-          const folderPrefix = pathPrefix === '/' ? `/${folderName}/` : `${pathPrefix}${folderName}/`
-          let fileCount = 0
+          const folderPrefix =
+            pathPrefix === "/"
+              ? `/${folderName}/`
+              : `${pathPrefix}${folderName}/`;
+          let fileCount = 0;
           for (const k of metaKeys) {
-            if (k.startsWith(folderPrefix)) fileCount++
+            if (k.startsWith(folderPrefix)) fileCount++;
           }
-          
+
           // Count cloud vs remote vs local
-          const counts = countFileTypes(folderPrefix, fileEntries, cdnUrls, r2PublicUrl)
-          
+          const counts = countFileTypes(
+            folderPrefix,
+            fileEntries,
+            cdnUrls,
+            r2PublicUrl
+          );
+
           items.push({
             name: folderName,
-            path: relativePath ? `public/${relativePath}/${folderName}` : `public/${folderName}`,
-            type: 'folder',
+            path: relativePath
+              ? `public/${relativePath}/${folderName}`
+              : `public/${folderName}`,
+            type: "folder",
             fileCount,
             cloudCount: counts.cloudCount,
             remoteCount: counts.remoteCount,
             localCount: counts.localCount,
             updateCount: counts.updateCount,
             isProtected: isInsideImagesFolder,
-          })
+          });
         }
       } else {
         // This is a file in the current folder
-        const fileName = remaining
-        const isImage = isImageFile(fileName)
-        const isPushedToCloud = entry.c !== undefined
-        
+        const fileName = remaining;
+        const isImage = isImageFile(fileName);
+        const isPushedToCloud = entry.c !== undefined;
+
         // Determine if this is a remote import vs pushed to our R2
-        const fileCdnUrl = isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
-        const normalizedFileCdnUrl = fileCdnUrl?.replace(/\/$/, '') || ''
-        const isRemote = isPushedToCloud && (!r2PublicUrl || normalizedFileCdnUrl !== r2PublicUrl)
-        
-        let thumbnail: string | undefined
-        let hasThumbnail = false
-        let fileSize: number | undefined
-        
-        const entryIsProcessed = isProcessed(entry)
-        
+        const fileCdnUrl =
+          isPushedToCloud && entry.c !== undefined
+            ? cdnUrls[entry.c]
+            : undefined;
+        const normalizedFileCdnUrl = fileCdnUrl?.replace(/\/$/, "") || "";
+        const isRemote =
+          isPushedToCloud &&
+          (!r2PublicUrl || normalizedFileCdnUrl !== r2PublicUrl);
+
+        let thumbnail: string | undefined;
+        let hasThumbnail = false;
+        let fileSize: number | undefined;
+
+        const entryIsProcessed = isProcessed(entry);
+
         if (isImage && entryIsProcessed) {
-          // Has been processed - use thumbnail
-          const thumbPath = getThumbnailPath(key, 'sm')
-          
-          if (isPushedToCloud && entry.c !== undefined) {
-            // CDN thumbnail - get URL from _cdns array
-            const cdnUrl = cdnUrls[entry.c]
-            if (cdnUrl) {
-              thumbnail = `${cdnUrl}${thumbPath}`
-              hasThumbnail = true
+          // Has been processed - determine best available thumbnail
+          // Prefer sm, then md, then lg, then full, then original
+          const hasSm = !!entry.sm;
+          const hasMd = !!entry.md;
+          const hasLg = !!entry.lg;
+          const hasFull = !!entry.f;
+
+          let thumbSize: "sm" | "md" | "lg" | "full" | null = null;
+          if (hasSm) thumbSize = "sm";
+          else if (hasMd) thumbSize = "md";
+          else if (hasLg) thumbSize = "lg";
+          else if (hasFull) thumbSize = "full";
+
+          if (thumbSize) {
+            const thumbPath = getThumbnailPath(key, thumbSize);
+
+            if (isPushedToCloud && entry.c !== undefined) {
+              // CDN thumbnail - get URL from _cdns array
+              const cdnUrl = cdnUrls[entry.c];
+              if (cdnUrl) {
+                thumbnail = `${cdnUrl}${thumbPath}`;
+                hasThumbnail = true;
+              }
+            } else {
+              // Local thumbnail - check if exists
+              const localThumbPath = getPublicPath(thumbPath);
+              try {
+                await fs.access(localThumbPath);
+                thumbnail = thumbPath;
+                hasThumbnail = true;
+              } catch {
+                // Thumbnail doesn't exist yet, use original
+                thumbnail = key;
+                hasThumbnail = false;
+              }
             }
           } else {
-            // Local thumbnail - check if exists
-            const localThumbPath = getPublicPath(thumbPath)
-            try {
-              await fs.access(localThumbPath)
-              thumbnail = thumbPath
-              hasThumbnail = true
-            } catch {
-              // Thumbnail doesn't exist yet
-              thumbnail = key
-              hasThumbnail = false
+            // No thumbnails available, use original
+            if (isPushedToCloud && entry.c !== undefined) {
+              const cdnUrl = cdnUrls[entry.c];
+              thumbnail = cdnUrl ? `${cdnUrl}${key}` : key;
+            } else {
+              thumbnail = key;
             }
+            hasThumbnail = false;
           }
         } else if (isImage) {
           // Not processed yet - use original (from CDN if available)
           if (isPushedToCloud && entry.c !== undefined) {
-            const cdnUrl = cdnUrls[entry.c]
-            thumbnail = cdnUrl ? `${cdnUrl}${key}` : key
+            const cdnUrl = cdnUrls[entry.c];
+            thumbnail = cdnUrl ? `${cdnUrl}${key}` : key;
           } else {
-            thumbnail = key
+            thumbnail = key;
           }
-          hasThumbnail = false
+          hasThumbnail = false;
         }
-        
+
         // Try to get file size if file exists locally
         if (!isPushedToCloud) {
           try {
-            const filePath = getPublicPath(key)
-            const stats = await fs.stat(filePath)
-            fileSize = stats.size
+            const filePath = getPublicPath(key);
+            const stats = await fs.stat(filePath);
+            fileSize = stats.size;
           } catch {
             // File might not exist locally (synced)
           }
         }
-        
+
         items.push({
           name: fileName,
-          path: relativePath ? `public/${relativePath}/${fileName}` : `public/${fileName}`,
-          type: 'file',
+          path: relativePath
+            ? `public/${relativePath}/${fileName}`
+            : `public/${fileName}`,
+          type: "file",
           size: fileSize,
           thumbnail,
           hasThumbnail,
@@ -494,96 +581,130 @@ export async function handleList(request: Request) {
           isCloud: isPushedToCloud && !isRemote,
           isRemote,
           isProtected: isInsideImagesFolder,
-          dimensions: entry.o ? { width: entry.o.w, height: entry.o.h } : undefined,
+          dimensions: entry.o
+            ? { width: entry.o.w, height: entry.o.h }
+            : undefined,
           hasUpdate: entry.u === 1,
-        })
+        });
       }
     }
 
-    return jsonResponse({ items })
+    return jsonResponse({ items });
   } catch (error) {
-    console.error('Failed to list directory:', error)
-    return jsonResponse({ error: 'Failed to list directory' }, { status: 500 })
+    console.error("Failed to list directory:", error);
+    return jsonResponse({ error: "Failed to list directory" }, { status: 500 });
   }
 }
 
 export async function handleSearch(request: Request) {
-  const searchParams = new URL(request.url).searchParams
-  const query = searchParams.get('q')?.toLowerCase() || ''
-  const requestedPath = searchParams.get('path') || 'public'
-  
+  const searchParams = new URL(request.url).searchParams;
+  const query = searchParams.get("q")?.toLowerCase() || "";
+  const requestedPath = searchParams.get("path") || "public";
+
   if (query.length < 2) {
-    return jsonResponse({ items: [] })
+    return jsonResponse({ items: [] });
   }
 
   // Convert path to filter prefix (e.g. "public/images" -> "/images/")
-  const pathPrefix = requestedPath === 'public' ? '/' : '/' + requestedPath.replace(/^public\/?/, '')
-  const normalizedPrefix = pathPrefix.endsWith('/') ? pathPrefix : pathPrefix + '/'
+  const pathPrefix =
+    requestedPath === "public"
+      ? "/"
+      : "/" + requestedPath.replace(/^public\/?/, "");
+  const normalizedPrefix = pathPrefix.endsWith("/")
+    ? pathPrefix
+    : pathPrefix + "/";
 
   try {
-    const meta = await loadMeta()
-    const fileEntries = getFileEntries(meta)
-    const cdnUrls = getCdnUrls(meta)
-    const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, '') || ''
-    const items: FileItem[] = []
+    const meta = await loadMeta();
+    const fileEntries = getFileEntries(meta);
+    const cdnUrls = getCdnUrls(meta);
+    const r2PublicUrl =
+      process.env.CLOUDFLARE_R2_PUBLIC_URL?.replace(/\/$/, "") || "";
+    const items: FileItem[] = [];
 
     for (const [key, entry] of fileEntries) {
       // Check if file is within the requested path (including subfolders)
-      if (!key.startsWith(normalizedPrefix)) continue
-      
+      if (!key.startsWith(normalizedPrefix)) continue;
+
       // Check if the path matches the query
-      if (!key.toLowerCase().includes(query)) continue
-      
-      const fileName = path.basename(key)
-      const relativePath = key.slice(1) // Remove leading /
-      const isImage = isImageFile(fileName)
-      const isPushedToCloud = entry.c !== undefined
-      
+      if (!key.toLowerCase().includes(query)) continue;
+
+      const fileName = path.basename(key);
+      const relativePath = key.slice(1); // Remove leading /
+      const isImage = isImageFile(fileName);
+      const isPushedToCloud = entry.c !== undefined;
+
       // Determine if this is a remote import vs pushed to our R2
-      const fileCdnUrl = isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined
-      const normalizedFileCdnUrl = fileCdnUrl?.replace(/\/$/, '') || ''
-      const isRemote = isPushedToCloud && (!r2PublicUrl || normalizedFileCdnUrl !== r2PublicUrl)
-      
-      let thumbnail: string | undefined
-      let hasThumbnail = false
-      const entryIsProcessed = isProcessed(entry)
-      
+      const fileCdnUrl =
+        isPushedToCloud && entry.c !== undefined ? cdnUrls[entry.c] : undefined;
+      const normalizedFileCdnUrl = fileCdnUrl?.replace(/\/$/, "") || "";
+      const isRemote =
+        isPushedToCloud &&
+        (!r2PublicUrl || normalizedFileCdnUrl !== r2PublicUrl);
+
+      let thumbnail: string | undefined;
+      let hasThumbnail = false;
+      const entryIsProcessed = isProcessed(entry);
+
       if (isImage && entryIsProcessed) {
-        // Has been processed - use thumbnail
-        const thumbPath = getThumbnailPath(key, 'sm')
-        
-        if (isPushedToCloud && entry.c !== undefined) {
-          const cdnUrl = cdnUrls[entry.c]
-          if (cdnUrl) {
-            thumbnail = `${cdnUrl}${thumbPath}`
-            hasThumbnail = true
+        // Has been processed - determine best available thumbnail
+        // Prefer sm, then md, then lg, then full, then original
+        const hasSm = !!entry.sm;
+        const hasMd = !!entry.md;
+        const hasLg = !!entry.lg;
+        const hasFull = !!entry.f;
+
+        let thumbSize: "sm" | "md" | "lg" | "full" | null = null;
+        if (hasSm) thumbSize = "sm";
+        else if (hasMd) thumbSize = "md";
+        else if (hasLg) thumbSize = "lg";
+        else if (hasFull) thumbSize = "full";
+
+        if (thumbSize) {
+          const thumbPath = getThumbnailPath(key, thumbSize);
+
+          if (isPushedToCloud && entry.c !== undefined) {
+            const cdnUrl = cdnUrls[entry.c];
+            if (cdnUrl) {
+              thumbnail = `${cdnUrl}${thumbPath}`;
+              hasThumbnail = true;
+            }
+          } else {
+            const localThumbPath = getPublicPath(thumbPath);
+            try {
+              await fs.access(localThumbPath);
+              thumbnail = thumbPath;
+              hasThumbnail = true;
+            } catch {
+              thumbnail = key;
+              hasThumbnail = false;
+            }
           }
         } else {
-          const localThumbPath = getPublicPath(thumbPath)
-          try {
-            await fs.access(localThumbPath)
-            thumbnail = thumbPath
-            hasThumbnail = true
-          } catch {
-            thumbnail = key
-            hasThumbnail = false
+          // No thumbnails available, use original
+          if (isPushedToCloud && entry.c !== undefined) {
+            const cdnUrl = cdnUrls[entry.c];
+            thumbnail = cdnUrl ? `${cdnUrl}${key}` : key;
+          } else {
+            thumbnail = key;
           }
+          hasThumbnail = false;
         }
       } else if (isImage) {
         // Not processed yet - use original (from CDN if available)
         if (isPushedToCloud && entry.c !== undefined) {
-          const cdnUrl = cdnUrls[entry.c]
-          thumbnail = cdnUrl ? `${cdnUrl}${key}` : key
+          const cdnUrl = cdnUrls[entry.c];
+          thumbnail = cdnUrl ? `${cdnUrl}${key}` : key;
         } else {
-          thumbnail = key
+          thumbnail = key;
         }
-        hasThumbnail = false
+        hasThumbnail = false;
       }
-      
+
       items.push({
         name: fileName,
         path: `public/${relativePath}`,
-        type: 'file',
+        type: "file",
         thumbnail,
         hasThumbnail,
         isProcessed: entryIsProcessed,
@@ -595,125 +716,133 @@ export async function handleSearch(request: Request) {
         cdnBaseUrl: fileCdnUrl,
         isCloud: isPushedToCloud && !isRemote,
         isRemote,
-        dimensions: entry.o ? { width: entry.o.w, height: entry.o.h } : undefined,
+        dimensions: entry.o
+          ? { width: entry.o.w, height: entry.o.h }
+          : undefined,
         hasUpdate: entry.u === 1,
-      })
+      });
     }
 
-    return jsonResponse({ items })
+    return jsonResponse({ items });
   } catch (error) {
-    console.error('Failed to search:', error)
-    return jsonResponse({ error: 'Failed to search' }, { status: 500 })
+    console.error("Failed to search:", error);
+    return jsonResponse({ error: "Failed to search" }, { status: 500 });
   }
 }
 
 export async function handleListFolders() {
   try {
-    const meta = await loadMeta()
-    const fileEntries = getFileEntries(meta)
-    const folderSet = new Set<string>()
-    
+    const meta = await loadMeta();
+    const fileEntries = getFileEntries(meta);
+    const folderSet = new Set<string>();
+
     // Extract all folder paths from meta keys
     for (const [key] of fileEntries) {
-      const parts = key.split('/')
+      const parts = key.split("/");
       // Build up folder paths: /photos/2024/image.jpg -> photos, photos/2024
-      let current = ''
+      let current = "";
       for (let i = 1; i < parts.length - 1; i++) {
-        current = current ? `${current}/${parts[i]}` : parts[i]
-        folderSet.add(current)
+        current = current ? `${current}/${parts[i]}` : parts[i];
+        folderSet.add(current);
       }
     }
-    
+
     // Also scan filesystem recursively for folders (including empty ones)
     async function scanDir(dir: string, relativePath: string): Promise<void> {
       try {
-        const entries = await fs.readdir(dir, { withFileTypes: true })
+        const entries = await fs.readdir(dir, { withFileTypes: true });
         for (const entry of entries) {
-          if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'images') {
-            const folderRelPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
-            folderSet.add(folderRelPath)
+          if (
+            entry.isDirectory() &&
+            !entry.name.startsWith(".") &&
+            entry.name !== "images"
+          ) {
+            const folderRelPath = relativePath
+              ? `${relativePath}/${entry.name}`
+              : entry.name;
+            folderSet.add(folderRelPath);
             // Recurse into subdirectory
-            await scanDir(path.join(dir, entry.name), folderRelPath)
+            await scanDir(path.join(dir, entry.name), folderRelPath);
           }
         }
       } catch {
         // Directory might not exist
       }
     }
-    
-    const publicDir = getPublicPath()
-    await scanDir(publicDir, '')
-    
-    const folders: { path: string; name: string; depth: number }[] = []
-    folders.push({ path: 'public', name: 'public', depth: 0 })
-    
-    const sortedFolders = Array.from(folderSet).sort()
+
+    const publicDir = getPublicPath();
+    await scanDir(publicDir, "");
+
+    const folders: { path: string; name: string; depth: number }[] = [];
+    folders.push({ path: "public", name: "public", depth: 0 });
+
+    const sortedFolders = Array.from(folderSet).sort();
     for (const folderPath of sortedFolders) {
-      const depth = folderPath.split('/').length
-      const name = folderPath.split('/').pop() || folderPath
+      const depth = folderPath.split("/").length;
+      const name = folderPath.split("/").pop() || folderPath;
       folders.push({
         path: `public/${folderPath}`,
         name,
-        depth
-      })
+        depth,
+      });
     }
 
-    return jsonResponse({ folders })
+    return jsonResponse({ folders });
   } catch (error) {
-    console.error('Failed to list folders:', error)
-    return jsonResponse({ error: 'Failed to list folders' }, { status: 500 })
+    console.error("Failed to list folders:", error);
+    return jsonResponse({ error: "Failed to list folders" }, { status: 500 });
   }
 }
 
 export async function handleCountImages() {
   try {
-    const meta = await loadMeta()
-    const fileEntries = getFileEntries(meta)
-    const allImages: string[] = []
+    const meta = await loadMeta();
+    const fileEntries = getFileEntries(meta);
+    const allImages: string[] = [];
 
     for (const [key] of fileEntries) {
-      const fileName = path.basename(key)
+      const fileName = path.basename(key);
       if (isImageFile(fileName)) {
-        allImages.push(key.slice(1)) // Remove leading /
+        allImages.push(key.slice(1)); // Remove leading /
       }
     }
 
     return jsonResponse({
       count: allImages.length,
       images: allImages,
-    })
+    });
   } catch (error) {
-    console.error('Failed to count images:', error)
-    return jsonResponse({ error: 'Failed to count images' }, { status: 500 })
+    console.error("Failed to count images:", error);
+    return jsonResponse({ error: "Failed to count images" }, { status: 500 });
   }
 }
 
 export async function handleFolderImages(request: Request) {
   try {
-    const searchParams = new URL(request.url).searchParams
-    const foldersParam = searchParams.get('folders')
-    
+    const searchParams = new URL(request.url).searchParams;
+    const foldersParam = searchParams.get("folders");
+
     if (!foldersParam) {
-      return jsonResponse({ error: 'No folders provided' }, { status: 400 })
+      return jsonResponse({ error: "No folders provided" }, { status: 400 });
     }
 
-    const folders = foldersParam.split(',')
-    const meta = await loadMeta()
-    const fileEntries = getFileEntries(meta)
-    const allFiles: string[] = []
+    const folders = foldersParam.split(",");
+    const meta = await loadMeta();
+    const fileEntries = getFileEntries(meta);
+    const allFiles: string[] = [];
 
     // Convert folder paths to prefixes for matching
-    const prefixes = folders.map(f => {
-      const rel = f.replace(/^public\/?/, '')
-      return rel ? `/${rel}/` : '/'
-    })
+    const prefixes = folders.map((f) => {
+      const rel = f.replace(/^public\/?/, "");
+      return rel ? `/${rel}/` : "/";
+    });
 
     for (const [key] of fileEntries) {
       // Check if this file is in one of the requested folders
       for (const prefix of prefixes) {
-        if (key.startsWith(prefix) || (prefix === '/' && key.startsWith('/'))) {
-          allFiles.push(key.slice(1)) // Remove leading /
-          break
+        if (key.startsWith(prefix) || (prefix === "/" && key.startsWith("/"))) {
+          allFiles.push(key.slice(1)); // Remove leading /
+          break;
         }
       }
     }
@@ -721,9 +850,12 @@ export async function handleFolderImages(request: Request) {
     return jsonResponse({
       count: allFiles.length,
       images: allFiles, // Keep as 'images' for backwards compatibility
-    })
+    });
   } catch (error) {
-    console.error('Failed to get folder files:', error)
-    return jsonResponse({ error: 'Failed to get folder files' }, { status: 500 })
+    console.error("Failed to get folder files:", error);
+    return jsonResponse(
+      { error: "Failed to get folder files" },
+      { status: 500 }
+    );
   }
 }
