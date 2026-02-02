@@ -1,5 +1,4 @@
 import sharp from 'sharp'
-import { encode } from 'blurhash'
 import {
   loadMeta,
   saveMeta,
@@ -23,9 +22,9 @@ function parseImageUrl(url: string): { base: string; path: string } {
 }
 
 /**
- * Fetch remote image and get dimensions + blurhash
+ * Fetch remote image and get dimensions
  */
-async function processRemoteImage(url: string): Promise<{ o: Dimensions; b: string }> {
+async function processRemoteImage(url: string): Promise<{ o: Dimensions }> {
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(`Failed to fetch: ${response.status}`)
@@ -35,18 +34,8 @@ async function processRemoteImage(url: string): Promise<{ o: Dimensions; b: stri
   
   const metadata = await sharp(buffer).metadata()
   
-  // Generate blurhash
-  const { data, info } = await sharp(buffer)
-    .resize(32, 32, { fit: 'inside' })
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true })
-  
-  const blurhash = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
-  
   return {
     o: { w: metadata.width || 0, h: metadata.height || 0 },
-    b: blurhash,
   }
 }
 

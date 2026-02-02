@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
-import { useStudio } from '../components/StudioContext'
-import { studioApi } from '../lib/api'
-import type { FileItem } from '../types'
+import { useEffect, useState, useRef, useCallback } from "react";
+import { useStudio } from "../components/StudioContext";
+import { studioApi, type CheckFeaturedImageResponse } from "../lib/api";
+import type { FileItem } from "../types";
 
 /**
  * Shared hook for file list logic used by both Grid and List views
@@ -25,95 +25,136 @@ export function useFileList() {
     searchQuery,
     showError,
     setFileItems,
-  } = useStudio()
+  } = useStudio();
 
-  const [items, setItems] = useState<FileItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [metaEmpty, setMetaEmpty] = useState(false)
-  const isInitialLoad = useRef(true)
-  const lastPath = useRef(currentPath)
+  const [items, setItems] = useState<FileItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [metaEmpty, setMetaEmpty] = useState(false);
+  const [featuredImageInfo, setFeaturedImageInfo] =
+    useState<CheckFeaturedImageResponse | null>(null);
+  const isInitialLoad = useRef(true);
+  const lastPath = useRef(currentPath);
 
   // Load items when path, refresh, or search changes
   useEffect(() => {
     async function loadItems() {
-      const isPathChange = lastPath.current !== currentPath
+      const isPathChange = lastPath.current !== currentPath;
       if (isInitialLoad.current || isPathChange) {
-        setLoading(true)
+        setLoading(true);
       }
-      lastPath.current = currentPath
+      lastPath.current = currentPath;
 
       try {
-        const data = searchQuery && searchQuery.length >= 2
-          ? await studioApi.search(searchQuery, currentPath)
-          : await studioApi.list(currentPath)
-        const loadedItems = data.items || []
-        setItems(loadedItems)
-        setFileItems(loadedItems)
-        setMetaEmpty(data.isEmpty === true)
+        const data =
+          searchQuery && searchQuery.length >= 2
+            ? await studioApi.search(searchQuery, currentPath)
+            : await studioApi.list(currentPath);
+        const loadedItems = data.items || [];
+        setItems(loadedItems);
+        setFileItems(loadedItems);
+        setMetaEmpty(data.isEmpty === true);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to load items'
-        showError('Load Error', message)
-        setItems([])
-        setFileItems([])
-        setMetaEmpty(false)
+        const message =
+          error instanceof Error ? error.message : "Failed to load items";
+        showError("Load Error", message);
+        setItems([]);
+        setFileItems([]);
+        setMetaEmpty(false);
       }
 
-      setLoading(false)
-      isInitialLoad.current = false
+      setLoading(false);
+      isInitialLoad.current = false;
     }
 
-    loadItems()
-  }, [currentPath, refreshKey, searchQuery, showError, setFileItems])
+    loadItems();
+  }, [currentPath, refreshKey, searchQuery, showError, setFileItems]);
+
+  // Check for featured image when at root
+  useEffect(() => {
+    async function checkFeaturedImage() {
+      if (currentPath !== "public") {
+        setFeaturedImageInfo(null);
+        return;
+      }
+      try {
+        const info = await studioApi.checkFeaturedImage();
+        setFeaturedImageInfo(info);
+      } catch {
+        setFeaturedImageInfo(null);
+      }
+    }
+    checkFeaturedImage();
+  }, [currentPath, refreshKey]);
 
   // Computed values
-  const isAtRoot = currentPath === 'public'
-  const isSearching = searchQuery && searchQuery.length >= 2
+  const isAtRoot = currentPath === "public";
+  const isSearching = searchQuery && searchQuery.length >= 2;
 
   // Sort items: folders first, then alphabetically
   const sortedItems = [...items].sort((a, b) => {
-    if (a.type === 'folder' && b.type !== 'folder') return -1
-    if (a.type !== 'folder' && b.type === 'folder') return 1
-    return a.name.localeCompare(b.name)
-  })
+    if (a.type === "folder" && b.type !== "folder") return -1;
+    if (a.type !== "folder" && b.type === "folder") return 1;
+    return a.name.localeCompare(b.name);
+  });
 
-  const allItemsSelected = sortedItems.length > 0 && sortedItems.every(item => selectedItems.has(item.path))
-  const someItemsSelected = sortedItems.some(item => selectedItems.has(item.path))
+  const allItemsSelected =
+    sortedItems.length > 0 &&
+    sortedItems.every((item) => selectedItems.has(item.path));
+  const someItemsSelected = sortedItems.some((item) =>
+    selectedItems.has(item.path)
+  );
 
   // Handlers
-  const handleItemClick = useCallback((item: FileItem, e: React.MouseEvent) => {
-    if (e.shiftKey && lastSelectedPath) {
-      selectRange(lastSelectedPath, item.path, sortedItems)
-    } else {
-      toggleSelection(item.path)
-    }
-  }, [lastSelectedPath, selectRange, sortedItems, toggleSelection])
+  const handleItemClick = useCallback(
+    (item: FileItem, e: React.MouseEvent) => {
+      if (e.shiftKey && lastSelectedPath) {
+        selectRange(lastSelectedPath, item.path, sortedItems);
+      } else {
+        toggleSelection(item.path);
+      }
+    },
+    [lastSelectedPath, selectRange, sortedItems, toggleSelection]
+  );
 
-  const handleOpen = useCallback((item: FileItem) => {
-    if (item.type === 'folder') {
-      setCurrentPath(item.path)
-    } else {
-      setFocusedItem(item)
-    }
-  }, [setCurrentPath, setFocusedItem])
+  const handleOpen = useCallback(
+    (item: FileItem) => {
+      if (item.type === "folder") {
+        setCurrentPath(item.path);
+      } else {
+        setFocusedItem(item);
+      }
+    },
+    [setCurrentPath, setFocusedItem]
+  );
 
-  const handleGenerateThumbnail = useCallback(async (item: FileItem) => {
-    try {
-      const imageKey = '/' + item.path.replace(/^public\//, '')
-      await studioApi.reprocess([imageKey])
-      triggerRefresh()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to generate thumbnail'
-      showError('Processing Error', message)
-    }
-  }, [triggerRefresh, showError])
+  const handleGenerateThumbnail = useCallback(
+    async (item: FileItem) => {
+      try {
+        const imageKey = "/" + item.path.replace(/^public\//, "");
+        await studioApi.reprocess([imageKey]);
+        triggerRefresh();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to generate thumbnail";
+        showError("Processing Error", message);
+      }
+    },
+    [triggerRefresh, showError]
+  );
 
   const handleSelectAll = useCallback(() => {
     if (allItemsSelected) {
-      clearSelection()
+      clearSelection();
     } else {
-      selectAll(sortedItems)
+      selectAll(sortedItems);
     }
-  }, [allItemsSelected, clearSelection, selectAll, sortedItems])
+  }, [allItemsSelected, clearSelection, selectAll, sortedItems]);
+
+  // Check if featured image is missing
+  const missingFeaturedImage =
+    featuredImageInfo && !featuredImageInfo.exists ? featuredImageInfo : null;
 
   return {
     // State
@@ -121,6 +162,7 @@ export function useFileList() {
     loading,
     sortedItems,
     metaEmpty,
+    missingFeaturedImage,
 
     // Computed
     isAtRoot,
@@ -139,5 +181,6 @@ export function useFileList() {
     handleGenerateThumbnail,
     handleSelectAll,
     triggerScan,
-  }
+    triggerRefresh,
+  };
 }

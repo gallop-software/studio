@@ -422,7 +422,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
         // Preserve empty strings as placeholders to maintain indices
         body: JSON.stringify({ cdns: cdnUrls }),
       })
-      
+
       if (response.ok) {
         setHasChanges(false)
         triggerRefresh()
@@ -495,7 +495,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
 
           <section>
             <h3 css={styles.sectionTitle}>Environment Variables</h3>
-            <p css={styles.description}>Configure in <code>.env.studio</code> file:</p>
+            <p css={styles.description}>Configure in <code>.env.local</code> file (local development only, not needed in production):</p>
             <div css={styles.codeWrapper}>
               <button css={styles.copyBtn} onClick={handleCopy} title="Copy to clipboard">
                 {copied && <span css={styles.tooltip}>Copied!</span>}
@@ -504,7 +504,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
                 </svg>
               </button>
               <div css={styles.code}>
-                <p css={styles.codeLine}>STUDIO_DEV_SITE_URL=http://localhost:3000</p>
+                <p css={styles.codeLine}>NEXT_PUBLIC_PRODUCTION_URL=http://localhost:3000</p>
                 <p css={styles.codeLine}>&nbsp;</p>
                 <p css={styles.codeLine}># Cloudflare R2 Storage</p>
                 <p css={styles.codeLine}>CLOUDFLARE_R2_ACCOUNT_ID=your_account_id</p>

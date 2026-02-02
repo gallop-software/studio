@@ -4,6 +4,8 @@
 import { useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useFileList } from '../hooks/useFileList'
+import { ProgressModal, type ProgressState } from './StudioModal'
+import { FeaturedImageModal } from './FeaturedImageModal'
 import { colors, fontSize } from './tokens'
 import type { FileItem } from '../types'
 
@@ -435,6 +437,28 @@ const styles = {
     font-size: ${fontSize.sm};
     color: ${colors.textMuted};
   `,
+  featuredRow: css`
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    border: 2px dashed ${colors.primary};
+    
+    &:hover {
+      background-color: rgba(99, 102, 241, 0.08);
+    }
+    
+    td {
+      border-bottom: none !important;
+    }
+  `,
+  featuredIcon: css`
+    width: 24px;
+    height: 24px;
+    color: ${colors.primary};
+  `,
+  featuredText: css`
+    color: ${colors.primary};
+    font-weight: 500;
+  `,
   openBtn: css`
     height: 32px;
     font-size: ${fontSize.sm};
@@ -461,6 +485,7 @@ export function StudioFileList() {
     loading,
     sortedItems,
     metaEmpty,
+    missingFeaturedImage,
     isAtRoot,
     isSearching,
     allItemsSelected,
@@ -472,7 +497,117 @@ export function StudioFileList() {
     handleGenerateThumbnail,
     handleSelectAll,
     triggerScan,
+    triggerRefresh,
   } = useFileList()
+
+  const [showFeaturedModal, setShowFeaturedModal] = useState(false)
+  const [showFeaturedProgress, setShowFeaturedProgress] = useState(false)
+  const [featuredProgress, setFeaturedProgress] = useState<ProgressState>({
+    current: 0,
+    total: 3,
+    percent: 0,
+    status: 'processing',
+    message: 'Generating featured image...',
+  })
+
+  const handleOpenFeaturedModal = () => {
+    setShowFeaturedModal(true)
+  }
+
+  const handleGenerateFeaturedImage = async (url: string) => {
+    setShowFeaturedModal(false)
+    setShowFeaturedProgress(true)
+    setFeaturedProgress({
+      current: 0,
+      total: 4,
+      percent: 0,
+      status: 'processing',
+      message: 'Starting...',
+    })
+
+    try {
+      const response = await fetch('/api/studio/generate-featured-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        setFeaturedProgress({
+          current: 0,
+          total: 4,
+          percent: 0,
+          status: 'error',
+          message: error.error || 'Failed to generate featured image',
+        })
+        return
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (reader) {
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+
+                if (data.type === 'start') {
+                  setFeaturedProgress(prev => ({
+                    ...prev,
+                    total: data.total,
+                    message: `Screenshotting ${data.url}...`,
+                  }))
+                } else if (data.type === 'progress') {
+                  setFeaturedProgress({
+                    current: data.current,
+                    total: data.total,
+                    percent: data.percent,
+                    status: 'processing',
+                    message: data.message,
+                  })
+                } else if (data.type === 'complete') {
+                  setFeaturedProgress({
+                    current: data.processed,
+                    total: data.processed,
+                    percent: 100,
+                    status: data.errors > 0 ? 'error' : 'complete',
+                    message: data.message,
+                  })
+                  triggerRefresh()
+                } else if (data.type === 'error') {
+                  setFeaturedProgress(prev => ({
+                    ...prev,
+                    status: 'error',
+                    message: data.message,
+                  }))
+                }
+              } catch { /* ignore parse errors */ }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Featured image generation error:', error)
+      setFeaturedProgress({
+        current: 0,
+        total: 3,
+        percent: 0,
+        status: 'error',
+        message: 'An error occurred while generating the featured image',
+      })
+    }
+  }
 
   if (loading) {
     return (
@@ -487,7 +622,7 @@ export function StudioFileList() {
       <div css={styles.empty}>
         <p>No files tracked yet</p>
         <p css={styles.emptyHint}>Click Scan to discover files in your public folder</p>
-        <button 
+        <button
           css={styles.scanButton}
           onClick={triggerScan}
         >
@@ -507,61 +642,99 @@ export function StudioFileList() {
   }
 
   return (
-    <div css={styles.tableWrapper}>
-      <table css={styles.table}>
-        <thead>
-          <tr>
-            <th css={[styles.th, styles.thCheckbox]}>
-              {sortedItems.length > 0 && (
-                <input
-                  type="checkbox"
-                  css={styles.checkbox}
-                  checked={allItemsSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = someItemsSelected && !allItemsSelected
-                  }}
-                  onChange={handleSelectAll}
-                />
-              )}
-            </th>
-            <th css={styles.th}>Name</th>
-            <th css={[styles.th, styles.thSize]}>Size</th>
-            <th css={[styles.th, styles.thDimensions]}>Dimensions</th>
-            <th css={[styles.th, styles.thCdn]}>CDN</th>
-          </tr>
-        </thead>
-        <tbody css={styles.tbody}>
-          {/* Parent folder navigation - hide when searching */}
-          {!isAtRoot && !isSearching && (
-            <tr css={styles.parentRow} onClick={navigateUp}>
-              <td css={styles.td}></td>
-              <td css={styles.td}>
-                <div css={styles.nameCell}>
-                  <svg css={styles.parentIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                  </svg>
-                  <span css={styles.name}>..</span>
-                </div>
-              </td>
-              <td css={[styles.td, styles.meta]}>--</td>
-              <td css={[styles.td, styles.meta]}>Parent folder</td>
-              <td css={styles.td}>--</td>
+    <>
+      <FeaturedImageModal
+        isOpen={showFeaturedModal}
+        onClose={() => setShowFeaturedModal(false)}
+        onSelect={handleGenerateFeaturedImage}
+      />
+      {showFeaturedProgress && (
+        <ProgressModal
+          title="Generating Featured Image"
+          progress={featuredProgress}
+          onClose={() => setShowFeaturedProgress(false)}
+        />
+      )}
+      <div css={styles.tableWrapper}>
+        <table css={styles.table}>
+          <thead>
+            <tr>
+              <th css={[styles.th, styles.thCheckbox]}>
+                {sortedItems.length > 0 && (
+                  <input
+                    type="checkbox"
+                    css={styles.checkbox}
+                    checked={allItemsSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someItemsSelected && !allItemsSelected
+                    }}
+                    onChange={handleSelectAll}
+                  />
+                )}
+              </th>
+              <th css={styles.th}>Name</th>
+              <th css={[styles.th, styles.thSize]}>Size</th>
+              <th css={[styles.th, styles.thDimensions]}>Dimensions</th>
+              <th css={[styles.th, styles.thCdn]}>CDN</th>
             </tr>
-          )}
-          
-          {sortedItems.map((item) => (
-            <ListRow
-              key={item.path}
-              item={item}
-              isSelected={selectedItems.has(item.path)}
-              onClick={(e) => handleItemClick(item, e)}
-              onOpen={() => handleOpen(item)}
-              onGenerateThumbnail={() => handleGenerateThumbnail(item)}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody css={styles.tbody}>
+            {/* Parent folder navigation - hide when searching */}
+            {!isAtRoot && !isSearching && (
+              <tr css={styles.parentRow} onClick={navigateUp}>
+                <td css={styles.td}></td>
+                <td css={styles.td}>
+                  <div css={styles.nameCell}>
+                    <svg css={styles.parentIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                    <span css={styles.name}>..</span>
+                  </div>
+                </td>
+                <td css={[styles.td, styles.meta]}>--</td>
+                <td css={[styles.td, styles.meta]}>Parent folder</td>
+                <td css={styles.td}>--</td>
+              </tr>
+            )}
+
+            {sortedItems.map((item) => (
+              <ListRow
+                key={item.path}
+                item={item}
+                isSelected={selectedItems.has(item.path)}
+                onClick={(e) => handleItemClick(item, e)}
+                onOpen={() => handleOpen(item)}
+                onGenerateThumbnail={() => handleGenerateThumbnail(item)}
+              />
+            ))}
+
+            {/* Featured image placeholder - show at end when missing */}
+            {isAtRoot && missingFeaturedImage && !isSearching && (
+              <tr
+                css={styles.featuredRow}
+                onClick={handleOpenFeaturedModal}
+                title={`Generate ${missingFeaturedImage.filename}`}
+              >
+                <td css={styles.td}></td>
+                <td css={styles.td}>
+                  <div css={styles.nameCell}>
+                    <div css={styles.folderIconWrapper}>
+                      <svg css={styles.featuredIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <span css={[styles.name, styles.featuredText]}>{missingFeaturedImage.filename}</span>
+                  </div>
+                </td>
+                <td css={[styles.td, styles.meta, styles.featuredText]}>--</td>
+                <td css={[styles.td, styles.meta, styles.featuredText]}>Click to generate</td>
+                <td css={[styles.td, styles.featuredText]}>--</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
 
@@ -598,8 +771,8 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Lis
   }
 
   return (
-    <tr 
-      css={[styles.row, isSelected && !isProtected && styles.rowSelected]} 
+    <tr
+      css={[styles.row, isSelected && !isProtected && styles.rowSelected]}
       onClick={handleClick}
     >
       <td
@@ -734,7 +907,7 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Lis
         )}
       </td>
       <td css={[styles.td, styles.meta]}>
-        {isFolder 
+        {isFolder
           ? (item.totalSize !== undefined ? formatFileSize(item.totalSize) : '--')
           : (item.dimensions ? `${item.dimensions.width}x${item.dimensions.height}` : '--')
         }
@@ -773,21 +946,21 @@ function getParentPath(path: string): string {
 
 function truncateMiddle(str: string, maxLength: number = 32): string {
   if (str.length <= maxLength) return str
-  
+
   // Find the extension
   const lastDot = str.lastIndexOf('.')
   const ext = lastDot > 0 ? str.substring(lastDot) : ''
   const name = lastDot > 0 ? str.substring(0, lastDot) : str
-  
+
   // Calculate how much we can show of the name
   const availableLength = maxLength - ext.length - 3 // 3 for "..."
   if (availableLength < 6) {
     // Too short, just truncate from end
     return str.substring(0, maxLength - 3) + '...'
   }
-  
+
   const startLength = Math.ceil(availableLength / 2)
   const endLength = Math.floor(availableLength / 2)
-  
+
   return name.substring(0, startLength) + '...' + name.substring(name.length - endLength) + ext
 }

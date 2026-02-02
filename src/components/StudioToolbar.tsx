@@ -9,6 +9,7 @@ import { useStreamingOperation } from './useStreamingOperation'
 import { StudioFolderPicker } from './StudioFolderPicker'
 import { R2SetupModal } from './R2SetupModal'
 import { AddNewModal } from './AddNewModal'
+import { StudioSettings } from './StudioSettings'
 import { colors, fontSize } from './tokens'
 
 // Standard button height for consistency
@@ -300,6 +301,7 @@ export function StudioToolbar() {
   const [showAddNewModal, setShowAddNewModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [scanning, setScanning] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showSyncConfirm, setShowSyncConfirm] = useState(false)
   const [syncImageCount, setSyncImageCount] = useState(0)
@@ -341,6 +343,13 @@ export function StudioToolbar() {
   const handleUpload = useCallback(() => {
     fileInputRef.current?.click()
   }, [])
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true)
+    triggerRefresh()
+    // Stop spinning after a short delay to give visual feedback
+    setTimeout(() => setRefreshing(false), 600)
+  }, [triggerRefresh])
 
   const handleScan = useCallback(async () => {
     setScanning(true)
@@ -467,7 +476,7 @@ export function StudioToolbar() {
     if (!files || files.length === 0) return
 
     const fileList = Array.from(files)
-    
+
     // Show progress modal for multiple files
     if (fileList.length > 1) {
       setProgressState({
@@ -545,7 +554,7 @@ export function StudioToolbar() {
           errors: errors,
         })
       }
-      
+
       triggerRefresh()
     } catch (error) {
       console.error('Upload error:', error)
@@ -573,10 +582,10 @@ export function StudioToolbar() {
 
   const handleProcessImages = useCallback(async (mode: 'generate' | 'remove') => {
     const hasSelection = selectedItems.size > 0
-    
+
     if (hasSelection) {
       const selectedPaths = Array.from(selectedItems)
-      
+
       // Separate folders and files (files have extensions)
       const selectedFilePaths = selectedPaths.filter(p => {
         const lastPart = p.split('/').pop() || ''
@@ -586,13 +595,13 @@ export function StudioToolbar() {
         const lastPart = p.split('/').pop() || ''
         return !lastPart.includes('.') || p.endsWith('/')
       })
-      
+
       // If folders are selected, fetch all files from them
       if (selectedFolders.length > 0) {
         try {
           const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
           const data = await response.json()
-          
+
           if (data.images) {
             // Add folder files to selectedFilePaths (as public/ paths)
             for (const img of data.images) {
@@ -606,7 +615,7 @@ export function StudioToolbar() {
           console.error('Failed to get folder files:', error)
         }
       }
-      
+
       if (selectedFilePaths.length === 0) {
         setAlertMessage({
           title: 'No Files Found',
@@ -614,7 +623,7 @@ export function StudioToolbar() {
         })
         return
       }
-      
+
       // Set mode and use shared process modal
       setProcessMode(mode)
       requestProcess(selectedFilePaths)
@@ -623,7 +632,7 @@ export function StudioToolbar() {
       try {
         const response = await fetch('/api/studio/count-images')
         const data = await response.json()
-        
+
         if (!data.images || data.images.length === 0) {
           setAlertMessage({
             title: 'No Images Found',
@@ -631,7 +640,7 @@ export function StudioToolbar() {
           })
           return
         }
-        
+
         // Convert to full paths, set mode, and use shared process modal
         const allImagePaths = data.images.map((img: string) => `public/${img}`)
         setProcessMode(mode)
@@ -702,7 +711,7 @@ export function StudioToolbar() {
 
   const handleDeleteConfirm = useCallback(async () => {
     setShowDeleteConfirm(false)
-    
+
     const paths = Array.from(selectedItems)
     if (paths.length === 0) return
 
@@ -720,7 +729,7 @@ export function StudioToolbar() {
     if (selectedItems.size === 0) return
 
     const selectedPaths = Array.from(selectedItems)
-    
+
     // Separate folders and files (files have extensions)
     const selectedFilePaths = selectedPaths.filter(p => {
       const lastPart = p.split('/').pop() || ''
@@ -738,7 +747,7 @@ export function StudioToolbar() {
       try {
         const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
         const data = await response.json()
-        
+
         if (data.images) {
           for (const img of data.images) {
             const fullPath = `public/${img}`
@@ -765,7 +774,7 @@ export function StudioToolbar() {
     let hasRemote = false
     let hasLocal = false
     let alreadyPushedCount = 0
-    
+
     for (const filePath of selectedFilePaths) {
       const item = fileItems.find(f => f.path === filePath)
       if (item) {
@@ -801,9 +810,9 @@ export function StudioToolbar() {
 
   const handleSyncConfirm = useCallback(async () => {
     setShowSyncConfirm(false)
-    
+
     const selectedPaths = Array.from(selectedItems)
-    
+
     // Separate folders and files (files have extensions)
     const selectedFilePaths = selectedPaths.filter(p => {
       const lastPart = p.split('/').pop() || ''
@@ -819,7 +828,7 @@ export function StudioToolbar() {
       try {
         const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
         const data = await response.json()
-        
+
         if (data.images) {
           for (const img of data.images) {
             const fullPath = `public/${img}`
@@ -864,7 +873,7 @@ export function StudioToolbar() {
     if (selectedItems.size === 0) return
 
     const selectedPaths = Array.from(selectedItems)
-    
+
     // Separate folders and files (files have extensions)
     const selectedFilePaths = selectedPaths.filter(p => {
       const lastPart = p.split('/').pop() || ''
@@ -882,7 +891,7 @@ export function StudioToolbar() {
       try {
         const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
         const data = await response.json()
-        
+
         if (data.images) {
           for (const img of data.images) {
             const fullPath = `public/${img}`
@@ -907,7 +916,7 @@ export function StudioToolbar() {
     // When folders are selected, we can't check fileItems (folder contents aren't in current view)
     // So we send all files to the server and let it filter
     let r2Files: string[]
-    
+
     if (hasFolders) {
       // Can't pre-filter - send all and let server handle it
       r2Files = selectedFilePaths
@@ -936,12 +945,12 @@ export function StudioToolbar() {
 
   const handleDownloadConfirm = useCallback(async () => {
     setShowDownloadConfirm(false)
-    
+
     // Also close shared state if it was triggered from there
     if (actionState.showDownloadConfirm) {
       cancelAction()
     }
-    
+
     // Use actionPaths from shared state if triggered from detail view, otherwise use downloadableFiles
     const filesToDownload = actionState.showDownloadConfirm ? actionState.actionPaths : downloadableFiles
     const imageKeys = filesToDownload.map(p => '/' + p.replace(/^public\//, ''))
@@ -959,7 +968,7 @@ export function StudioToolbar() {
     if (selectedItems.size === 0) return
 
     const selectedPaths = Array.from(selectedItems)
-    
+
     // Get files with hasUpdate
     const updatePaths = selectedPaths.filter(p => {
       const item = fileItems.find(f => f.path === p)
@@ -987,7 +996,7 @@ export function StudioToolbar() {
     if (selectedItems.size === 0) return
 
     const selectedPaths = Array.from(selectedItems)
-    
+
     // Get files with hasUpdate
     const updatePaths = selectedPaths.filter(p => {
       const item = fileItems.find(f => f.path === p)
@@ -1024,7 +1033,7 @@ export function StudioToolbar() {
 
   const handleCreateFolder = useCallback(async (folderName: string) => {
     setShowNewFolderModal(false)
-    
+
     try {
       const response = await fetch('/api/studio/create-folder', {
         method: 'POST',
@@ -1057,7 +1066,7 @@ export function StudioToolbar() {
 
   const handleMoveConfirm = useCallback(async (destination: string) => {
     const paths = Array.from(selectedItems)
-    
+
     await streamingOperation.execute({
       endpoint: '/api/studio/move',
       body: { paths, destination },
@@ -1067,7 +1076,7 @@ export function StudioToolbar() {
   }, [selectedItems, clearSelection, streamingOperation])
 
   const { searchQuery, setSearchQuery } = useStudio()
-  
+
   const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value)
   }, [setSearchQuery])
@@ -1076,32 +1085,32 @@ export function StudioToolbar() {
     if (e.key === 'Escape') {
       e.stopPropagation() // Prevent closing the studio
       setSearchQuery('')
-      ;(e.target as HTMLInputElement).blur()
+        ; (e.target as HTMLInputElement).blur()
     }
   }, [setSearchQuery])
 
   const hasSelection = selectedItems.size > 0
-  
+
   // Check if any selected items are already in our R2 (for Push CDN disabling)
   // Remote images (from other CDNs) can still be pushed to our R2
   const hasR2Selection = hasSelection && Array.from(selectedItems).some(path => {
     const item = fileItems.find(f => f.path === path)
     return item && item.cdnPushed && !item.isRemote
   })
-  
+
   // Check if ALL selected items are R2 cloud files (for Download button)
   const allR2Selection = hasSelection && Array.from(selectedItems).every(path => {
     const item = fileItems.find(f => f.path === path)
     // Only file items, not folders, and must be on R2 (cdnPushed && !isRemote)
     return item && item.type === 'file' && item.cdnPushed && !item.isRemote
   })
-  
+
   // Check if any selected items have pending updates
   const hasUpdateSelection = hasSelection && Array.from(selectedItems).some(path => {
     const item = fileItems.find(f => f.path === path)
     return item && item.hasUpdate
   })
-  
+
   // Check if exactly one folder is selected (for rename)
   const selectedPaths = Array.from(selectedItems)
   const singleFolderSelected = selectedPaths.length === 1 && !selectedPaths[0].includes('.')
@@ -1116,7 +1125,7 @@ export function StudioToolbar() {
   const handleRenameFolder = useCallback(async (newName: string) => {
     if (!selectedFolderPath) return
     setShowRenameFolderModal(false)
-    
+
     await streamingOperation.execute({
       endpoint: '/api/studio/rename-stream',
       body: { oldPath: selectedFolderPath, newName },
@@ -1128,7 +1137,7 @@ export function StudioToolbar() {
   const handleRenameFile = useCallback(async (newName: string) => {
     if (!selectedFilePath) return
     setShowRenameFileModal(false)
-    
+
     await streamingOperation.execute({
       endpoint: '/api/studio/rename-stream',
       body: { oldPath: selectedFilePath, newName },
@@ -1300,7 +1309,7 @@ export function StudioToolbar() {
           onChange={handleFileChange}
           style={{ display: 'none' }}
         />
-      
+
         <div css={styles.left}>
           <button
             css={[styles.btn, styles.btnPrimary]}
@@ -1327,9 +1336,9 @@ export function StudioToolbar() {
             {singleFileSelected || singleFolderSelected ? <RenameIcon /> : <FolderPlusIcon />}
             {singleFileSelected ? 'Rename File' : singleFolderSelected ? 'Rename Folder' : 'New Folder'}
           </button>
-          
+
           <div css={styles.divider} />
-          
+
           <div css={styles.cloudDropdownWrapper} ref={processDropdownRef}>
             <button
               css={styles.btn}
@@ -1390,7 +1399,7 @@ export function StudioToolbar() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-              {showCloudDropdown && hasSelection && (
+            {showCloudDropdown && hasSelection && (
               <div css={styles.cloudDropdown}>
                 {hasUpdateSelection && (
                   <>
@@ -1472,10 +1481,11 @@ export function StudioToolbar() {
 
           <button
             css={styles.btn}
-            onClick={triggerRefresh}
+            onClick={handleRefresh}
             title="Refresh view"
+            disabled={refreshing}
           >
-            <RefreshIcon />
+            <RefreshIcon spinning={refreshing} />
           </button>
 
           <div css={styles.viewToggle}>
@@ -1494,6 +1504,8 @@ export function StudioToolbar() {
               <ListIcon />
             </button>
           </div>
+
+          <StudioSettings />
         </div>
       </div>
     </>
@@ -1516,9 +1528,9 @@ function ScanIcon({ spinning }: { spinning?: boolean }) {
   )
 }
 
-function RefreshIcon() {
+function RefreshIcon({ spinning }: { spinning?: boolean }) {
   return (
-    <svg css={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg css={[styles.icon, spinning && styles.iconSpin]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
     </svg>
   )

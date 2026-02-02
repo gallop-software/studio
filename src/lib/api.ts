@@ -3,168 +3,203 @@
  * Provides type-safe methods for all Studio API endpoints
  */
 
-import type { FileItem, LeanMeta, LeanImageEntry } from '../types'
+import type { FileItem, LeanMeta, LeanImageEntry } from "../types";
 
 // Response types
 interface ListResponse {
-  items: FileItem[]
-  isEmpty?: boolean
+  items: FileItem[];
+  isEmpty?: boolean;
 }
 
 interface FoldersResponse {
-  folders: { path: string; name: string; depth: number }[]
+  folders: { path: string; name: string; depth: number }[];
 }
 
 interface CountImagesResponse {
-  count: number
-  images: string[]
+  count: number;
+  images: string[];
 }
 
 interface UploadResponse {
-  success: boolean
-  imageKey?: string
-  entry?: LeanImageEntry
-  path?: string
-  message?: string
-  error?: string
+  success: boolean;
+  imageKey?: string;
+  entry?: LeanImageEntry;
+  path?: string;
+  message?: string;
+  error?: string;
 }
 
 interface DeleteResponse {
-  success: boolean
-  deleted: string[]
-  errors?: string[]
+  success: boolean;
+  deleted: string[];
+  errors?: string[];
 }
 
 interface PushResponse {
-  success: boolean
-  pushed: string[]
-  errors?: string[]
+  success: boolean;
+  pushed: string[];
+  errors?: string[];
 }
 
 interface ReprocessResponse {
-  success: boolean
-  processed: string[]
-  errors?: string[]
+  success: boolean;
+  processed: string[];
+  errors?: string[];
 }
 
 interface CreateFolderResponse {
-  success: boolean
-  path: string
-  error?: string
+  success: boolean;
+  path: string;
+  error?: string;
 }
 
 interface RenameResponse {
-  success: boolean
-  newPath: string
-  error?: string
+  success: boolean;
+  newPath: string;
+  error?: string;
 }
 
 interface MoveResponse {
-  success: boolean
-  moved: string[]
-  errors?: string[]
+  success: boolean;
+  moved: string[];
+  errors?: string[];
+}
+
+interface CheckFeaturedImageResponse {
+  filename: string;
+  exists: boolean;
+  projectName: string;
+}
+
+interface FeaturedImageOptionsResponse {
+  projectName: string;
+  devUrl: string | null;
+  productionUrl: string | null;
 }
 
 class StudioApiClient {
   private async get<T>(url: string): Promise<T> {
     const response = await fetch(url, {
-      cache: 'no-store',
+      cache: "no-store",
       headers: {
-        'Cache-Control': 'no-cache',
+        "Cache-Control": "no-cache",
       },
-    })
+    });
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}))
-      throw new Error(data.error || `Request failed: ${response.status}`)
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Request failed: ${response.status}`);
     }
-    return response.json()
+    return response.json();
   }
 
   private async post<T>(url: string, body?: object): Promise<T> {
     const response = await fetch(url, {
-      method: 'POST',
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      method: "POST",
+      headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
-    })
+    });
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}))
-      throw new Error(data.error || `Request failed: ${response.status}`)
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Request failed: ${response.status}`);
     }
-    return response.json()
+    return response.json();
   }
 
   // List handlers
-  async list(path: string = 'public'): Promise<ListResponse> {
-    return this.get(`/api/studio/list?path=${encodeURIComponent(path)}`)
+  async list(path: string = "public"): Promise<ListResponse> {
+    return this.get(`/api/studio/list?path=${encodeURIComponent(path)}`);
   }
 
-  async search(query: string, path: string = 'public'): Promise<ListResponse> {
-    return this.get(`/api/studio/search?q=${encodeURIComponent(query)}&path=${encodeURIComponent(path)}`)
+  async search(query: string, path: string = "public"): Promise<ListResponse> {
+    return this.get(
+      `/api/studio/search?q=${encodeURIComponent(
+        query
+      )}&path=${encodeURIComponent(path)}`
+    );
   }
 
   async listFolders(): Promise<FoldersResponse> {
-    return this.get('/api/studio/list-folders')
+    return this.get("/api/studio/list-folders");
   }
 
   async countImages(): Promise<CountImagesResponse> {
-    return this.get('/api/studio/count-images')
+    return this.get("/api/studio/count-images");
   }
 
   async folderImages(folders: string[]): Promise<CountImagesResponse> {
-    return this.get(`/api/studio/folder-images?folders=${encodeURIComponent(folders.join(','))}`)
+    return this.get(
+      `/api/studio/folder-images?folders=${encodeURIComponent(
+        folders.join(",")
+      )}`
+    );
   }
 
   // File handlers
-  async upload(file: File, targetPath: string = 'public'): Promise<UploadResponse> {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('path', targetPath)
+  async upload(
+    file: File,
+    targetPath: string = "public"
+  ): Promise<UploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("path", targetPath);
 
-    const response = await fetch('/api/studio/upload', {
-      method: 'POST',
+    const response = await fetch("/api/studio/upload", {
+      method: "POST",
       body: formData,
-    })
+    });
 
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}))
-      throw new Error(data.error || `Upload failed: ${response.status}`)
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Upload failed: ${response.status}`);
     }
 
-    return response.json()
+    return response.json();
   }
 
   async delete(paths: string[]): Promise<DeleteResponse> {
-    return this.post('/api/studio/delete', { paths })
+    return this.post("/api/studio/delete", { paths });
   }
 
-  async createFolder(parentPath: string, name: string): Promise<CreateFolderResponse> {
-    return this.post('/api/studio/create-folder', { parentPath, name })
+  async createFolder(
+    parentPath: string,
+    name: string
+  ): Promise<CreateFolderResponse> {
+    return this.post("/api/studio/create-folder", { parentPath, name });
   }
 
   async rename(oldPath: string, newName: string): Promise<RenameResponse> {
-    return this.post('/api/studio/rename', { oldPath, newName })
+    return this.post("/api/studio/rename", { oldPath, newName });
   }
 
   async move(paths: string[], destination: string): Promise<MoveResponse> {
-    return this.post('/api/studio/move', { paths, destination })
+    return this.post("/api/studio/move", { paths, destination });
   }
 
   // Image handlers
   async push(imageKeys: string[]): Promise<PushResponse> {
-    return this.post('/api/studio/sync', { imageKeys })
+    return this.post("/api/studio/sync", { imageKeys });
   }
 
   async reprocess(imageKeys: string[]): Promise<ReprocessResponse> {
-    return this.post('/api/studio/reprocess', { imageKeys })
+    return this.post("/api/studio/reprocess", { imageKeys });
   }
 
   // Process all returns a stream, handle separately
   processAllStream(): EventSource {
-    return new EventSource('/api/studio/process-all')
+    return new EventSource("/api/studio/process-all");
+  }
+
+  // Featured image
+  async checkFeaturedImage(): Promise<CheckFeaturedImageResponse> {
+    return this.get("/api/studio/check-featured-image");
+  }
+
+  async getFeaturedImageOptions(): Promise<FeaturedImageOptionsResponse> {
+    return this.get("/api/studio/featured-image-options");
   }
 }
 
-export const studioApi = new StudioApiClient()
+export const studioApi = new StudioApiClient();
 
 // Export types for consumers
 export type {
@@ -178,4 +213,6 @@ export type {
   CreateFolderResponse,
   RenameResponse,
   MoveResponse,
-}
+  CheckFeaturedImageResponse,
+  FeaturedImageOptionsResponse,
+};

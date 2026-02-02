@@ -8,7 +8,6 @@ import { StudioToolbar } from './StudioToolbar'
 import { StudioFileGrid } from './StudioFileGrid'
 import { StudioFileList } from './StudioFileList'
 import { StudioDetailView } from './StudioDetailView'
-import { StudioSettings } from './StudioSettings'
 import { ErrorModal } from './ErrorModal'
 import { ConfirmModal, ProgressModal } from './StudioModal'
 import { StudioFolderPicker } from './StudioFolderPicker'
@@ -188,15 +187,15 @@ const styles = {
  * Main Studio UI - contains all panels and manages internal state
  * Rendered inside the modal via lazy loading
  */
-export function StudioUI({ 
-  onClose, 
+export function StudioUI({
+  onClose,
   isVisible = true,
   standaloneMode = false,
   workspacePath,
   siteUrl,
 }: StudioUIProps) {
   // In standalone mode, onClose is a no-op
-  const handleClose = onClose || (() => {})
+  const handleClose = onClose || (() => { })
   const [currentPath, setCurrentPathInternal] = useState('public')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null)
@@ -317,12 +316,12 @@ export function StudioUI({
   const selectRange = useCallback((fromPath: string, toPath: string, allItems: FileItem[]) => {
     const fromIndex = allItems.findIndex(item => item.path === fromPath)
     const toIndex = allItems.findIndex(item => item.path === toPath)
-    
+
     if (fromIndex === -1 || toIndex === -1) return
-    
+
     const start = Math.min(fromIndex, toIndex)
     const end = Math.max(fromIndex, toIndex)
-    
+
     setSelectedItems((prev) => {
       const next = new Set(prev)
       for (let i = start; i <= end; i++) {
@@ -361,7 +360,7 @@ export function StudioUI({
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
           return
         }
-        
+
         if (focusedItem) {
           setFocusedItem(null)
         } else if (!standaloneMode) {
@@ -385,7 +384,7 @@ export function StudioUI({
 
   const contextValue = {
     isOpen: true,
-    openStudio: () => {},
+    openStudio: () => { },
     closeStudio: handleClose,
     toggleStudio: handleClose,
     currentPath,
@@ -440,12 +439,12 @@ export function StudioUI({
       <div css={styles.container}>
         <div css={styles.header}>
           <div css={styles.headerLeft}>
-            <h1 css={styles.title}>Studio</h1>
+            <h1 css={styles.title}>Gallop.Studio</h1>
           </div>
           <div css={styles.headerCenter}>
-            <Breadcrumbs 
-              currentPath={currentPath} 
-              onNavigate={setCurrentPath} 
+            <Breadcrumbs
+              currentPath={currentPath}
+              onNavigate={setCurrentPath}
               projectName={workspacePath ? workspacePath.split('/').pop() : undefined}
             />
           </div>
@@ -461,7 +460,6 @@ export function StudioUI({
                 <WebsiteIcon />
               </a>
             )}
-            <StudioSettings />
             {!standaloneMode && (
               <button
                 css={styles.headerBtn}
@@ -476,7 +474,7 @@ export function StudioUI({
 
         <StudioToolbar />
 
-        <div 
+        <div
           css={styles.content}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -496,7 +494,7 @@ export function StudioUI({
             {viewMode === 'grid' ? <StudioFileGrid /> : <StudioFileList />}
           </div>
         </div>
-        
+
         {/* Detail view as modal overlay */}
         {focusedItem && <StudioDetailView />}
 
@@ -651,15 +649,15 @@ function ProcessConfirmModal({ imageCount, mode, onConfirm, onCancel }: ProcessC
     <div css={processModalStyles.overlay} onClick={onCancel}>
       <div css={processModalStyles.container} onClick={e => e.stopPropagation()}>
         <h2 css={processModalStyles.title}>{title}</h2>
-        
+
         <p css={processModalStyles.message}>{message}</p>
-        
+
         <div css={processModalStyles.actions}>
           <button css={processModalStyles.cancelBtn} onClick={onCancel}>
             Cancel
           </button>
-          <button 
-            css={[processModalStyles.confirmBtn, isRemove && processModalStyles.confirmBtnDanger]} 
+          <button
+            css={[processModalStyles.confirmBtn, isRemove && processModalStyles.confirmBtnDanger]}
             onClick={onConfirm}
           >
             {confirmLabel}
@@ -672,7 +670,7 @@ function ProcessConfirmModal({ imageCount, mode, onConfirm, onCancel }: ProcessC
 
 function Breadcrumbs({ currentPath, onNavigate, projectName }: { currentPath: string; onNavigate: (path: string) => void; projectName?: string }) {
   const parts = currentPath.split('/').filter(Boolean)
-  
+
   // Build paths for each breadcrumb, replacing "public" with project name
   const breadcrumbs = parts.map((part, index) => ({
     name: index === 0 && part === 'public' && projectName ? projectName : part,

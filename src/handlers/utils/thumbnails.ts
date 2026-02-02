@@ -1,7 +1,6 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 import sharp from 'sharp'
-import { encode } from 'blurhash'
 import type { MetaEntry, Dimensions } from '../../types'
 import { getPublicPath } from '../../config'
 
@@ -84,15 +83,6 @@ export async function processImage(
 
     entry[key] = { w: maxWidth, h: newHeight }
   }
-
-  // Generate blurhash
-  const { data, info } = await sharp(buffer)
-    .resize(32, 32, { fit: 'inside' })
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true })
-
-  entry.b = encode(new Uint8ClampedArray(data), info.width, info.height, 4, 4)
 
   return entry
 }

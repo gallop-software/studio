@@ -8,12 +8,11 @@ export interface Dimensions {
 
 /**
  * Meta entry - works for images and non-images
- * o: original dimensions, b: blurhash, c: CDN index
+ * o: original dimensions, c: CDN index
  * sm/md/lg/f: thumbnail dimensions (presence implies processed)
  */
 export interface MetaEntry {
   o?: Dimensions   // original dimensions {w, h}
-  b?: string       // blurhash
   sm?: Dimensions  // small thumbnail (300px width)
   md?: Dimensions  // medium thumbnail (700px width)
   lg?: Dimensions  // large thumbnail (1400px width)
@@ -34,7 +33,7 @@ export interface FullMeta {
 
 /**
  * Meta schema - keyed by path from public folder
- * Example: { "/portfolio/photo.jpg": { o: {w:2400,h:1600}, b: "...", sm: {w:300,h:200}, ... } }
+ * Example: { "/portfolio/photo.jpg": { o: {w:2400,h:1600}, sm: {w:300,h:200}, ... } }
  */
 export type LeanMeta = Record<string, MetaEntry>
 

@@ -5,6 +5,8 @@ import { useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { useFileList } from '../hooks/useFileList'
 import { colors, fontSize } from './tokens'
+import { ProgressModal, type ProgressState } from './StudioModal'
+import { FeaturedImageModal } from './FeaturedImageModal'
 import type { FileItem } from '../types'
 
 const spin = keyframes`
@@ -435,6 +437,46 @@ const styles = {
       border-color: ${colors.primary};
     }
   `,
+  featuredPlaceholder: css`
+    position: relative;
+    border-radius: 8px;
+    border: 2px dashed ${colors.primary};
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    background-color: ${colors.background};
+    
+    &:hover {
+      border-color: ${colors.primaryHover};
+      background-color: rgba(99, 102, 241, 0.08);
+    }
+  `,
+  featuredContent: css`
+    position: relative;
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    gap: 8px;
+  `,
+  featuredIcon: css`
+    width: 40px;
+    height: 40px;
+    color: ${colors.primary};
+  `,
+  featuredText: css`
+    font-size: ${fontSize.sm};
+    color: ${colors.primary};
+    text-align: center;
+    font-weight: 500;
+  `,
+  featuredLabel: css`
+    padding: 10px 12px;
+    background-color: ${colors.surface};
+    border-top: 1px solid ${colors.borderLight};
+  `,
   name: css`
     font-size: ${fontSize.sm};
     font-weight: 500;
@@ -486,6 +528,7 @@ export function StudioFileGrid() {
     loading,
     sortedItems,
     metaEmpty,
+    missingFeaturedImage,
     isAtRoot,
     isSearching,
     allItemsSelected,
@@ -497,13 +540,132 @@ export function StudioFileGrid() {
     handleGenerateThumbnail,
     handleSelectAll,
     triggerScan,
+    triggerRefresh,
   } = useFileList()
+
+  const [showFeaturedModal, setShowFeaturedModal] = useState(false)
+  const [showFeaturedProgress, setShowFeaturedProgress] = useState(false)
+  const [featuredProgress, setFeaturedProgress] = useState<ProgressState>({
+    current: 0,
+    total: 3,
+    percent: 0,
+    status: 'processing',
+    message: 'Generating featured image...',
+  })
+
+  const handleOpenFeaturedModal = () => {
+    setShowFeaturedModal(true)
+  }
+
+  const handleGenerateFeaturedImage = async (url: string) => {
+    setShowFeaturedModal(false)
+    setShowFeaturedProgress(true)
+    setFeaturedProgress({
+      current: 0,
+      total: 4,
+      percent: 0,
+      status: 'processing',
+      message: 'Starting...',
+    })
+
+    try {
+      const response = await fetch('/api/studio/generate-featured-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        setFeaturedProgress({
+          current: 0,
+          total: 4,
+          percent: 0,
+          status: 'error',
+          message: error.error || 'Failed to generate featured image',
+        })
+        return
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (reader) {
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+
+                if (data.type === 'start') {
+                  setFeaturedProgress(prev => ({
+                    ...prev,
+                    total: data.total,
+                    message: `Screenshotting ${data.url}...`,
+                  }))
+                } else if (data.type === 'progress') {
+                  setFeaturedProgress({
+                    current: data.current,
+                    total: data.total,
+                    percent: data.percent,
+                    status: 'processing',
+                    message: data.message,
+                  })
+                } else if (data.type === 'complete') {
+                  setFeaturedProgress({
+                    current: data.processed,
+                    total: data.processed,
+                    percent: 100,
+                    status: data.errors > 0 ? 'error' : 'complete',
+                    message: data.message,
+                  })
+                  triggerRefresh()
+                } else if (data.type === 'error') {
+                  setFeaturedProgress(prev => ({
+                    ...prev,
+                    status: 'error',
+                    message: data.message,
+                  }))
+                }
+              } catch { /* ignore parse errors */ }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Featured image generation error:', error)
+      setFeaturedProgress({
+        current: 0,
+        total: 3,
+        percent: 0,
+        status: 'error',
+        message: 'An error occurred while generating the featured image',
+      })
+    }
+  }
 
   if (loading) {
     return (
-      <div css={styles.loading}>
-        <div css={styles.spinner} />
-      </div>
+      <>
+        {showFeaturedProgress && (
+          <ProgressModal
+            title="Generating Featured Image"
+            progress={featuredProgress}
+            onClose={() => setShowFeaturedProgress(false)}
+          />
+        )}
+        <div css={styles.loading}>
+          <div css={styles.spinner} />
+        </div>
+      </>
     )
   }
 
@@ -516,7 +678,7 @@ export function StudioFileGrid() {
         </svg>
         <p css={styles.emptyText}>No files tracked yet</p>
         <p css={styles.emptyText}>Click Scan to discover files in your public folder</p>
-        <button 
+        <button
           css={styles.scanButton}
           onClick={triggerScan}
         >
@@ -539,54 +701,88 @@ export function StudioFileGrid() {
   }
 
   return (
-    <div>
-      {sortedItems.length > 0 && (
-        <div css={styles.selectAllRow}>
-          <label css={styles.selectAllLabel}>
-            <input
-              type="checkbox"
-              css={styles.selectAllCheckbox}
-              checked={allItemsSelected}
-              ref={(el) => {
-                if (el) el.indeterminate = someItemsSelected && !allItemsSelected
-              }}
-              onChange={handleSelectAll}
-            />
-            Select all ({sortedItems.length})
-          </label>
-        </div>
+    <>
+      <FeaturedImageModal
+        isOpen={showFeaturedModal}
+        onClose={() => setShowFeaturedModal(false)}
+        onSelect={handleGenerateFeaturedImage}
+      />
+      {showFeaturedProgress && (
+        <ProgressModal
+          title="Generating Featured Image"
+          progress={featuredProgress}
+          onClose={() => setShowFeaturedProgress(false)}
+        />
       )}
-      <div css={styles.grid}>
-        {/* Parent folder navigation - hide when searching */}
-        {!isAtRoot && !isSearching && (
-          <div 
-            css={[styles.item, styles.parentItem]}
-            onClick={navigateUp}
-          >
-            <div css={styles.content}>
-              <svg css={styles.parentIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-              </svg>
-            </div>
-            <div css={styles.label}>
-              <p css={styles.name}>..</p>
-              <p css={styles.size}>Parent folder</p>
-            </div>
+      <div>
+        {sortedItems.length > 0 && (
+          <div css={styles.selectAllRow}>
+            <label css={styles.selectAllLabel}>
+              <input
+                type="checkbox"
+                css={styles.selectAllCheckbox}
+                checked={allItemsSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = someItemsSelected && !allItemsSelected
+                }}
+                onChange={handleSelectAll}
+              />
+              Select all ({sortedItems.length})
+            </label>
           </div>
         )}
-        
-        {sortedItems.map((item) => (
-          <GridItem
-            key={item.path}
-            item={item}
-            isSelected={selectedItems.has(item.path)}
-            onClick={(e) => handleItemClick(item, e)}
-            onOpen={() => handleOpen(item)}
-            onGenerateThumbnail={() => handleGenerateThumbnail(item)}
-          />
-        ))}
+        <div css={styles.grid}>
+          {/* Parent folder navigation - hide when searching */}
+          {!isAtRoot && !isSearching && (
+            <div
+              css={[styles.item, styles.parentItem]}
+              onClick={navigateUp}
+            >
+              <div css={styles.content}>
+                <svg css={styles.parentIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+              </div>
+              <div css={styles.label}>
+                <p css={styles.name}>..</p>
+                <p css={styles.size}>Parent folder</p>
+              </div>
+            </div>
+          )}
+
+          {sortedItems.map((item) => (
+            <GridItem
+              key={item.path}
+              item={item}
+              isSelected={selectedItems.has(item.path)}
+              onClick={(e) => handleItemClick(item, e)}
+              onOpen={() => handleOpen(item)}
+              onGenerateThumbnail={() => handleGenerateThumbnail(item)}
+            />
+          ))}
+
+          {/* Featured image placeholder - show at end when missing */}
+          {isAtRoot && missingFeaturedImage && !isSearching && (
+            <div
+              css={styles.featuredPlaceholder}
+              onClick={handleOpenFeaturedModal}
+              title={`Generate ${missingFeaturedImage.filename}`}
+            >
+              <div css={styles.featuredContent}>
+                <svg css={styles.featuredIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span css={styles.featuredText}>Generate Featured Image</span>
+              </div>
+              <div css={styles.featuredLabel}>
+                <p css={styles.name}>{missingFeaturedImage.filename}</p>
+                <p css={styles.size}>Click to screenshot homepage</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -612,10 +808,10 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
   const isProtected = item.isProtected || (isFolder && item.name === 'images' && item.path === 'public/images')
-  
+
   // Check if this image is in a thumbnail folder (e.g., /images/sm/, /images/md/)
   const thumbnailSize = getThumbnailSizeFromPath(item.path)
-  
+
   // Determine which chips to show
   const showChips = !isFolder && (item.hasSm || item.hasMd || item.hasLg || item.hasFull || thumbnailSize)
 
@@ -638,8 +834,8 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
   }
 
   return (
-    <div 
-      css={[styles.item, isSelected && !isProtected && styles.itemSelected]} 
+    <div
+      css={[styles.item, isSelected && !isProtected && styles.itemSelected]}
       onClick={handleClick}
     >
       {!isProtected && (
