@@ -366,12 +366,7 @@ export function StudioDetailView() {
     status: 'processing',
     message: 'Generating favicons...',
   })
-  const [editingImageData, setEditingImageData] = useState<{
-    path: string
-    src: string
-    dimensions: { width: number; height: number }
-    itemPath: string
-  } | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
   
   // Check if an action is in progress
   const isActionInProgress = actionState.showProgress
@@ -388,59 +383,10 @@ export function StudioDetailView() {
     // Must have local file - either not pushed to CDN, or has local update pending
     (!focusedItem.cdnPushed || focusedItem.hasUpdate || !focusedItem.isRemote)
   
-  // Handler to open edit modal
-  const handleOpenEditModal = () => {
-    if (!focusedItem || !focusedItem.dimensions) return
-    
-    const relativePath = '/' + focusedItem.path.replace(/^public\//, '')
-    const src = focusedItem.cdnPushed && focusedItem.cdnBaseUrl
-      ? `${focusedItem.cdnBaseUrl}${relativePath}`
-      : relativePath
-    
-    // Store the edit data
-    setEditingImageData({
-      path: focusedItem.path,
-      src,
-      dimensions: focusedItem.dimensions,
-      itemPath: focusedItem.path,
-    })
-    // Close the detail modal
-    setFocusedItem(null)
-  }
-
-  // Handler for when edit modal closes (cancel or save)
-  const handleEditModalClose = () => {
-    const itemPath = editingImageData?.itemPath
-    setEditingImageData(null)
-    // Reopen the detail modal by finding the item
-    if (itemPath) {
-      const item = fileItems.find(f => f.path === itemPath)
-      if (item) {
-        setFocusedItem(item as typeof focusedItem)
-      }
-    }
-  }
-
   // Handler for when edit completes
   const handleEditComplete = (updatedItem: FileItem) => {
-    setEditingImageData(null)
-    triggerRefresh()
-    // Set the updated item as focused
+    // Update the focused item with new data
     setFocusedItem(updatedItem as typeof focusedItem)
-  }
-
-  // Render edit modal even when detail modal is closed
-  if (editingImageData) {
-    return (
-      <EditImageModal
-        imagePath={editingImageData.path}
-        imageSrc={editingImageData.src}
-        dimensions={editingImageData.dimensions}
-        onClose={handleEditModalClose}
-        onSaveComplete={handleEditComplete}
-        triggerRefresh={triggerRefresh}
-      />
-    )
   }
 
   if (!focusedItem) return null
@@ -860,7 +806,7 @@ export function StudioDetailView() {
               {isImage && (
                 <button 
                   css={styles.actionBtn} 
-                  onClick={handleOpenEditModal}
+                  onClick={() => setShowEditModal(true)}
                   disabled={isActionInProgress || !canEditImage}
                   title={!canEditImage ? 'Download image first to edit' : undefined}
                 >
@@ -952,6 +898,16 @@ export function StudioDetailView() {
         </div>
       </div>
       
+      {showEditModal && focusedItem.dimensions && (
+        <EditImageModal
+          imagePath={focusedItem.path}
+          imageSrc={imageSrc}
+          dimensions={focusedItem.dimensions}
+          onClose={() => setShowEditModal(false)}
+          onSaveComplete={handleEditComplete}
+          triggerRefresh={triggerRefresh}
+        />
+      )}
     </>
   )
 }
