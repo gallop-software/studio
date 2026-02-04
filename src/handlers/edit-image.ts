@@ -27,10 +27,11 @@ interface EditImageRequest {
  * Edit an image: crop, rotate, and resize
  * 
  * Order of operations:
- * 1. Rotate the image
- * 2. Extract the cropped region
- * 3. Resize to final dimensions
- * 4. Save and update metadata
+ * 1. Apply EXIF rotation to normalize (matches browser display)
+ * 2. Extract the cropped region (crop coords are from client's view)
+ * 3. Rotate the cropped result
+ * 4. Resize to final dimensions
+ * 5. Save and update metadata
  */
 export async function handleEditImage(request: Request) {
   try {
@@ -67,39 +68,18 @@ export async function handleEditImage(request: Request) {
     const exifWidth = exifMeta.width || 0;
     const exifHeight = exifMeta.height || 0;
 
-    // Step 2: Apply user rotation if any (90° increments)
-    let rotatedBuffer: Buffer;
-    let rotatedWidth: number;
-    let rotatedHeight: number;
+    // Step 2: Apply crop FIRST (extract region)
+    // Crop coordinates are from the client's view (EXIF-corrected, non-rotated)
+    const cropX = Math.max(0, Math.min(crop.x, exifWidth - 1));
+    const cropY = Math.max(0, Math.min(crop.y, exifHeight - 1));
+    const cropWidth = Math.min(crop.width, exifWidth - cropX);
+    const cropHeight = Math.min(crop.height, exifHeight - cropY);
 
-    if (rotation !== 0) {
-      rotatedBuffer = await sharp(exifCorrectedBuffer).rotate(rotation).toBuffer();
-      // 90° and 270° swap dimensions
-      if (rotation === 90 || rotation === 270) {
-        rotatedWidth = exifHeight;
-        rotatedHeight = exifWidth;
-      } else {
-        rotatedWidth = exifWidth;
-        rotatedHeight = exifHeight;
-      }
-    } else {
-      rotatedBuffer = exifCorrectedBuffer;
-      rotatedWidth = exifWidth;
-      rotatedHeight = exifHeight;
-    }
-
-    // Step 3: Apply crop (extract region)
-    // Clamp crop values to valid range
-    const cropX = Math.max(0, Math.min(crop.x, rotatedWidth - 1));
-    const cropY = Math.max(0, Math.min(crop.y, rotatedHeight - 1));
-    const cropWidth = Math.min(crop.width, rotatedWidth - cropX);
-    const cropHeight = Math.min(crop.height, rotatedHeight - cropY);
-
-    let croppedPipeline = sharp(rotatedBuffer);
+    let pipeline = sharp(exifCorrectedBuffer);
     
     // Only extract if crop is different from full image
-    if (cropX > 0 || cropY > 0 || cropWidth < rotatedWidth || cropHeight < rotatedHeight) {
-      croppedPipeline = croppedPipeline.extract({
+    if (cropX > 0 || cropY > 0 || cropWidth < exifWidth || cropHeight < exifHeight) {
+      pipeline = pipeline.extract({
         left: Math.round(cropX),
         top: Math.round(cropY),
         width: Math.round(cropWidth),
@@ -107,24 +87,28 @@ export async function handleEditImage(request: Request) {
       });
     }
 
-    // Step 4: Apply resize (if different from crop dimensions)
-    if (resize.width !== cropWidth || resize.height !== cropHeight) {
-      croppedPipeline = croppedPipeline.resize(resize.width, resize.height);
+    // Step 3: Apply user rotation if any (90° increments) AFTER cropping
+    if (rotation !== 0) {
+      pipeline = pipeline.rotate(rotation);
     }
+
+    // Step 4: Apply resize (if different from expected output)
+    // Note: After rotation, dimensions may have swapped
+    pipeline = pipeline.resize(resize.width, resize.height);
 
     // Determine output format based on original file extension
     const ext = path.extname(imagePath).toLowerCase();
     let finalBuffer: Buffer;
     
     if (ext === ".png") {
-      finalBuffer = await croppedPipeline.png({ quality: 85 }).toBuffer();
+      finalBuffer = await pipeline.png({ quality: 85 }).toBuffer();
     } else if (ext === ".webp") {
-      finalBuffer = await croppedPipeline.webp({ quality: 85 }).toBuffer();
+      finalBuffer = await pipeline.webp({ quality: 85 }).toBuffer();
     } else if (ext === ".gif") {
-      finalBuffer = await croppedPipeline.gif().toBuffer();
+      finalBuffer = await pipeline.gif().toBuffer();
     } else {
       // Default to JPEG for jpg/jpeg
-      finalBuffer = await croppedPipeline.jpeg({ quality: 85 }).toBuffer();
+      finalBuffer = await pipeline.jpeg({ quality: 85 }).toBuffer();
     }
 
     // Get final dimensions
