@@ -5,6 +5,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import { css, keyframes } from '@emotion/react'
+import { AlertModal } from './StudioModal'
 import { colors, fontSize, fontStack, baseReset } from './tokens'
 import type { FileItem } from '../types'
 
@@ -202,9 +203,9 @@ const styles = {
     border-color: ${colors.primary};
     color: white;
     
-    &:hover {
-      background-color: ${colors.primaryHover};
-      border-color: ${colors.primaryHover};
+    &:hover:not(:disabled) {
+      background-color: ${colors.primary};
+      border-color: ${colors.primary};
     }
   `,
   rotateButtons: css`
@@ -422,6 +423,8 @@ export function EditImageModal({
   const [cropHeight, setCropHeight] = useState(0)
   // Success banner after save
   const [showSuccessBanner, setShowSuccessBanner] = useState(false)
+  // Error message for modal display
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   // When image loads, calculate scale but don't set crop yet (user must click)
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -567,11 +570,11 @@ export function EditImageModal({
         setTimeout(() => setShowSuccessBanner(false), 3000)
       } else {
         console.error('Rotate failed:', result.error)
-        alert(result.error || 'Failed to rotate image')
+        setErrorMessage(result.error || 'Failed to rotate image')
       }
     } catch (error) {
       console.error('Rotate error:', error)
-      alert('An error occurred while rotating the image')
+      setErrorMessage('An error occurred while rotating the image')
     } finally {
       setRotating(false)
     }
@@ -827,11 +830,11 @@ export function EditImageModal({
         setTimeout(() => setShowSuccessBanner(false), 3000)
       } else {
         console.error('Edit failed:', result.error)
-        alert(result.error || 'Failed to save image')
+        setErrorMessage(result.error || 'Failed to save image')
       }
     } catch (error) {
       console.error('Edit error:', error)
-      alert('An error occurred while saving the image')
+      setErrorMessage('An error occurred while saving the image')
     } finally {
       setSaving(false)
     }
@@ -1041,6 +1044,15 @@ export function EditImageModal({
           </div>
         </div>
       </div>
+      
+      {/* Error Modal */}
+      {errorMessage && (
+        <AlertModal
+          title="Error"
+          message={errorMessage}
+          onClose={() => setErrorMessage(null)}
+        />
+      )}
     </div>
   )
 }
