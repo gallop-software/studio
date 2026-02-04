@@ -237,6 +237,25 @@ const styles = {
     width: 16px;
     height: 16px;
   `,
+  rotatePreview: css`
+    width: 80px;
+    height: 80px;
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: ${colors.background};
+    margin: 8px auto;
+    
+    img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      transition: transform 0.3s ease;
+    }
+  `,
   resizeRow: css`
     display: flex;
     align-items: center;
@@ -454,7 +473,6 @@ export function EditImageModal({
   const [outputWidth, setOutputWidth] = useState(dimensions.width)
   const [outputHeight, setOutputHeight] = useState(dimensions.height)
   const [saving, setSaving] = useState(false)
-  const [rotating, setRotating] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
   // Store the actual natural size of the source image
   const [naturalSize, setNaturalSize] = useState({ width: dimensions.width, height: dimensions.height })
@@ -462,9 +480,9 @@ export function EditImageModal({
   const [scale, setScale] = useState(1)
   // Crop is hidden by default until user clicks on image
   const [cropEnabled, setCropEnabled] = useState(false)
-  // Cache buster for refreshing image after rotation
+  // Cache buster for refreshing image after edits
   const [imageCacheBuster, setImageCacheBuster] = useState(0)
-  // Track if image was modified (rotated) so we can refresh on close
+  // Track if image was modified so we can refresh on close
   const [wasModified, setWasModified] = useState(false)
   // Track if resize is active (different from natural)
   const resizeActive = outputWidth !== naturalSize.width || outputHeight !== naturalSize.height
@@ -481,6 +499,10 @@ export function EditImageModal({
   const [currentFileSize, setCurrentFileSize] = useState(initialFileSize)
   // Quality slider (0-100)
   const [quality, setQuality] = useState(95)
+  // Rotation state (0, 90, 180, 270)
+  const [rotation, setRotation] = useState(0)
+  // Track if rotation is active (not 0)
+  const rotationActive = rotation !== 0
 
   // When image loads, calculate scale but don't set crop yet (user must click)
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -500,8 +522,8 @@ export function EditImageModal({
   // Enable cropping when user clicks on the image
   const handleEnableCrop = () => {
     if (!imageLoaded || !imgRef.current || cropEnabled) return
-    // Can't enable crop if resize is active
-    if (resizeActive) return
+    // Can't enable crop if resize or rotation is active
+    if (resizeActive || rotationActive) return
     
     const displayWidth = imgRef.current.width
     const displayHeight = imgRef.current.height
@@ -582,68 +604,18 @@ export function EditImageModal({
     }
   }, [completedCrop, imageLoaded, scale, cropEnabled])
 
-  // Rotate and save immediately
-  const handleRotate = async (degrees: 90 | -90) => {
-    if (rotating) return
-    
-    setRotating(true)
-    
-    try {
-      // Send rotation request - full image, just rotate at max quality
-      const response = await fetch('/api/studio/edit-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imagePath,
-          crop: { x: 0, y: 0, width: naturalSize.width, height: naturalSize.height },
-          rotation: degrees === -90 ? 270 : 90,
-          resize: { 
-            width: naturalSize.height,  // Swapped for 90° rotation
-            height: naturalSize.width 
-          },
-          quality: 100,  // Always use max quality for rotation
-        }),
-      })
-      
-      const result = await response.json()
-      
-      if (result.success) {
-        // Update natural size (dimensions swapped)
-        setNaturalSize({ width: naturalSize.height, height: naturalSize.width })
-        setOutputWidth(naturalSize.height)
-        setOutputHeight(naturalSize.width)
-        // Update file size
-        if (result.updatedItem?.size) {
-          setCurrentFileSize(result.updatedItem.size)
-        }
-        // Reset crop
-        setCropEnabled(false)
-        setCrop(undefined)
-        setCompletedCrop(undefined)
-        // Bust cache to show rotated image
-        setImageCacheBuster(Date.now())
-        // Mark as modified so close will refresh detail view
-        setWasModified(true)
-        // Trigger refresh for file list
-        triggerRefresh()
-        // Show success banner for 3 seconds (reset key to restart animation)
-        setBannerKey(k => k + 1)
-        setShowSuccessBanner(true)
-        setTimeout(() => setShowSuccessBanner(false), 3000)
-      } else {
-        console.error('Rotate failed:', result.error)
-        setErrorMessage(result.error || 'Failed to rotate image')
-      }
-    } catch (error) {
-      console.error('Rotate error:', error)
-      setErrorMessage('An error occurred while rotating the image')
-    } finally {
-      setRotating(false)
-    }
+  // Rotate preview (just updates state, saved via Save Changes)
+  const handleRotateCW = () => {
+    setRotation((r) => (r + 90) % 360)
   }
-
-  const handleRotateCW = () => handleRotate(90)
-  const handleRotateCCW = () => handleRotate(-90)
+  
+  const handleRotateCCW = () => {
+    setRotation((r) => (r - 90 + 360) % 360)
+  }
+  
+  const handleResetRotation = () => {
+    setRotation(0)
+  }
 
   // Handle close - refresh detail view if image was modified
   const handleClose = () => {
@@ -852,9 +824,16 @@ export function EditImageModal({
       // Determine resize dimensions:
       // - If cropping: use crop dimensions (no resize, just extract)
       // - If resizing: use output dimensions
-      // - Otherwise: use natural size (just applying quality)
-      const resizeWidth = cropEnabled ? cropWidth : (resizeActive ? outputWidth : naturalSize.width)
-      const resizeHeight = cropEnabled ? cropHeight : (resizeActive ? outputHeight : naturalSize.height)
+      // - Otherwise: use natural size (just applying quality/rotation)
+      let resizeWidth = cropEnabled ? cropWidth : (resizeActive ? outputWidth : naturalSize.width)
+      let resizeHeight = cropEnabled ? cropHeight : (resizeActive ? outputHeight : naturalSize.height)
+      
+      // If rotating 90 or 270 degrees, swap dimensions
+      if (rotation === 90 || rotation === 270) {
+        const temp = resizeWidth
+        resizeWidth = resizeHeight
+        resizeHeight = temp
+      }
       
       const response = await fetch('/api/studio/edit-image', {
         method: 'POST',
@@ -862,7 +841,7 @@ export function EditImageModal({
         body: JSON.stringify({
           imagePath,
           crop: actualCrop,
-          rotation: 0,  // Rotation is now handled separately via instant save
+          rotation,
           resize: {
             width: resizeWidth,
             height: resizeHeight,
@@ -888,6 +867,8 @@ export function EditImageModal({
         setCropEnabled(false)
         setCrop(undefined)
         setCompletedCrop(undefined)
+        // Reset rotation
+        setRotation(0)
         // Mark as modified and bust cache
         setWasModified(true)
         setImageCacheBuster(Date.now())
@@ -940,16 +921,13 @@ export function EditImageModal({
                 style={{ cursor: cropEnabled ? 'crosshair' : 'pointer' }}
               />
             </ReactCrop>
-            {!cropEnabled && imageLoaded && !rotating && (
+            {!cropEnabled && imageLoaded && (
               <div css={styles.cropHint}>
-                {resizeActive 
-                  ? 'Save resize first to enable crop' 
-                  : 'Click to enable crop selection'}
-              </div>
-            )}
-            {rotating && (
-              <div css={styles.cropHint}>
-                Rotating...
+                {rotationActive
+                  ? 'Save rotation first to enable crop'
+                  : resizeActive 
+                    ? 'Save resize first to enable crop' 
+                    : 'Click to enable crop selection'}
               </div>
             )}
             {showSuccessBanner && (
@@ -979,7 +957,7 @@ export function EditImageModal({
                     key={option.label}
                     css={[styles.aspectBtn, aspect === option.value && styles.aspectBtnActive]}
                     onClick={() => handleAspectChange(option.value)}
-                    disabled={resizeActive}
+                    disabled={resizeActive || rotationActive}
                   >
                     {option.label}
                   </button>
@@ -1012,11 +990,13 @@ export function EditImageModal({
               )}
               
               <p css={styles.hint}>
-                {resizeActive 
-                  ? 'Save resize first to enable crop'
-                  : cropEnabled 
-                    ? 'Drag corners to resize crop area' 
-                    : 'Click image to enable crop'}
+                {rotationActive
+                  ? 'Save rotation first to enable crop'
+                  : resizeActive 
+                    ? 'Save resize first to enable crop'
+                    : cropEnabled 
+                      ? 'Drag corners to resize crop area' 
+                      : 'Click image to enable crop'}
               </p>
               
               {cropEnabled && (
@@ -1032,24 +1012,45 @@ export function EditImageModal({
             {/* Rotation */}
             <div css={styles.section}>
               <span css={styles.sectionLabel}>Rotation</span>
+              <div css={styles.rotatePreview}>
+                <img 
+                  src={imageCacheBuster ? `${imageSrc}?v=${imageCacheBuster}` : imageSrc}
+                  alt="Rotation preview"
+                  style={{ transform: `rotate(${rotation}deg)` }}
+                />
+              </div>
               <div css={styles.rotateButtons}>
-                <button css={styles.rotateBtn} onClick={handleRotateCCW} disabled={rotating || saving}>
+                <button css={styles.rotateBtn} onClick={handleRotateCCW} disabled={saving || cropEnabled || resizeActive}>
                   <svg css={styles.rotateIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
                   </svg>
                   CCW
                 </button>
-                <button css={styles.rotateBtn} onClick={handleRotateCW} disabled={rotating || saving}>
+                <button css={styles.rotateBtn} onClick={handleRotateCW} disabled={saving || cropEnabled || resizeActive}>
                   <svg css={styles.rotateIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
                   </svg>
                   CW
                 </button>
               </div>
-              <p css={styles.hint}>Rotates and saves immediately</p>
+              {rotationActive && (
+                <button 
+                  css={styles.clearBtn}
+                  onClick={handleResetRotation}
+                >
+                  Reset Rotation
+                </button>
+              )}
+              <p css={styles.hint}>
+                {cropEnabled || resizeActive 
+                  ? 'Save other changes first to rotate'
+                  : rotationActive 
+                    ? 'Click Save Changes to apply rotation' 
+                    : 'Preview rotation before saving'}
+              </p>
             </div>
             
-            {/* Output Size - disabled when crop is enabled */}
+            {/* Output Size - disabled when crop or rotation is active */}
             <div css={styles.section}>
               <span css={styles.sectionLabel}>Resize Image</span>
               <div css={styles.resizeRow}>
@@ -1059,7 +1060,7 @@ export function EditImageModal({
                   value={outputWidth}
                   onChange={handleOutputWidthChange}
                   min={1}
-                  disabled={cropEnabled}
+                  disabled={cropEnabled || rotationActive}
                 />
                 <span css={styles.resizeX}>×</span>
                 <input
@@ -1068,11 +1069,11 @@ export function EditImageModal({
                   value={outputHeight}
                   onChange={handleOutputHeightChange}
                   min={1}
-                  disabled={cropEnabled}
+                  disabled={cropEnabled || rotationActive}
                 />
                 <span css={styles.resizeX}>px</span>
               </div>
-              {resizeActive && !cropEnabled && (
+              {resizeActive && !cropEnabled && !rotationActive && (
                 <button 
                   css={styles.clearBtn}
                   onClick={handleResetSize}
@@ -1080,7 +1081,9 @@ export function EditImageModal({
                   Reset to Original
                 </button>
               )}
-              {cropEnabled ? (
+              {rotationActive ? (
+                <p css={styles.hint}>Save rotation first to resize</p>
+              ) : cropEnabled ? (
                 <p css={styles.hint}>Clear crop selection to resize</p>
               ) : resizeActive ? (
                 <p css={styles.hint}>Save to apply resize, then crop</p>
@@ -1117,7 +1120,7 @@ export function EditImageModal({
             <button 
               css={styles.actionBtn} 
               onClick={handleSave} 
-              disabled={saving || rotating || !imageLoaded}
+              disabled={saving || !imageLoaded}
             >
               {saving ? (
                 <>
@@ -1128,7 +1131,7 @@ export function EditImageModal({
                 'Save Changes'
               )}
             </button>
-            <button css={styles.cancelBtn} onClick={handleClose} disabled={saving || rotating}>
+            <button css={styles.cancelBtn} onClick={handleClose} disabled={saving}>
               Close
             </button>
           </div>
