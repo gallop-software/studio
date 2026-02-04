@@ -81,6 +81,21 @@ const styles = {
   `,
   rotationWrapper: css`
     transition: transform 0.3s ease;
+    position: relative;
+    cursor: pointer;
+  `,
+  cropHint: css`
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: ${fontSize.sm};
+    pointer-events: none;
+    white-space: nowrap;
   `,
   cropWrapper: css`
     max-width: 100%;
@@ -338,8 +353,10 @@ export function EditImageModal({
   const [naturalSize, setNaturalSize] = useState({ width: dimensions.width, height: dimensions.height })
   // Store scale factor between displayed image and natural image
   const [scale, setScale] = useState(1)
+  // Crop is hidden by default until user clicks on image
+  const [cropEnabled, setCropEnabled] = useState(false)
 
-  // When image loads, set initial crop to full image and calculate scale
+  // When image loads, calculate scale but don't set crop yet (user must click)
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
     const { naturalWidth, naturalHeight, width: displayWidth, height: displayHeight } = img
@@ -349,6 +366,19 @@ export function EditImageModal({
     setImageLoaded(true)
     setOutputWidth(naturalWidth)
     setOutputHeight(naturalHeight)
+    
+    // Don't set crop here - user must click on image to enable cropping
+    // This allows rotation to be applied first without crop coordinate issues
+  }
+
+  // Enable cropping when user clicks on the image
+  const handleEnableCrop = () => {
+    if (!imageLoaded || !imgRef.current || cropEnabled) return
+    
+    const displayWidth = imgRef.current.width
+    const displayHeight = imgRef.current.height
+    
+    setCropEnabled(true)
     
     // Set initial crop to full image
     const initialCrop: Crop = {
@@ -360,7 +390,7 @@ export function EditImageModal({
     }
     setCrop(initialCrop)
     
-    // Also set completedCrop so save works immediately
+    // Also set completedCrop
     const initialPixelCrop: PixelCrop = {
       unit: 'px',
       x: 0,
@@ -379,15 +409,28 @@ export function EditImageModal({
       const actualCropHeight = Math.round(completedCrop.height * scale)
       setOutputWidth(actualCropWidth)
       setOutputHeight(actualCropHeight)
+    } else if (!cropEnabled && imageLoaded) {
+      // No crop - use full image dimensions (swapped if rotated 90/270)
+      const isRotated90or270 = rotation === 90 || rotation === 270
+      setOutputWidth(isRotated90or270 ? naturalSize.height : naturalSize.width)
+      setOutputHeight(isRotated90or270 ? naturalSize.width : naturalSize.height)
     }
-  }, [completedCrop, imageLoaded, scale])
+  }, [completedCrop, imageLoaded, scale, cropEnabled, rotation, naturalSize])
 
   const handleRotateCW = () => {
     setRotation((prev) => (prev + 90) % 360)
+    // Hide crop when rotating - user must click again to re-enable
+    setCropEnabled(false)
+    setCrop(undefined)
+    setCompletedCrop(undefined)
   }
 
   const handleRotateCCW = () => {
     setRotation((prev) => (prev - 90 + 360) % 360)
+    // Hide crop when rotating - user must click again to re-enable
+    setCropEnabled(false)
+    setCrop(undefined)
+    setCompletedCrop(undefined)
   }
 
   const handleAspectChange = (newAspect: number | undefined) => {
@@ -470,17 +513,23 @@ export function EditImageModal({
   }
 
   const handleSave = async () => {
-    if (!completedCrop || !imageLoaded) return
+    if (!imageLoaded) return
     
     setSaving(true)
     
     try {
       // Calculate actual crop coordinates in source image pixels
-      const actualCrop = {
+      // If crop not enabled, use full image
+      const actualCrop = completedCrop ? {
         x: Math.round(completedCrop.x * scale),
         y: Math.round(completedCrop.y * scale),
         width: Math.round(completedCrop.width * scale),
         height: Math.round(completedCrop.height * scale),
+      } : {
+        x: 0,
+        y: 0,
+        width: naturalSize.width,
+        height: naturalSize.height,
       }
       
       // When rotation is 90° or 270°, dimensions swap
@@ -537,21 +586,27 @@ export function EditImageModal({
           <div 
             css={styles.rotationWrapper}
             style={{ transform: `rotate(${rotation}deg)` }}
+            onClick={handleEnableCrop}
           >
             <ReactCrop
-              crop={crop}
+              crop={cropEnabled ? crop : undefined}
               onChange={(c) => setCrop(c)}
               onComplete={(c) => setCompletedCrop(c)}
               aspect={aspect}
               css={styles.cropWrapper}
+              disabled={!cropEnabled}
             >
               <img
                 ref={imgRef}
                 src={imageSrc}
                 alt="Edit"
                 onLoad={onImageLoad}
+                style={{ cursor: cropEnabled ? 'crosshair' : 'pointer' }}
               />
             </ReactCrop>
+            {!cropEnabled && imageLoaded && (
+              <div css={styles.cropHint}>Click to enable crop selection</div>
+            )}
           </div>
         </div>
         
