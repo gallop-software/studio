@@ -4,6 +4,10 @@
 import React from 'react'
 import { css, keyframes } from '@emotion/react'
 import { colors, fontSize, fontStack, baseReset } from './tokens'
+import type { ProgressState } from './StudioContext'
+
+// Re-export ProgressState for backwards compatibility
+export type { ProgressState }
 
 const fadeIn = keyframes`
   from { opacity: 0; }
@@ -213,14 +217,14 @@ export function InputModal({
   onCancel,
 }: InputModalProps) {
   const [value, setValue] = React.useState(defaultValue)
-  
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (value.trim() && !isLoading) {
       onConfirm(value.trim())
     }
   }
-  
+
   return (
     <div css={styles.overlay} onClick={isLoading ? undefined : onCancel}>
       <div css={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -354,24 +358,7 @@ const progressStyles = {
   `,
 }
 
-export interface ProgressState {
-  current: number
-  total: number
-  percent: number
-  currentFile?: string
-  status: 'idle' | 'processing' | 'cleanup' | 'complete' | 'error' | 'stopping' | 'stopped'
-  message?: string
-  processed?: number
-  alreadyProcessed?: number
-  orphansRemoved?: number
-  orphanedFiles?: string[]  // List of orphaned files found during scan
-  pendingUpdates?: number   // Count of pending cloud updates found during scan
-  orphanedEntries?: number  // Count of orphaned meta entries removed during scan
-  errors?: number
-  errorMessages?: string[]
-  isScan?: boolean
-  isMove?: boolean
-}
+// ProgressState is now imported from StudioContext and re-exported above
 
 interface ProgressModalProps {
   title: string
@@ -459,15 +446,15 @@ export function ProgressModal({
           ) : (
             <>
               <p css={styles.message}>
-                {progress.status === 'cleanup' 
+                {progress.status === 'cleanup'
                   ? (progress.message || 'Cleaning up...')
                   : (progress.message || 'Processing...')}
               </p>
               <div css={progressStyles.progressContainer}>
                 <div css={progressStyles.progressBar}>
-                  <div 
-                    css={progressStyles.progressFill} 
-                    style={{ width: `${progress.percent}%` }} 
+                  <div
+                    css={progressStyles.progressFill}
+                    style={{ width: `${progress.percent}%` }}
                   />
                 </div>
                 <div css={progressStyles.progressText}>
@@ -485,8 +472,8 @@ export function ProgressModal({
         </div>
         <div css={styles.footer}>
           {isRunning && onStop && (
-            <button 
-              css={[styles.btn, styles.btnDanger]} 
+            <button
+              css={[styles.btn, styles.btnDanger]}
               onClick={onStop}
               disabled={progress.status === 'stopping'}
             >

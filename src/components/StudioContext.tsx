@@ -18,13 +18,19 @@ export interface ProgressState {
   current: number
   total: number
   percent: number
-  status: 'processing' | 'complete' | 'error' | 'stopping' | 'stopped' | 'cleanup'
+  status: 'idle' | 'processing' | 'complete' | 'error' | 'stopping' | 'stopped' | 'cleanup'
   currentFile?: string
   message?: string
   processed?: number
   alreadyProcessed?: number
   orphansRemoved?: number
   orphanedFiles?: string[]
+  pendingUpdates?: number
+  orphanedEntries?: number
+  errors?: number
+  errorMessages?: string[]
+  isScan?: boolean
+  isMove?: boolean
 }
 
 /**
@@ -35,14 +41,14 @@ export interface ActionState {
   showProgress: boolean
   progressTitle: string
   progressState: ProgressState
-  
+
   // Confirmation modals
   showDeleteConfirm: boolean
   showMoveModal: boolean
   showSyncConfirm: boolean
   showProcessConfirm: boolean
   showDownloadConfirm: boolean
-  
+
   // Action-specific state
   actionPaths: string[]  // Paths being acted upon
   syncImageCount: number
@@ -116,7 +122,7 @@ export interface StudioState {
 
   // Shared action state
   actionState: ActionState
-  
+
   // Shared action handlers (initiate confirmation)
   requestDelete: (paths: string[]) => void
   requestMove: (paths: string[]) => void
@@ -124,20 +130,20 @@ export interface StudioState {
   requestDownload: (paths: string[], fileItems: FileItem[]) => void
   requestProcess: (paths: string[]) => void
   setProcessMode: (mode: 'generate' | 'remove') => void
-  
+
   // Action confirmations (execute action)
   confirmDelete: () => Promise<void>
   confirmMove: (destination: string) => Promise<void>
   confirmSync: () => Promise<void>
   confirmProcess: () => Promise<void>
-  
+
   // Cancel/close actions
   cancelAction: () => void
   closeProgress: () => void
-  
+
   // Stop processing
   stopProcessing: () => void
-  
+
   // Delete orphans (from scan)
   deleteOrphans: () => Promise<void>
 }
@@ -150,66 +156,69 @@ const defaultActionState: ActionState = {
   showMoveModal: false,
   showSyncConfirm: false,
   showProcessConfirm: false,
+  showDownloadConfirm: false,
   actionPaths: [],
   syncImageCount: 0,
   syncHasRemote: false,
   syncHasLocal: false,
   processMode: 'generate',
+  downloadImageCount: 0,
+  downloadTotalSelected: 0,
 }
 
 const defaultState: StudioState = {
   isOpen: false,
-  openStudio: () => {},
-  closeStudio: () => {},
-  toggleStudio: () => {},
+  openStudio: () => { },
+  closeStudio: () => { },
+  toggleStudio: () => { },
   currentPath: 'public',
-  setCurrentPath: () => {},
-  navigateUp: () => {},
+  setCurrentPath: () => { },
+  navigateUp: () => { },
   selectedItems: new Set(),
-  toggleSelection: () => {},
-  selectRange: () => {},
-  selectAll: () => {},
-  clearSelection: () => {},
+  toggleSelection: () => { },
+  selectRange: () => { },
+  selectAll: () => { },
+  clearSelection: () => { },
   lastSelectedPath: null,
   viewMode: 'grid',
-  setViewMode: () => {},
+  setViewMode: () => { },
   focusedItem: null,
-  setFocusedItem: () => {},
+  setFocusedItem: () => { },
   meta: null,
-  setMeta: () => {},
+  setMeta: () => { },
   isLoading: false,
-  setIsLoading: () => {},
+  setIsLoading: () => { },
   refreshKey: 0,
-  triggerRefresh: () => {},
+  triggerRefresh: () => { },
   scanRequested: false,
-  triggerScan: () => {},
-  clearScanRequest: () => {},
+  triggerScan: () => { },
+  clearScanRequest: () => { },
   searchQuery: '',
-  setSearchQuery: () => {},
+  setSearchQuery: () => { },
   error: null,
-  showError: () => {},
-  clearError: () => {},
+  showError: () => { },
+  clearError: () => { },
   fileItems: [],
-  setFileItems: () => {},
-  
+  setFileItems: () => { },
+
   // Shared action state
   actionState: defaultActionState,
-  
+
   // Shared action handlers
-  requestDelete: () => {},
-  requestMove: () => {},
-  requestSync: () => {},
-  requestDownload: () => {},
-  requestProcess: () => {},
-  setProcessMode: () => {},
-  confirmDelete: async () => {},
-  confirmMove: async () => {},
-  confirmSync: async () => {},
-  confirmProcess: async () => {},
-  cancelAction: () => {},
-  closeProgress: () => {},
-  stopProcessing: () => {},
-  deleteOrphans: async () => {},
+  requestDelete: () => { },
+  requestMove: () => { },
+  requestSync: () => { },
+  requestDownload: () => { },
+  requestProcess: () => { },
+  setProcessMode: () => { },
+  confirmDelete: async () => { },
+  confirmMove: async () => { },
+  confirmSync: async () => { },
+  confirmProcess: async () => { },
+  cancelAction: () => { },
+  closeProgress: () => { },
+  stopProcessing: () => { },
+  deleteOrphans: async () => { },
 }
 
 export const StudioContext = createContext<StudioState>(defaultState)

@@ -4,6 +4,7 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { colors, fontSize, fontStack, baseReset } from './tokens'
+import type { ProgressState } from './StudioContext'
 
 const fadeIn = keyframes`
   from { opacity: 0; }
@@ -217,14 +218,7 @@ interface StreamingOperation {
   isRunning: boolean
 }
 
-interface ProgressState {
-  current: number
-  total: number
-  percent: number
-  status: string
-  message?: string
-  currentFile?: string
-}
+// ProgressState is imported from StudioContext
 
 interface AddNewModalProps {
   currentPath: string
@@ -234,7 +228,7 @@ interface AddNewModalProps {
   // For file upload progress
   setShowProgress?: (show: boolean) => void
   setProgressTitle?: (title: string) => void
-  setProgressState?: (state: Partial<ProgressState> | ((prev: ProgressState) => ProgressState)) => void
+  setProgressState?: React.Dispatch<React.SetStateAction<ProgressState>>
 }
 
 export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingOperation, setShowProgress, setProgressTitle, setProgressState }: AddNewModalProps) {
@@ -260,15 +254,15 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
 
   // Ref to track if upload should be stopped
   const stopUploadRef = useRef(false)
-  
+
   const handleUpload = useCallback(async () => {
     if (selectedFiles.length === 0) return
-    
+
     // If progress callbacks available, use them
     if (setShowProgress && setProgressTitle && setProgressState) {
       onClose() // Close modal first so progress modal shows
       stopUploadRef.current = false
-      
+
       setProgressTitle('Uploading Files')
       setShowProgress(true)
       setProgressState({
@@ -278,10 +272,10 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
         status: 'processing',
         message: 'Uploading...',
       })
-      
+
       let uploaded = 0
       const errors: string[] = []
-      
+
       for (let i = 0; i < selectedFiles.length; i++) {
         // Check if stopped
         if (stopUploadRef.current) {
@@ -293,18 +287,18 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
           onUploadComplete()
           return
         }
-        
+
         const file = selectedFiles[i]
         const formData = new FormData()
         formData.append('file', file)
         formData.append('path', currentPath)
-        
+
         try {
           const response = await fetch('/api/studio/upload', {
             method: 'POST',
             body: formData,
           })
-          
+
           if (response.ok) {
             uploaded++
           } else {
@@ -313,7 +307,7 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
         } catch {
           errors.push(file.name)
         }
-        
+
         setProgressState({
           current: i + 1,
           total: selectedFiles.length,
@@ -322,7 +316,7 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
           currentFile: file.name,
         })
       }
-      
+
       setProgressState({
         current: selectedFiles.length,
         total: selectedFiles.length,
@@ -333,22 +327,22 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
       onUploadComplete()
       return
     }
-    
+
     // Fallback to old behavior
     setUploading(true)
-    
+
     try {
       for (const file of selectedFiles) {
         const formData = new FormData()
         formData.append('file', file)
         formData.append('path', currentPath)
-        
+
         await fetch('/api/studio/upload', {
           method: 'POST',
           body: formData,
         })
       }
-      
+
       onUploadComplete()
       onClose()
     } catch (error) {
@@ -363,9 +357,9 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
       .split('\n')
       .map(url => url.trim())
       .filter(url => url.length > 0)
-    
+
     if (urls.length === 0) return
-    
+
     // Use unified streaming if available
     if (streamingOperation) {
       onClose() // Close modal first so progress modal can show
@@ -379,29 +373,29 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
       })
       return
     }
-    
+
     // Fallback to old behavior
     setImporting(true)
-    
+
     try {
       const response = await fetch('/api/studio/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ urls }),
       })
-      
+
       const reader = response.body?.getReader()
       if (!reader) throw new Error('No reader')
-      
+
       const decoder = new TextDecoder()
-      
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        
+
         const text = decoder.decode(value)
         const lines = text.split('\n\n').filter(line => line.startsWith('data: '))
-        
+
         for (const line of lines) {
           const data = JSON.parse(line.replace('data: ', ''))
           if (data.type === 'complete') {
@@ -437,7 +431,7 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
             </button>
           </div>
         </div>
-        
+
         <div css={styles.body}>
           {activeTab === 'upload' ? (
             <>
@@ -485,7 +479,7 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
             </>
           )}
         </div>
-        
+
         <div css={styles.footer}>
           <button
             css={[styles.btn, styles.btnCancel]}
