@@ -184,18 +184,6 @@ const styles = {
     width: 16px;
     height: 16px;
   `,
-  infoRow: css`
-    display: flex;
-    justify-content: space-between;
-    font-size: ${fontSize.sm};
-  `,
-  infoLabel: css`
-    color: ${colors.textSecondary};
-  `,
-  infoValue: css`
-    color: ${colors.text};
-    font-weight: 500;
-  `,
   resizeRow: css`
     display: flex;
     align-items: center;
@@ -478,10 +466,6 @@ export function EditImageModal({
     }
   }
 
-  // Calculate crop dimensions for display
-  const cropWidth = completedCrop ? Math.round(completedCrop.width * scale) : naturalSize.width
-  const cropHeight = completedCrop ? Math.round(completedCrop.height * scale) : naturalSize.height
-
   return (
     <div css={styles.overlay}>
       <div css={styles.container}>
@@ -555,15 +539,6 @@ export function EditImageModal({
               {rotation !== 0 && (
                 <p css={styles.hint}>Will rotate {rotation}° on save</p>
               )}
-            </div>
-            
-            {/* Crop Info */}
-            <div css={styles.section}>
-              <span css={styles.sectionLabel}>Crop Selection</span>
-              <div css={styles.infoRow}>
-                <span css={styles.infoLabel}>Size</span>
-                <span css={styles.infoValue}>{cropWidth} × {cropHeight} px</span>
-              </div>
             </div>
             
             {/* Output Size */}
