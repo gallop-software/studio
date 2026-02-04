@@ -337,6 +337,7 @@ export function StudioDetailView() {
     setFocusedItem, 
     triggerRefresh,
     fileItems,
+    setEditedImageKey,
     // Shared action handlers
     requestDelete,
     requestMove,
@@ -388,8 +389,10 @@ export function StudioDetailView() {
   const handleEditComplete = (updatedItem: FileItem) => {
     // Update the focused item with new data
     setFocusedItem(updatedItem as typeof focusedItem)
-    // Bust cache to show updated image
+    // Bust cache to show updated image in detail view
     setImageCacheBuster(Date.now())
+    // Bust cache for thumbnail in grid/list view
+    setEditedImageKey(updatedItem.path)
   }
 
   if (!focusedItem) return null

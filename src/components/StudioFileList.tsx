@@ -494,6 +494,7 @@ export function StudioFileList() {
     handleSelectAll,
     triggerScan,
     triggerRefresh,
+    editedImageKey,
   } = useFileList()
 
   const [showFeaturedModal, setShowFeaturedModal] = useState(false)
@@ -701,6 +702,7 @@ export function StudioFileList() {
                 onClick={(e) => handleItemClick(item, e)}
                 onOpen={() => handleOpen(item)}
                 onGenerateThumbnail={() => handleGenerateThumbnail(item)}
+                editedImageKey={editedImageKey}
               />
             ))}
 
@@ -740,12 +742,18 @@ interface ListRowProps {
   onClick: (e: React.MouseEvent) => void
   onOpen: () => void
   onGenerateThumbnail: () => void
+  editedImageKey: { path: string; key: number } | null
 }
 
-function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: ListRowProps) {
+function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail, editedImageKey }: ListRowProps) {
   const [showCopied, setShowCopied] = useState(false)
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
+  
+  // Add cache buster if this is the recently edited image
+  const thumbnailSrc = item.thumbnail && editedImageKey && editedImageKey.path === item.path
+    ? `${item.thumbnail}?v=${editedImageKey.key}`
+    : item.thumbnail
   const isProtected = item.isProtected || (isFolder && item.name === 'images' && item.path === 'public/images')
 
   const handleCopyPath = (e: React.MouseEvent) => {
@@ -803,9 +811,9 @@ function ListRow({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Lis
                 </svg>
               </div>
             )
-          ) : isImage && item.thumbnail ? (
+          ) : isImage && thumbnailSrc ? (
             <div css={[styles.thumbnailWrapper, item.isCloud && styles.thumbnailCloud, item.isRemote && styles.thumbnailRemote]}>
-              <img css={styles.thumbnail} src={item.thumbnail} alt={item.name} loading="lazy" />
+              <img css={styles.thumbnail} src={thumbnailSrc} alt={item.name} loading="lazy" />
             </div>
           ) : (
             <div css={[styles.thumbnailWrapper, item.isCloud && styles.thumbnailCloud, item.isRemote && styles.thumbnailRemote]}>

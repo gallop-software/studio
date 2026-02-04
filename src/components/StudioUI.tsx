@@ -214,6 +214,12 @@ export function StudioUI({
     setRefreshKey((k) => k + 1)
   }, [])
 
+  // Edited image cache buster
+  const [editedImageKey, setEditedImageKeyState] = useState<{ path: string; key: number } | null>(null)
+  const setEditedImageKey = useCallback((path: string) => {
+    setEditedImageKeyState({ path, key: Date.now() })
+  }, [])
+
   // Update focusedItem when fileItems changes (to reflect changes after push/download/rename)
   useEffect(() => {
     if (focusedItem && fileItems.length > 0) {
@@ -406,6 +412,8 @@ export function StudioUI({
     setIsLoading,
     refreshKey,
     triggerRefresh,
+    editedImageKey,
+    setEditedImageKey,
     scanRequested,
     triggerScan,
     clearScanRequest,

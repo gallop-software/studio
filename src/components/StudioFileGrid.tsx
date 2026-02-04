@@ -537,6 +537,7 @@ export function StudioFileGrid() {
     handleSelectAll,
     triggerScan,
     triggerRefresh,
+    editedImageKey,
   } = useFileList()
 
   const [showFeaturedModal, setShowFeaturedModal] = useState(false)
@@ -754,6 +755,7 @@ export function StudioFileGrid() {
               onClick={(e) => handleItemClick(item, e)}
               onOpen={() => handleOpen(item)}
               onGenerateThumbnail={() => handleGenerateThumbnail(item)}
+              editedImageKey={editedImageKey}
             />
           ))}
 
@@ -788,6 +790,7 @@ interface GridItemProps {
   onClick: (e: React.MouseEvent) => void
   onOpen: () => void
   onGenerateThumbnail: () => void
+  editedImageKey: { path: string; key: number } | null
 }
 
 // Detect if an image is a thumbnail itself (in /images/sm/, /images/md/, etc.)
@@ -799,10 +802,15 @@ function getThumbnailSizeFromPath(path: string): string | null {
   return null
 }
 
-function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: GridItemProps) {
+function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail, editedImageKey }: GridItemProps) {
   const [showCopied, setShowCopied] = useState(false)
   const isFolder = item.type === 'folder'
   const isImage = !isFolder && item.thumbnail !== undefined
+  
+  // Add cache buster if this is the recently edited image
+  const thumbnailSrc = item.thumbnail && editedImageKey && editedImageKey.path === item.path
+    ? `${item.thumbnail}?v=${editedImageKey.key}`
+    : item.thumbnail
   const isProtected = item.isProtected || (isFolder && item.name === 'images' && item.path === 'public/images')
 
   // Check if this image is in a thumbnail folder (e.g., /images/sm/, /images/md/)
@@ -888,10 +896,10 @@ function GridItem({ item, isSelected, onClick, onOpen, onGenerateThumbnail }: Gr
               <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
             </svg>
           )
-        ) : isImage && item.thumbnail ? (
+        ) : isImage && thumbnailSrc ? (
           <img
             css={styles.image}
-            src={item.thumbnail}
+            src={thumbnailSrc}
             alt={item.name}
             loading="lazy"
           />

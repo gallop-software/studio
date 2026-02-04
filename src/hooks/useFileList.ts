@@ -25,6 +25,7 @@ export function useFileList() {
     searchQuery,
     showError,
     setFileItems,
+    editedImageKey,
   } = useStudio();
 
   const [items, setItems] = useState<FileItem[]>([]);
@@ -174,6 +175,7 @@ export function useFileList() {
     currentPath,
     selectedItems,
     navigateUp,
+    editedImageKey,
 
     // Handlers
     handleItemClick,

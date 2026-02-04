@@ -102,6 +102,10 @@ export interface StudioState {
   refreshKey: number
   triggerRefresh: () => void
 
+  // Edited image cache buster (path -> timestamp)
+  editedImageKey: { path: string; key: number } | null
+  setEditedImageKey: (path: string) => void
+
   // Scan trigger
   scanRequested: boolean
   triggerScan: () => void
@@ -190,6 +194,8 @@ const defaultState: StudioState = {
   setIsLoading: () => { },
   refreshKey: 0,
   triggerRefresh: () => { },
+  editedImageKey: null,
+  setEditedImageKey: () => { },
   scanRequested: false,
   triggerScan: () => { },
   clearScanRequest: () => { },
