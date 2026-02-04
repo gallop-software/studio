@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
 'use client'
 
-import React, { useState, useCallback } from 'react'
-import Cropper from 'react-easy-crop'
-import type { Area, Point } from 'react-easy-crop'
+import React, { useState, useRef, useEffect } from 'react'
+import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop'
+import 'react-image-crop/dist/ReactCrop.css'
 import { css, keyframes } from '@emotion/react'
 import { colors, fontSize, fontStack, baseReset } from './tokens'
 import type { FileItem } from '../types'
@@ -42,7 +42,7 @@ const styles = {
     background-color: ${colors.surface};
     border-radius: 12px;
     box-shadow: 0 30px 60px -12px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.3);
-    max-width: 800px;
+    max-width: 900px;
     width: 95%;
     max-height: 90vh;
     display: flex;
@@ -85,12 +85,28 @@ const styles = {
     padding: 20px;
   `,
   cropperContainer: css`
-    position: relative;
-    width: 100%;
-    height: 400px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     background-color: ${colors.background};
     border-radius: 8px;
-    overflow: hidden;
+    padding: 16px;
+    min-height: 300px;
+    max-height: 500px;
+    overflow: auto;
+    
+    .ReactCrop {
+      max-height: 100%;
+    }
+    
+    .ReactCrop__crop-selection {
+      border: 2px solid ${colors.primary};
+    }
+  `,
+  cropImage: css`
+    max-width: 100%;
+    max-height: 450px;
+    display: block;
   `,
   controls: css`
     margin-top: 20px;
@@ -193,47 +209,6 @@ const styles = {
     font-size: ${fontSize.sm};
     color: ${colors.textMuted};
   `,
-  zoomSlider: css`
-    flex: 1;
-    max-width: 200px;
-    height: 4px;
-    -webkit-appearance: none;
-    appearance: none;
-    background: ${colors.border};
-    border-radius: 2px;
-    outline: none;
-    
-    &::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 16px;
-      height: 16px;
-      background: ${colors.primary};
-      border-radius: 50%;
-      cursor: pointer;
-    }
-    
-    &::-moz-range-thumb {
-      width: 16px;
-      height: 16px;
-      background: ${colors.primary};
-      border-radius: 50%;
-      cursor: pointer;
-      border: none;
-    }
-  `,
-  zoomValue: css`
-    font-size: ${fontSize.sm};
-    color: ${colors.textSecondary};
-    min-width: 45px;
-    text-align: right;
-  `,
-  hint: css`
-    font-size: ${fontSize.xs};
-    color: ${colors.textMuted};
-    margin-top: 8px;
-    font-style: italic;
-  `,
   footer: css`
     display: flex;
     justify-content: flex-end;
@@ -292,6 +267,11 @@ const styles = {
       to { transform: rotate(360deg); }
     }
   `,
+  hint: css`
+    font-size: ${fontSize.xs};
+    color: ${colors.textMuted};
+    margin-left: 112px;
+  `,
 }
 
 interface AspectOption {
@@ -326,21 +306,41 @@ export function EditImageModal({
   onSaveComplete,
   triggerRefresh,
 }: EditImageModalProps) {
-  const [crop, setCrop] = useState<Point>({ x: 0, y: 0 })
-  const [zoom, setZoom] = useState(1)
+  const imgRef = useRef<HTMLImageElement>(null)
+  const [crop, setCrop] = useState<Crop>()
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>()
   const [rotation, setRotation] = useState(0)
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
   const [aspect, setAspect] = useState<number | undefined>(undefined)
   const [outputWidth, setOutputWidth] = useState(dimensions.width)
   const [outputHeight, setOutputHeight] = useState(dimensions.height)
   const [saving, setSaving] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 })
 
-  const onCropComplete = useCallback((_croppedArea: Area, croppedAreaPixels: Area) => {
-    setCroppedAreaPixels(croppedAreaPixels)
-    // Update output dimensions based on crop
-    setOutputWidth(Math.round(croppedAreaPixels.width))
-    setOutputHeight(Math.round(croppedAreaPixels.height))
-  }, [])
+  // When image loads, set initial crop to full image
+  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth, naturalHeight } = e.currentTarget
+    setNaturalSize({ width: naturalWidth, height: naturalHeight })
+    setImageLoaded(true)
+    
+    // Set initial crop to full image
+    const initialCrop: Crop = {
+      unit: '%',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    }
+    setCrop(initialCrop)
+  }
+
+  // Update output dimensions when crop changes
+  useEffect(() => {
+    if (completedCrop && naturalSize.width > 0) {
+      setOutputWidth(Math.round(completedCrop.width))
+      setOutputHeight(Math.round(completedCrop.height))
+    }
+  }, [completedCrop, naturalSize])
 
   const handleRotateCW = () => {
     setRotation((prev) => (prev + 90) % 360)
@@ -352,6 +352,32 @@ export function EditImageModal({
 
   const handleAspectChange = (newAspect: number | undefined) => {
     setAspect(newAspect)
+    
+    // Reset crop when aspect changes
+    if (newAspect && imageLoaded) {
+      // Calculate a centered crop with the new aspect ratio
+      const imgAspect = naturalSize.width / naturalSize.height
+      let cropWidth: number
+      let cropHeight: number
+      
+      if (newAspect > imgAspect) {
+        // Crop is wider than image
+        cropWidth = 100
+        cropHeight = (imgAspect / newAspect) * 100
+      } else {
+        // Crop is taller than image
+        cropHeight = 100
+        cropWidth = (newAspect / imgAspect) * 100
+      }
+      
+      setCrop({
+        unit: '%',
+        x: (100 - cropWidth) / 2,
+        y: (100 - cropHeight) / 2,
+        width: cropWidth,
+        height: cropHeight,
+      })
+    }
   }
 
   const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -371,7 +397,7 @@ export function EditImageModal({
   }
 
   const handleSave = async () => {
-    if (!croppedAreaPixels) return
+    if (!completedCrop || !imageLoaded) return
     
     setSaving(true)
     
@@ -382,10 +408,10 @@ export function EditImageModal({
         body: JSON.stringify({
           imagePath,
           crop: {
-            x: Math.round(croppedAreaPixels.x),
-            y: Math.round(croppedAreaPixels.y),
-            width: Math.round(croppedAreaPixels.width),
-            height: Math.round(croppedAreaPixels.height),
+            x: Math.round(completedCrop.x),
+            y: Math.round(completedCrop.y),
+            width: Math.round(completedCrop.width),
+            height: Math.round(completedCrop.height),
           },
           rotation,
           resize: {
@@ -427,16 +453,24 @@ export function EditImageModal({
         
         <div css={styles.body}>
           <div css={styles.cropperContainer}>
-            <Cropper
-              image={imageSrc}
+            <ReactCrop
               crop={crop}
-              zoom={zoom}
-              rotation={rotation}
+              onChange={(c) => setCrop(c)}
+              onComplete={(c) => setCompletedCrop(c)}
               aspect={aspect}
-              onCropChange={setCrop}
-              onZoomChange={setZoom}
-              onCropComplete={onCropComplete}
-            />
+              style={{ 
+                transform: `rotate(${rotation}deg)`,
+                transition: 'transform 0.2s ease',
+              }}
+            >
+              <img
+                ref={imgRef}
+                src={imageSrc}
+                alt="Edit"
+                css={styles.cropImage}
+                onLoad={onImageLoad}
+              />
+            </ReactCrop>
           </div>
           
           <div css={styles.controls}>
@@ -454,21 +488,7 @@ export function EditImageModal({
                 ))}
               </div>
             </div>
-            <p css={styles.hint}>Zoom in and drag to select crop area</p>
-            
-            <div css={styles.controlRow}>
-              <span css={styles.controlLabel}>Zoom</span>
-              <input
-                type="range"
-                css={styles.zoomSlider}
-                min={1}
-                max={3}
-                step={0.1}
-                value={zoom}
-                onChange={(e) => setZoom(parseFloat(e.target.value))}
-              />
-              <span css={styles.zoomValue}>{Math.round(zoom * 100)}%</span>
-            </div>
+            <p css={styles.hint}>Drag corners or edges to resize crop area</p>
             
             <div css={styles.controlRow}>
               <span css={styles.controlLabel}>Rotation</span>
@@ -517,7 +537,7 @@ export function EditImageModal({
           <button css={[styles.btn, styles.btnCancel]} onClick={onClose} disabled={saving}>
             Cancel
           </button>
-          <button css={[styles.btn, styles.btnSave]} onClick={handleSave} disabled={saving}>
+          <button css={[styles.btn, styles.btnSave]} onClick={handleSave} disabled={saving || !completedCrop}>
             {saving ? (
               <span css={styles.saving}>
                 <span css={styles.spinner} />
