@@ -483,6 +483,12 @@ export function EditImageModal({
         height: Math.round(completedCrop.height * scale),
       }
       
+      // When rotation is 90° or 270°, dimensions swap
+      // Server applies resize AFTER rotation, so we need to swap the resize dimensions
+      const isRotated90or270 = rotation === 90 || rotation === 270
+      const finalWidth = isRotated90or270 ? outputHeight : outputWidth
+      const finalHeight = isRotated90or270 ? outputWidth : outputHeight
+      
       const response = await fetch('/api/studio/edit-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -491,8 +497,8 @@ export function EditImageModal({
           crop: actualCrop,
           rotation,
           resize: {
-            width: outputWidth,
-            height: outputHeight,
+            width: finalWidth,
+            height: finalHeight,
           },
         }),
       })
