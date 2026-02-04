@@ -343,11 +343,11 @@ export function EditImageModal({
   const imgRef = useRef<HTMLImageElement>(null)
   const [crop, setCrop] = useState<Crop>()
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>()
-  const [rotation, setRotation] = useState(0)
   const [aspect, setAspect] = useState<number | undefined>(undefined)
   const [outputWidth, setOutputWidth] = useState(dimensions.width)
   const [outputHeight, setOutputHeight] = useState(dimensions.height)
   const [saving, setSaving] = useState(false)
+  const [rotating, setRotating] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
   // Store the actual natural size of the source image
   const [naturalSize, setNaturalSize] = useState({ width: dimensions.width, height: dimensions.height })
@@ -355,6 +355,8 @@ export function EditImageModal({
   const [scale, setScale] = useState(1)
   // Crop is hidden by default until user clicks on image
   const [cropEnabled, setCropEnabled] = useState(false)
+  // Cache buster for refreshing image after rotation
+  const [imageCacheBuster, setImageCacheBuster] = useState(0)
 
   // When image loads, calculate scale but don't set crop yet (user must click)
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -410,28 +412,63 @@ export function EditImageModal({
       setOutputWidth(actualCropWidth)
       setOutputHeight(actualCropHeight)
     } else if (!cropEnabled && imageLoaded) {
-      // No crop - use full image dimensions (swapped if rotated 90/270)
-      const isRotated90or270 = rotation === 90 || rotation === 270
-      setOutputWidth(isRotated90or270 ? naturalSize.height : naturalSize.width)
-      setOutputHeight(isRotated90or270 ? naturalSize.width : naturalSize.height)
+      // No crop - use full image dimensions
+      setOutputWidth(naturalSize.width)
+      setOutputHeight(naturalSize.height)
     }
-  }, [completedCrop, imageLoaded, scale, cropEnabled, rotation, naturalSize])
+  }, [completedCrop, imageLoaded, scale, cropEnabled, naturalSize])
 
-  const handleRotateCW = () => {
-    setRotation((prev) => (prev + 90) % 360)
-    // Hide crop when rotating - user must click again to re-enable
-    setCropEnabled(false)
-    setCrop(undefined)
-    setCompletedCrop(undefined)
+  // Rotate and save immediately
+  const handleRotate = async (degrees: 90 | -90) => {
+    if (rotating) return
+    
+    setRotating(true)
+    
+    try {
+      // Send rotation request - full image, just rotate
+      const response = await fetch('/api/studio/edit-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imagePath,
+          crop: { x: 0, y: 0, width: naturalSize.width, height: naturalSize.height },
+          rotation: degrees === -90 ? 270 : 90,
+          resize: { 
+            width: naturalSize.height,  // Swapped for 90° rotation
+            height: naturalSize.width 
+          },
+        }),
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        // Update natural size (dimensions swapped)
+        setNaturalSize({ width: naturalSize.height, height: naturalSize.width })
+        setOutputWidth(naturalSize.height)
+        setOutputHeight(naturalSize.width)
+        // Reset crop
+        setCropEnabled(false)
+        setCrop(undefined)
+        setCompletedCrop(undefined)
+        // Bust cache to show rotated image
+        setImageCacheBuster(Date.now())
+        // Trigger refresh for file list
+        triggerRefresh()
+      } else {
+        console.error('Rotate failed:', result.error)
+        alert(result.error || 'Failed to rotate image')
+      }
+    } catch (error) {
+      console.error('Rotate error:', error)
+      alert('An error occurred while rotating the image')
+    } finally {
+      setRotating(false)
+    }
   }
 
-  const handleRotateCCW = () => {
-    setRotation((prev) => (prev - 90 + 360) % 360)
-    // Hide crop when rotating - user must click again to re-enable
-    setCropEnabled(false)
-    setCrop(undefined)
-    setCompletedCrop(undefined)
-  }
+  const handleRotateCW = () => handleRotate(90)
+  const handleRotateCCW = () => handleRotate(-90)
 
   const handleAspectChange = (newAspect: number | undefined) => {
     setAspect(newAspect)
@@ -532,31 +569,16 @@ export function EditImageModal({
         height: naturalSize.height,
       }
       
-      // Determine final resize dimensions
-      // When crop is enabled: crop dimensions are from unrotated image, so swap for 90/270
-      // When crop is disabled: outputWidth/Height already account for rotation, don't swap
-      let finalWidth = outputWidth
-      let finalHeight = outputHeight
-      
-      if (cropEnabled && completedCrop) {
-        // Crop was on unrotated image, need to swap resize dimensions for 90/270
-        const isRotated90or270 = rotation === 90 || rotation === 270
-        if (isRotated90or270) {
-          finalWidth = outputHeight
-          finalHeight = outputWidth
-        }
-      }
-      
       const response = await fetch('/api/studio/edit-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imagePath,
           crop: actualCrop,
-          rotation,
+          rotation: 0,  // Rotation is now handled separately via instant save
           resize: {
-            width: finalWidth,
-            height: finalHeight,
+            width: outputWidth,
+            height: outputHeight,
           },
         }),
       })
@@ -594,7 +616,6 @@ export function EditImageModal({
           
           <div 
             css={styles.rotationWrapper}
-            style={{ transform: `rotate(${rotation}deg)` }}
             onClick={handleEnableCrop}
           >
             <ReactCrop
@@ -607,18 +628,20 @@ export function EditImageModal({
             >
               <img
                 ref={imgRef}
-                src={imageSrc}
+                src={imageCacheBuster ? `${imageSrc}?v=${imageCacheBuster}` : imageSrc}
                 alt="Edit"
                 onLoad={onImageLoad}
                 style={{ cursor: cropEnabled ? 'crosshair' : 'pointer' }}
               />
             </ReactCrop>
-            {!cropEnabled && imageLoaded && (
-              <div 
-                css={styles.cropHint}
-                style={{ transform: `rotate(${-rotation}deg)` }}
-              >
+            {!cropEnabled && imageLoaded && !rotating && (
+              <div css={styles.cropHint}>
                 Click to enable crop selection
+              </div>
+            )}
+            {rotating && (
+              <div css={styles.cropHint}>
+                Rotating...
               </div>
             )}
           </div>
@@ -652,22 +675,20 @@ export function EditImageModal({
             <div css={styles.section}>
               <span css={styles.sectionLabel}>Rotation</span>
               <div css={styles.rotateButtons}>
-                <button css={styles.rotateBtn} onClick={handleRotateCCW}>
+                <button css={styles.rotateBtn} onClick={handleRotateCCW} disabled={rotating || saving}>
                   <svg css={styles.rotateIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
                   </svg>
                   CCW
                 </button>
-                <button css={styles.rotateBtn} onClick={handleRotateCW}>
+                <button css={styles.rotateBtn} onClick={handleRotateCW} disabled={rotating || saving}>
                   <svg css={styles.rotateIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
                   </svg>
                   CW
                 </button>
               </div>
-              {rotation !== 0 && (
-                <p css={styles.hint}>Will rotate {rotation}° on save</p>
-              )}
+              <p css={styles.hint}>Rotates and saves immediately</p>
             </div>
             
             {/* Output Size */}
@@ -699,7 +720,7 @@ export function EditImageModal({
             <button 
               css={styles.actionBtn} 
               onClick={handleSave} 
-              disabled={saving || !completedCrop}
+              disabled={saving || rotating || !completedCrop}
             >
               {saving ? (
                 <>
@@ -710,8 +731,8 @@ export function EditImageModal({
                 'Save Changes'
               )}
             </button>
-            <button css={styles.cancelBtn} onClick={onClose} disabled={saving}>
-              Cancel
+            <button css={styles.cancelBtn} onClick={onClose} disabled={saving || rotating}>
+              Close
             </button>
           </div>
         </div>
