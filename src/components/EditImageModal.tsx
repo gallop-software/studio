@@ -207,8 +207,9 @@ const styles = {
     gap: 8px;
   `,
   resizeInput: css`
-    flex: 1;
-    padding: 8px 10px;
+    width: 80px;
+    min-width: 0;
+    padding: 8px 6px;
     font-size: ${fontSize.sm};
     border: 1px solid ${colors.border};
     border-radius: 6px;
@@ -220,6 +221,14 @@ const styles = {
       outline: none;
       border-color: ${colors.primary};
     }
+    
+    /* Hide number input spinners */
+    &::-webkit-outer-spin-button,
+    &::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    -moz-appearance: textfield;
   `,
   resizeX: css`
     font-size: ${fontSize.sm};
@@ -583,6 +592,7 @@ export function EditImageModal({
                   onChange={handleHeightChange}
                   min={1}
                 />
+                <span css={styles.resizeX}>px</span>
               </div>
               <p css={styles.hint}>Modify to resize the output</p>
             </div>
