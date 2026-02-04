@@ -367,6 +367,7 @@ export function StudioDetailView() {
     message: 'Generating favicons...',
   })
   const [showEditModal, setShowEditModal] = useState(false)
+  const [imageCacheBuster, setImageCacheBuster] = useState(0)
   
   // Check if an action is in progress
   const isActionInProgress = actionState.showProgress
@@ -387,6 +388,8 @@ export function StudioDetailView() {
   const handleEditComplete = (updatedItem: FileItem) => {
     // Update the focused item with new data
     setFocusedItem(updatedItem as typeof focusedItem)
+    // Bust cache to show updated image
+    setImageCacheBuster(Date.now())
   }
 
   if (!focusedItem) return null
@@ -396,9 +399,11 @@ export function StudioDetailView() {
   const relativePath = '/' + focusedItem.path.replace(/^public\//, '')
   
   // For preview: use CDN URL if pushed, otherwise use local path
-  const imageSrc = focusedItem.cdnPushed && focusedItem.cdnBaseUrl
+  const baseImageSrc = focusedItem.cdnPushed && focusedItem.cdnBaseUrl
     ? `${focusedItem.cdnBaseUrl}${relativePath}`
     : relativePath
+  // Add cache buster if set (after image edit)
+  const imageSrc = imageCacheBuster ? `${baseImageSrc}?v=${imageCacheBuster}` : baseImageSrc
   
   // For display URL: use CDN URL if pushed, otherwise use current origin
   const localOrigin = typeof window !== 'undefined' ? window.location.origin : ''
