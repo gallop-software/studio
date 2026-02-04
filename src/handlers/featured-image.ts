@@ -82,8 +82,8 @@ export async function handleGenerateFeaturedImage(request: Request) {
           // package.json not found or invalid, use defaults
         }
 
-        const outputPath = getPublicPath(`featured.jpg`);
-        const relativePath = `public/featured.jpg`;
+        const outputPath = getPublicPath(`screenshot.jpg`);
+        const relativePath = `public/screenshot.jpg`;
 
         sendEvent({
           type: "start",
@@ -167,7 +167,7 @@ export async function handleGenerateFeaturedImage(request: Request) {
           // Only set 'o' (original dimensions), not 'f' (full thumbnail)
           // because the featured image is stored at root level, not in /images/
           const meta = await loadMeta();
-          const metaKey = `/featured.jpg`;
+          const metaKey = `/screenshot.jpg`;
           setMetaEntry(meta, metaKey, {
             o: { w: width, h: height },
           });
@@ -178,7 +178,7 @@ export async function handleGenerateFeaturedImage(request: Request) {
             processed: 1,
             errors: 0,
             outputPath: relativePath,
-            message: `Featured image saved to ${relativePath}`,
+            message: `Screenshot saved to ${relativePath}`,
           });
         } finally {
           await browser.close();
@@ -191,7 +191,7 @@ export async function handleGenerateFeaturedImage(request: Request) {
           error instanceof Error ? error.message : "Unknown error";
         sendEvent({
           type: "error",
-          message: `Failed to generate featured image: ${errorMessage}`,
+          message: `Failed to generate screenshot: ${errorMessage}`,
         });
         controller.close();
       }
@@ -268,8 +268,8 @@ export async function handleGetFeaturedImageOptions() {
  */
 export async function handleCheckFeaturedImage() {
   try {
-    const expectedFilename = `featured.jpg`;
-    const metaKey = `/featured.jpg`;
+    const expectedFilename = `screenshot.jpg`;
+    const metaKey = `/screenshot.jpg`;
 
     // Check if the image exists in _studio.json
     const meta = await loadMeta();

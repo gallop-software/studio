@@ -546,7 +546,7 @@ export function StudioFileGrid() {
     total: 3,
     percent: 0,
     status: 'processing',
-    message: 'Generating featured image...',
+    message: 'Generating screenshot...',
   })
 
   const handleOpenFeaturedModal = () => {
@@ -578,7 +578,7 @@ export function StudioFileGrid() {
           total: 4,
           percent: 0,
           status: 'error',
-          message: error.error || 'Failed to generate featured image',
+          message: error.error || 'Failed to generate screenshot',
         })
         return
       }
@@ -643,7 +643,7 @@ export function StudioFileGrid() {
         total: 3,
         percent: 0,
         status: 'error',
-        message: 'An error occurred while generating the featured image',
+        message: 'An error occurred while generating the screenshot',
       })
     }
   }
@@ -653,7 +653,7 @@ export function StudioFileGrid() {
       <>
         {showFeaturedProgress && (
           <ProgressModal
-            title="Generating Featured Image"
+            title="Generating Screenshot"
             progress={featuredProgress}
             onClose={() => setShowFeaturedProgress(false)}
           />
@@ -705,7 +705,7 @@ export function StudioFileGrid() {
       />
       {showFeaturedProgress && (
         <ProgressModal
-          title="Generating Featured Image"
+          title="Generating Screenshot"
           progress={featuredProgress}
           onClose={() => setShowFeaturedProgress(false)}
         />
@@ -768,7 +768,7 @@ export function StudioFileGrid() {
                 <svg css={styles.featuredIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span css={styles.featuredText}>Generate Featured Image</span>
+                <span css={styles.featuredText}>Generate Screenshot</span>
               </div>
               <div css={styles.featuredLabel}>
                 <p css={styles.name}>{missingFeaturedImage.filename}</p>

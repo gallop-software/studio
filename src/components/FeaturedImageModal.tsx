@@ -178,7 +178,7 @@ export function FeaturedImageModal({ isOpen, onClose, onSelect }: FeaturedImageM
     <div css={styles.overlay} onClick={onClose}>
       <div css={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div css={styles.header}>
-          <h2 css={styles.title}>Generate Featured Image</h2>
+          <h2 css={styles.title}>Generate Screenshot</h2>
           <p css={styles.subtitle}>Choose which URL to screenshot</p>
         </div>
 

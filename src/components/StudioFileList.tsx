@@ -503,7 +503,7 @@ export function StudioFileList() {
     total: 3,
     percent: 0,
     status: 'processing',
-    message: 'Generating featured image...',
+    message: 'Generating screenshot...',
   })
 
   const handleOpenFeaturedModal = () => {
@@ -535,7 +535,7 @@ export function StudioFileList() {
           total: 4,
           percent: 0,
           status: 'error',
-          message: error.error || 'Failed to generate featured image',
+          message: error.error || 'Failed to generate screenshot',
         })
         return
       }
@@ -600,7 +600,7 @@ export function StudioFileList() {
         total: 3,
         percent: 0,
         status: 'error',
-        message: 'An error occurred while generating the featured image',
+        message: 'An error occurred while generating the screenshot',
       })
     }
   }
@@ -646,7 +646,7 @@ export function StudioFileList() {
       />
       {showFeaturedProgress && (
         <ProgressModal
-          title="Generating Featured Image"
+          title="Generating Screenshot"
           progress={featuredProgress}
           onClose={() => setShowFeaturedProgress(false)}
         />
