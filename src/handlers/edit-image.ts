@@ -21,6 +21,7 @@ interface EditImageRequest {
     width: number;
     height: number;
   };
+  quality?: number; // 1-100, defaults to 95
 }
 
 /**
@@ -36,7 +37,10 @@ interface EditImageRequest {
 export async function handleEditImage(request: Request) {
   try {
     const body = (await request.json()) as EditImageRequest;
-    const { imagePath, crop, rotation, resize } = body;
+    const { imagePath, crop, rotation, resize, quality = 95 } = body;
+    
+    // Clamp quality to valid range
+    const outputQuality = Math.max(1, Math.min(100, quality));
 
     // Validate input
     if (!imagePath || !imagePath.startsWith("public/")) {
@@ -97,7 +101,6 @@ export async function handleEditImage(request: Request) {
     pipeline = pipeline.resize(resize.width, resize.height);
 
     // Determine output format based on original file extension
-    // Use high quality (95) to prevent quality loss on repeated edits
     const ext = path.extname(imagePath).toLowerCase();
     let finalBuffer: Buffer;
     
@@ -105,12 +108,12 @@ export async function handleEditImage(request: Request) {
       // PNG is lossless, compressionLevel doesn't affect quality
       finalBuffer = await pipeline.png({ compressionLevel: 9 }).toBuffer();
     } else if (ext === ".webp") {
-      finalBuffer = await pipeline.webp({ quality: 95, lossless: false }).toBuffer();
+      finalBuffer = await pipeline.webp({ quality: outputQuality, lossless: outputQuality === 100 }).toBuffer();
     } else if (ext === ".gif") {
       finalBuffer = await pipeline.gif().toBuffer();
     } else {
-      // Default to JPEG for jpg/jpeg - use high quality to minimize loss
-      finalBuffer = await pipeline.jpeg({ quality: 95, mozjpeg: true }).toBuffer();
+      // Default to JPEG for jpg/jpeg
+      finalBuffer = await pipeline.jpeg({ quality: outputQuality, mozjpeg: true }).toBuffer();
     }
 
     // Get final dimensions

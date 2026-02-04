@@ -911,6 +911,7 @@ export function StudioDetailView() {
           imagePath={focusedItem.path}
           imageSrc={imageSrc}
           dimensions={focusedItem.dimensions}
+          fileSize={focusedItem.size || 0}
           onClose={() => setShowEditModal(false)}
           onSaveComplete={handleEditComplete}
           triggerRefresh={triggerRefresh}

@@ -276,6 +276,48 @@ const styles = {
     font-size: ${fontSize.sm};
     color: ${colors.textMuted};
   `,
+  qualitySlider: css`
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: ${colors.border};
+    outline: none;
+    cursor: pointer;
+    
+    &::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: ${colors.primary};
+      cursor: pointer;
+    }
+    
+    &::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: ${colors.primary};
+      cursor: pointer;
+      border: none;
+    }
+  `,
+  qualityRow: css`
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  `,
+  qualityValue: css`
+    min-width: 40px;
+    font-size: ${fontSize.sm};
+    color: ${colors.text};
+    text-align: right;
+  `,
+  fileSize: css`
+    font-size: ${fontSize.sm};
+    color: ${colors.textMuted};
+    padding: 8px 0;
+  `,
   sidebarFooter: css`
     padding: 16px 20px;
     border-top: 1px solid ${colors.border};
@@ -380,10 +422,17 @@ const ASPECT_OPTIONS: AspectOption[] = [
   { label: '9:16', value: 9 / 16 },
 ]
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
 interface EditImageModalProps {
   imagePath: string
   imageSrc: string
   dimensions: { width: number; height: number }
+  fileSize: number
   onClose: () => void
   onSaveComplete: (updatedItem: FileItem) => void
   triggerRefresh: () => void
@@ -393,6 +442,7 @@ export function EditImageModal({
   imagePath,
   imageSrc,
   dimensions,
+  fileSize: initialFileSize,
   onClose,
   onSaveComplete,
   triggerRefresh,
@@ -427,6 +477,10 @@ export function EditImageModal({
   const [bannerKey, setBannerKey] = useState(0)
   // Error message for modal display
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // Current file size (updates after edits)
+  const [currentFileSize, setCurrentFileSize] = useState(initialFileSize)
+  // Quality slider (0-100)
+  const [quality, setQuality] = useState(95)
 
   // When image loads, calculate scale but don't set crop yet (user must click)
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -535,7 +589,7 @@ export function EditImageModal({
     setRotating(true)
     
     try {
-      // Send rotation request - full image, just rotate
+      // Send rotation request - full image, just rotate at max quality
       const response = await fetch('/api/studio/edit-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -547,6 +601,7 @@ export function EditImageModal({
             width: naturalSize.height,  // Swapped for 90° rotation
             height: naturalSize.width 
           },
+          quality: 100,  // Always use max quality for rotation
         }),
       })
       
@@ -557,6 +612,10 @@ export function EditImageModal({
         setNaturalSize({ width: naturalSize.height, height: naturalSize.width })
         setOutputWidth(naturalSize.height)
         setOutputHeight(naturalSize.width)
+        // Update file size
+        if (result.updatedItem?.size) {
+          setCurrentFileSize(result.updatedItem.size)
+        }
         // Reset crop
         setCropEnabled(false)
         setCrop(undefined)
@@ -772,8 +831,6 @@ export function EditImageModal({
 
   const handleSave = async () => {
     if (!imageLoaded) return
-    // Need either crop or resize to be active
-    if (!cropEnabled && !resizeActive) return
     
     setSaving(true)
     
@@ -795,8 +852,9 @@ export function EditImageModal({
       // Determine resize dimensions:
       // - If cropping: use crop dimensions (no resize, just extract)
       // - If resizing: use output dimensions
-      const resizeWidth = cropEnabled ? cropWidth : outputWidth
-      const resizeHeight = cropEnabled ? cropHeight : outputHeight
+      // - Otherwise: use natural size (just applying quality)
+      const resizeWidth = cropEnabled ? cropWidth : (resizeActive ? outputWidth : naturalSize.width)
+      const resizeHeight = cropEnabled ? cropHeight : (resizeActive ? outputHeight : naturalSize.height)
       
       const response = await fetch('/api/studio/edit-image', {
         method: 'POST',
@@ -809,6 +867,7 @@ export function EditImageModal({
             width: resizeWidth,
             height: resizeHeight,
           },
+          quality,  // Use quality from slider
         }),
       })
       
@@ -821,6 +880,10 @@ export function EditImageModal({
         setNaturalSize({ width: result.dimensions.width, height: result.dimensions.height })
         setOutputWidth(result.dimensions.width)
         setOutputHeight(result.dimensions.height)
+        // Update file size
+        if (result.updatedItem?.size) {
+          setCurrentFileSize(result.updatedItem.size)
+        }
         // Reset crop state
         setCropEnabled(false)
         setCrop(undefined)
@@ -1025,13 +1088,36 @@ export function EditImageModal({
                 <p css={styles.hint}>Maintains aspect ratio</p>
               )}
             </div>
+            
+            {/* Quality Slider */}
+            <div css={styles.section}>
+              <span css={styles.sectionLabel}>Quality</span>
+              <div css={styles.qualityRow}>
+                <input
+                  type="range"
+                  css={styles.qualitySlider}
+                  min={1}
+                  max={100}
+                  value={quality}
+                  onChange={(e) => setQuality(parseInt(e.target.value))}
+                />
+                <span css={styles.qualityValue}>{quality}%</span>
+              </div>
+              <p css={styles.hint}>Lower quality = smaller file size</p>
+            </div>
+            
+            {/* File Size */}
+            <div css={styles.section}>
+              <span css={styles.sectionLabel}>File Size</span>
+              <p css={styles.fileSize}>{formatFileSize(currentFileSize)}</p>
+            </div>
           </div>
           
           <div css={styles.sidebarFooter}>
             <button 
               css={styles.actionBtn} 
               onClick={handleSave} 
-              disabled={saving || rotating || (!cropEnabled && !resizeActive)}
+              disabled={saving || rotating || !imageLoaded}
             >
               {saving ? (
                 <>
