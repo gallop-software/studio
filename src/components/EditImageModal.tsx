@@ -92,22 +92,21 @@ const styles = {
     border-radius: 8px;
     padding: 16px;
     height: 400px;
-    overflow: hidden;
-    
-    .ReactCrop {
-      max-width: 100%;
-      max-height: 100%;
-    }
     
     .ReactCrop__crop-selection {
       border: 2px solid ${colors.primary};
     }
   `,
-  cropImage: css`
+  cropWrapper: css`
     max-width: 100%;
     max-height: 368px;
+  `,
+  cropImage: css`
     display: block;
-    object-fit: contain;
+    max-width: 100%;
+    max-height: 368px;
+    width: auto;
+    height: auto;
   `,
   controls: css`
     margin-top: 20px;
@@ -459,6 +458,7 @@ export function EditImageModal({
               onChange={(c) => setCrop(c)}
               onComplete={(c) => setCompletedCrop(c)}
               aspect={aspect}
+              css={styles.cropWrapper}
               style={{ 
                 transform: `rotate(${rotation}deg)`,
                 transition: 'transform 0.2s ease',
