@@ -97,18 +97,20 @@ export async function handleEditImage(request: Request) {
     pipeline = pipeline.resize(resize.width, resize.height);
 
     // Determine output format based on original file extension
+    // Use high quality (95) to prevent quality loss on repeated edits
     const ext = path.extname(imagePath).toLowerCase();
     let finalBuffer: Buffer;
     
     if (ext === ".png") {
-      finalBuffer = await pipeline.png({ quality: 85 }).toBuffer();
+      // PNG is lossless, compressionLevel doesn't affect quality
+      finalBuffer = await pipeline.png({ compressionLevel: 9 }).toBuffer();
     } else if (ext === ".webp") {
-      finalBuffer = await pipeline.webp({ quality: 85 }).toBuffer();
+      finalBuffer = await pipeline.webp({ quality: 95, lossless: false }).toBuffer();
     } else if (ext === ".gif") {
       finalBuffer = await pipeline.gif().toBuffer();
     } else {
-      // Default to JPEG for jpg/jpeg
-      finalBuffer = await pipeline.jpeg({ quality: 85 }).toBuffer();
+      // Default to JPEG for jpg/jpeg - use high quality to minimize loss
+      finalBuffer = await pipeline.jpeg({ quality: 95, mozjpeg: true }).toBuffer();
     }
 
     // Get final dimensions
