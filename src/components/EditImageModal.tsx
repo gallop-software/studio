@@ -79,9 +79,6 @@ const styles = {
     height: 20px;
     color: ${colors.textSecondary};
   `,
-  rotationWrapper: css`
-    transition: transform 0.3s ease;
-  `,
   cropWrapper: css`
     max-width: 100%;
     max-height: calc(100vh - 150px);
@@ -534,25 +531,20 @@ export function EditImageModal({
             </button>
           </div>
           
-          <div 
-            css={styles.rotationWrapper}
-            style={{ transform: `rotate(${rotation}deg)` }}
+          <ReactCrop
+            crop={crop}
+            onChange={(c) => setCrop(c)}
+            onComplete={(c) => setCompletedCrop(c)}
+            aspect={aspect}
+            css={styles.cropWrapper}
           >
-            <ReactCrop
-              crop={crop}
-              onChange={(c) => setCrop(c)}
-              onComplete={(c) => setCompletedCrop(c)}
-              aspect={aspect}
-              css={styles.cropWrapper}
-            >
-              <img
-                ref={imgRef}
-                src={imageSrc}
-                alt="Edit"
-                onLoad={onImageLoad}
-              />
-            </ReactCrop>
-          </div>
+            <img
+              ref={imgRef}
+              src={imageSrc}
+              alt="Edit"
+              onLoad={onImageLoad}
+            />
+          </ReactCrop>
         </div>
         
         {/* Sidebar */}
