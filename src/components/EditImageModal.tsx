@@ -306,6 +306,22 @@ const styles = {
     color: ${colors.textMuted};
     font-style: italic;
   `,
+  clearBtn: css`
+    margin-top: 8px;
+    padding: 6px 12px;
+    font-size: ${fontSize.xs};
+    color: ${colors.textSecondary};
+    background: transparent;
+    border: 1px solid ${colors.border};
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    
+    &:hover {
+      background: ${colors.surfaceHover};
+      color: ${colors.text};
+    }
+  `,
 }
 
 interface AspectOption {
@@ -357,6 +373,8 @@ export function EditImageModal({
   const [cropEnabled, setCropEnabled] = useState(false)
   // Cache buster for refreshing image after rotation
   const [imageCacheBuster, setImageCacheBuster] = useState(0)
+  // Track if image was modified (rotated) so we can refresh on close
+  const [wasModified, setWasModified] = useState(false)
 
   // When image loads, calculate scale but don't set crop yet (user must click)
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -382,25 +400,64 @@ export function EditImageModal({
     
     setCropEnabled(true)
     
-    // Set initial crop to full image
-    const initialCrop: Crop = {
-      unit: '%',
-      x: 0,
-      y: 0,
-      width: 100,
-      height: 100,
+    // Apply aspect ratio if one is selected, otherwise use full image
+    if (aspect) {
+      const imgAspect = displayWidth / displayHeight
+      let cropWidthPercent: number
+      let cropHeightPercent: number
+      
+      if (aspect > imgAspect) {
+        cropWidthPercent = 100
+        cropHeightPercent = (imgAspect / aspect) * 100
+      } else {
+        cropHeightPercent = 100
+        cropWidthPercent = (aspect / imgAspect) * 100
+      }
+      
+      const newCrop: Crop = {
+        unit: '%',
+        x: (100 - cropWidthPercent) / 2,
+        y: (100 - cropHeightPercent) / 2,
+        width: cropWidthPercent,
+        height: cropHeightPercent,
+      }
+      setCrop(newCrop)
+      
+      const pixelCrop: PixelCrop = {
+        unit: 'px',
+        x: Math.round((newCrop.x / 100) * displayWidth),
+        y: Math.round((newCrop.y / 100) * displayHeight),
+        width: Math.round((newCrop.width / 100) * displayWidth),
+        height: Math.round((newCrop.height / 100) * displayHeight),
+      }
+      setCompletedCrop(pixelCrop)
+    } else {
+      // No aspect ratio - set initial crop to full image
+      const initialCrop: Crop = {
+        unit: '%',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+      }
+      setCrop(initialCrop)
+      
+      const initialPixelCrop: PixelCrop = {
+        unit: 'px',
+        x: 0,
+        y: 0,
+        width: displayWidth,
+        height: displayHeight,
+      }
+      setCompletedCrop(initialPixelCrop)
     }
-    setCrop(initialCrop)
-    
-    // Also set completedCrop
-    const initialPixelCrop: PixelCrop = {
-      unit: 'px',
-      x: 0,
-      y: 0,
-      width: displayWidth,
-      height: displayHeight,
-    }
-    setCompletedCrop(initialPixelCrop)
+  }
+  
+  // Clear crop selection
+  const handleClearCrop = () => {
+    setCropEnabled(false)
+    setCrop(undefined)
+    setCompletedCrop(undefined)
   }
 
   // Update output dimensions when crop changes - calculate actual pixel values
@@ -453,6 +510,8 @@ export function EditImageModal({
         setCompletedCrop(undefined)
         // Bust cache to show rotated image
         setImageCacheBuster(Date.now())
+        // Mark as modified so close will refresh detail view
+        setWasModified(true)
         // Trigger refresh for file list
         triggerRefresh()
       } else {
@@ -469,6 +528,20 @@ export function EditImageModal({
 
   const handleRotateCW = () => handleRotate(90)
   const handleRotateCCW = () => handleRotate(-90)
+
+  // Handle close - refresh detail view if image was modified
+  const handleClose = () => {
+    if (wasModified) {
+      // Create a minimal updated item to trigger cache bust in detail view
+      onSaveComplete({
+        name: imagePath.split('/').pop() || '',
+        path: imagePath,
+        type: 'file',
+        dimensions: naturalSize,
+      } as FileItem)
+    }
+    onClose()
+  }
 
   const handleAspectChange = (newAspect: number | undefined) => {
     setAspect(newAspect)
@@ -607,7 +680,7 @@ export function EditImageModal({
         {/* Main area - Image cropper */}
         <div css={styles.main}>
           <div css={styles.headerButtons}>
-            <button css={styles.closeBtn} onClick={onClose}>
+            <button css={styles.closeBtn} onClick={handleClose}>
               <svg css={styles.closeIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -669,6 +742,14 @@ export function EditImageModal({
                 ))}
               </div>
               <p css={styles.hint}>Drag corners to resize crop area</p>
+              {cropEnabled && (
+                <button 
+                  css={styles.clearBtn}
+                  onClick={handleClearCrop}
+                >
+                  Clear Selection
+                </button>
+              )}
             </div>
             
             {/* Rotation */}
@@ -731,7 +812,7 @@ export function EditImageModal({
                 'Save Changes'
               )}
             </button>
-            <button css={styles.cancelBtn} onClick={onClose} disabled={saving || rotating}>
+            <button css={styles.cancelBtn} onClick={handleClose} disabled={saving || rotating}>
               Close
             </button>
           </div>
