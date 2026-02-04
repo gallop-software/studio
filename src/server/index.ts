@@ -45,6 +45,7 @@ import {
   handleCheckFeaturedImage,
   handleGetFeaturedImageOptions,
 } from "../handlers/featured-image";
+import { handleEditImage } from "../handlers/edit-image";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -166,6 +167,7 @@ export async function startServer(options: ServerOptions) {
   app.post("/api/studio/rename", wrapHandler(handleRename));
   app.post("/api/studio/rename-stream", wrapHandler(handleRenameStream, true));
   app.post("/api/studio/move", wrapHandler(handleMoveStream, true));
+  app.post("/api/studio/edit-image", wrapHandler(handleEditImage));
   app.post("/api/studio/sync", wrapHandler(handleSync, true));
   app.post("/api/studio/sync-stream", wrapHandler(handleSyncStream, true));
   app.post(

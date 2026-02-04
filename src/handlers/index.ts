@@ -43,3 +43,6 @@ export { handleImportUrls, handleGetCdns, handleUpdateCdns } from './import'
 
 // Favicon handler
 export { handleGenerateFavicon } from './favicon'
+
+// Edit image handler
+export { handleEditImage } from './edit-image'

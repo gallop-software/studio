@@ -6,7 +6,9 @@ import { css } from '@emotion/react'
 import { useStudio } from './StudioContext'
 import { AlertModal, InputModal, ProgressModal, type ProgressState } from './StudioModal'
 import { R2SetupModal } from './R2SetupModal'
+import { EditImageModal } from './EditImageModal'
 import { colors, fontSize } from './tokens'
+import type { FileItem } from '../types'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif']
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v']
@@ -364,6 +366,7 @@ export function StudioDetailView() {
     status: 'processing',
     message: 'Generating favicons...',
   })
+  const [showEditModal, setShowEditModal] = useState(false)
   
   // Check if an action is in progress
   const isActionInProgress = actionState.showProgress
@@ -372,6 +375,19 @@ export function StudioDetailView() {
   const isFaviconSource = focusedItem ? 
     focusedItem.name.toLowerCase() === 'favicon.png' || 
     focusedItem.name.toLowerCase() === 'favicon.jpg' : false
+
+  // Check if image can be edited (must be local, not SVG, and be an editable image type)
+  const canEditImage = focusedItem && 
+    !focusedItem.isProtected &&
+    /\.(jpg|jpeg|png|webp|gif)$/i.test(focusedItem.name) &&
+    // Must have local file - either not pushed to CDN, or has local update pending
+    (!focusedItem.cdnPushed || focusedItem.hasUpdate || !focusedItem.isRemote)
+  
+  // Handler for when edit completes
+  const handleEditComplete = (updatedItem: FileItem) => {
+    // Update the focused item with new data
+    setFocusedItem(updatedItem as typeof focusedItem)
+  }
 
   if (!focusedItem) return null
 
@@ -787,6 +803,19 @@ export function StudioDetailView() {
                 </svg>
                 Rename
               </button>
+              {isImage && (
+                <button 
+                  css={styles.actionBtn} 
+                  onClick={() => setShowEditModal(true)}
+                  disabled={isActionInProgress || !canEditImage}
+                  title={!canEditImage ? 'Download image first to edit' : undefined}
+                >
+                  <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M14 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                  </svg>
+                  Edit Image
+                </button>
+              )}
               <button 
                 css={styles.actionBtn} 
                 onClick={() => requestMove([focusedItem.path])}
@@ -868,6 +897,17 @@ export function StudioDetailView() {
         </div>
         </div>
       </div>
+      
+      {showEditModal && focusedItem.dimensions && (
+        <EditImageModal
+          imagePath={focusedItem.path}
+          imageSrc={imageSrc}
+          dimensions={focusedItem.dimensions}
+          onClose={() => setShowEditModal(false)}
+          onSaveComplete={handleEditComplete}
+          triggerRefresh={triggerRefresh}
+        />
+      )}
     </>
   )
 }
