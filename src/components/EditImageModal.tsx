@@ -375,6 +375,11 @@ export function EditImageModal({
   const [imageCacheBuster, setImageCacheBuster] = useState(0)
   // Track if image was modified (rotated) so we can refresh on close
   const [wasModified, setWasModified] = useState(false)
+  // Track if resize is active (different from natural)
+  const resizeActive = outputWidth !== naturalSize.width || outputHeight !== naturalSize.height
+  // Crop selection dimensions (in actual pixels)
+  const [cropWidth, setCropWidth] = useState(0)
+  const [cropHeight, setCropHeight] = useState(0)
 
   // When image loads, calculate scale but don't set crop yet (user must click)
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -394,6 +399,8 @@ export function EditImageModal({
   // Enable cropping when user clicks on the image
   const handleEnableCrop = () => {
     if (!imageLoaded || !imgRef.current || cropEnabled) return
+    // Can't enable crop if resize is active
+    if (resizeActive) return
     
     const displayWidth = imgRef.current.width
     const displayHeight = imgRef.current.height
@@ -460,20 +467,19 @@ export function EditImageModal({
     setCompletedCrop(undefined)
   }
 
-  // Update output dimensions when crop changes - calculate actual pixel values
+  // Update crop selection dimensions when crop changes
   useEffect(() => {
     if (completedCrop && imageLoaded && scale > 0) {
       // completedCrop is in displayed pixels, multiply by scale to get actual pixels
       const actualCropWidth = Math.round(completedCrop.width * scale)
       const actualCropHeight = Math.round(completedCrop.height * scale)
-      setOutputWidth(actualCropWidth)
-      setOutputHeight(actualCropHeight)
-    } else if (!cropEnabled && imageLoaded) {
-      // No crop - use full image dimensions
-      setOutputWidth(naturalSize.width)
-      setOutputHeight(naturalSize.height)
+      setCropWidth(actualCropWidth)
+      setCropHeight(actualCropHeight)
+    } else if (!cropEnabled) {
+      setCropWidth(0)
+      setCropHeight(0)
     }
-  }, [completedCrop, imageLoaded, scale, cropEnabled, naturalSize])
+  }, [completedCrop, imageLoaded, scale, cropEnabled])
 
   // Rotate and save immediately
   const handleRotate = async (degrees: 90 | -90) => {
@@ -606,24 +612,117 @@ export function EditImageModal({
     }
   }
 
-  const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Output size handlers - always maintain aspect ratio
+  const naturalAspect = naturalSize.width / naturalSize.height
+
+  const handleOutputWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (cropEnabled) return  // Can't resize while cropping
     const newWidth = parseInt(e.target.value) || 0
     setOutputWidth(newWidth)
-    if (aspect && newWidth > 0) {
-      setOutputHeight(Math.round(newWidth / aspect))
+    if (newWidth > 0) {
+      setOutputHeight(Math.round(newWidth / naturalAspect))
     }
   }
 
-  const handleHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleOutputHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (cropEnabled) return  // Can't resize while cropping
     const newHeight = parseInt(e.target.value) || 0
     setOutputHeight(newHeight)
-    if (aspect && newHeight > 0) {
-      setOutputWidth(Math.round(newHeight * aspect))
+    if (newHeight > 0) {
+      setOutputWidth(Math.round(newHeight * naturalAspect))
     }
+  }
+
+  const handleResetSize = () => {
+    setOutputWidth(naturalSize.width)
+    setOutputHeight(naturalSize.height)
+  }
+
+  // Crop dimension handlers - update the crop selection
+  const handleCropWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!completedCrop || !imgRef.current) return
+    const newWidth = parseInt(e.target.value) || 0
+    if (newWidth <= 0) return
+    
+    // Calculate new height based on aspect ratio if set
+    let newHeight = cropHeight
+    if (aspect) {
+      newHeight = Math.round(newWidth / aspect)
+    }
+    
+    // Convert to display pixels
+    const displayWidth = newWidth / scale
+    const displayHeight = newHeight / scale
+    
+    // Keep the crop centered or at same position
+    const newCrop: PixelCrop = {
+      unit: 'px',
+      x: completedCrop.x,
+      y: completedCrop.y,
+      width: displayWidth,
+      height: displayHeight,
+    }
+    
+    // Clamp to image bounds
+    const maxWidth = imgRef.current.width - newCrop.x
+    const maxHeight = imgRef.current.height - newCrop.y
+    newCrop.width = Math.min(displayWidth, maxWidth)
+    newCrop.height = Math.min(displayHeight, maxHeight)
+    
+    setCompletedCrop(newCrop)
+    setCrop({
+      unit: 'px',
+      x: newCrop.x,
+      y: newCrop.y,
+      width: newCrop.width,
+      height: newCrop.height,
+    })
+  }
+
+  const handleCropHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!completedCrop || !imgRef.current) return
+    const newHeight = parseInt(e.target.value) || 0
+    if (newHeight <= 0) return
+    
+    // Calculate new width based on aspect ratio if set
+    let newWidth = cropWidth
+    if (aspect) {
+      newWidth = Math.round(newHeight * aspect)
+    }
+    
+    // Convert to display pixels
+    const displayWidth = newWidth / scale
+    const displayHeight = newHeight / scale
+    
+    // Keep the crop at same position
+    const newCrop: PixelCrop = {
+      unit: 'px',
+      x: completedCrop.x,
+      y: completedCrop.y,
+      width: displayWidth,
+      height: displayHeight,
+    }
+    
+    // Clamp to image bounds
+    const maxWidth = imgRef.current.width - newCrop.x
+    const maxHeight = imgRef.current.height - newCrop.y
+    newCrop.width = Math.min(displayWidth, maxWidth)
+    newCrop.height = Math.min(displayHeight, maxHeight)
+    
+    setCompletedCrop(newCrop)
+    setCrop({
+      unit: 'px',
+      x: newCrop.x,
+      y: newCrop.y,
+      width: newCrop.width,
+      height: newCrop.height,
+    })
   }
 
   const handleSave = async () => {
     if (!imageLoaded) return
+    // Need either crop or resize to be active
+    if (!cropEnabled && !resizeActive) return
     
     setSaving(true)
     
@@ -642,6 +741,12 @@ export function EditImageModal({
         height: naturalSize.height,
       }
       
+      // Determine resize dimensions:
+      // - If cropping: use crop dimensions (no resize, just extract)
+      // - If resizing: use output dimensions
+      const resizeWidth = cropEnabled ? cropWidth : outputWidth
+      const resizeHeight = cropEnabled ? cropHeight : outputHeight
+      
       const response = await fetch('/api/studio/edit-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -650,8 +755,8 @@ export function EditImageModal({
           crop: actualCrop,
           rotation: 0,  // Rotation is now handled separately via instant save
           resize: {
-            width: outputWidth,
-            height: outputHeight,
+            width: resizeWidth,
+            height: resizeHeight,
           },
         }),
       })
@@ -709,7 +814,9 @@ export function EditImageModal({
             </ReactCrop>
             {!cropEnabled && imageLoaded && !rotating && (
               <div css={styles.cropHint}>
-                Click to enable crop selection
+                {resizeActive 
+                  ? 'Save resize first to enable crop' 
+                  : 'Click to enable crop selection'}
               </div>
             )}
             {rotating && (
@@ -772,28 +879,70 @@ export function EditImageModal({
               <p css={styles.hint}>Rotates and saves immediately</p>
             </div>
             
-            {/* Output Size */}
+            {/* Crop Selection - only when crop is enabled */}
+            {cropEnabled && (
+              <div css={styles.section}>
+                <span css={styles.sectionLabel}>Crop Selection</span>
+                <div css={styles.resizeRow}>
+                  <input
+                    type="number"
+                    css={styles.resizeInput}
+                    value={cropWidth}
+                    onChange={handleCropWidthChange}
+                    min={1}
+                  />
+                  <span css={styles.resizeX}>×</span>
+                  <input
+                    type="number"
+                    css={styles.resizeInput}
+                    value={cropHeight}
+                    onChange={handleCropHeightChange}
+                    min={1}
+                  />
+                  <span css={styles.resizeX}>px</span>
+                </div>
+                <p css={styles.hint}>Edit to adjust crop size</p>
+              </div>
+            )}
+            
+            {/* Output Size - disabled when crop is enabled */}
             <div css={styles.section}>
-              <span css={styles.sectionLabel}>Output Size</span>
+              <span css={styles.sectionLabel}>Resize Image</span>
               <div css={styles.resizeRow}>
                 <input
                   type="number"
                   css={styles.resizeInput}
                   value={outputWidth}
-                  onChange={handleWidthChange}
+                  onChange={handleOutputWidthChange}
                   min={1}
+                  disabled={cropEnabled}
                 />
                 <span css={styles.resizeX}>×</span>
                 <input
                   type="number"
                   css={styles.resizeInput}
                   value={outputHeight}
-                  onChange={handleHeightChange}
+                  onChange={handleOutputHeightChange}
                   min={1}
+                  disabled={cropEnabled}
                 />
                 <span css={styles.resizeX}>px</span>
               </div>
-              <p css={styles.hint}>Modify to resize the output</p>
+              {resizeActive && !cropEnabled && (
+                <button 
+                  css={styles.clearBtn}
+                  onClick={handleResetSize}
+                >
+                  Reset to Original
+                </button>
+              )}
+              {cropEnabled ? (
+                <p css={styles.hint}>Clear crop selection to resize</p>
+              ) : resizeActive ? (
+                <p css={styles.hint}>Save to apply resize, then crop</p>
+              ) : (
+                <p css={styles.hint}>Maintains aspect ratio</p>
+              )}
             </div>
           </div>
           
@@ -801,7 +950,7 @@ export function EditImageModal({
             <button 
               css={styles.actionBtn} 
               onClick={handleSave} 
-              disabled={saving || rotating || !completedCrop}
+              disabled={saving || rotating || (!cropEnabled && !resizeActive)}
             >
               {saving ? (
                 <>
