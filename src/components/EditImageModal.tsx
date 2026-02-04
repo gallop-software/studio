@@ -100,11 +100,11 @@ const styles = {
   `,
   successBanner: css`
     position: absolute;
-    top: 50%;
+    top: 24px;
     left: 50%;
-    transform: translate(-50%, -50%);
-    background: #fbbf24;
-    color: #000;
+    transform: translateX(-50%);
+    background: #22c55e;
+    color: #fff;
     padding: 12px 24px;
     border-radius: 8px;
     font-size: ${fontSize.sm};
@@ -114,10 +114,10 @@ const styles = {
     animation: fadeInOut 3s ease-in-out forwards;
     
     @keyframes fadeInOut {
-      0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
-      10% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-      90% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-      100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+      0% { opacity: 0; transform: translateX(-50%) scale(0.9); }
+      10% { opacity: 1; transform: translateX(-50%) scale(1); }
+      90% { opacity: 1; transform: translateX(-50%) scale(1); }
+      100% { opacity: 0; transform: translateX(-50%) scale(0.9); }
     }
   `,
   cropWrapper: css`
@@ -423,6 +423,8 @@ export function EditImageModal({
   const [cropHeight, setCropHeight] = useState(0)
   // Success banner after save
   const [showSuccessBanner, setShowSuccessBanner] = useState(false)
+  // Key to reset banner animation when triggered multiple times
+  const [bannerKey, setBannerKey] = useState(0)
   // Error message for modal display
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -565,7 +567,8 @@ export function EditImageModal({
         setWasModified(true)
         // Trigger refresh for file list
         triggerRefresh()
-        // Show success banner for 3 seconds
+        // Show success banner for 3 seconds (reset key to restart animation)
+        setBannerKey(k => k + 1)
         setShowSuccessBanner(true)
         setTimeout(() => setShowSuccessBanner(false), 3000)
       } else {
@@ -825,7 +828,8 @@ export function EditImageModal({
         // Mark as modified and bust cache
         setWasModified(true)
         setImageCacheBuster(Date.now())
-        // Show success banner for 3 seconds
+        // Show success banner for 3 seconds (reset key to restart animation)
+        setBannerKey(k => k + 1)
         setShowSuccessBanner(true)
         setTimeout(() => setShowSuccessBanner(false), 3000)
       } else {
@@ -886,7 +890,7 @@ export function EditImageModal({
               </div>
             )}
             {showSuccessBanner && (
-              <div css={styles.successBanner}>
+              <div key={bannerKey} css={styles.successBanner}>
                 Image updated
               </div>
             )}
