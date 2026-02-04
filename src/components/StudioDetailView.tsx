@@ -382,8 +382,8 @@ export function StudioDetailView() {
   const canEditImage = focusedItem && 
     !focusedItem.isProtected &&
     /\.(jpg|jpeg|png|webp|gif)$/i.test(focusedItem.name) &&
-    // Must have local file - either not pushed to CDN, or has local update pending
-    (!focusedItem.cdnPushed || focusedItem.hasUpdate || !focusedItem.isRemote)
+    // Must have local file - either not on cloud, or has local update pending
+    (!focusedItem.isCloud || focusedItem.hasUpdate)
   
   // Handler for when edit completes
   const handleEditComplete = (updatedItem: FileItem) => {
