@@ -184,11 +184,6 @@ const styles = {
     width: 16px;
     height: 16px;
   `,
-  rotationDisplay: css`
-    font-size: ${fontSize.sm};
-    color: ${colors.textSecondary};
-    text-align: center;
-  `,
   infoRow: css`
     display: flex;
     justify-content: space-between;
@@ -506,10 +501,6 @@ export function EditImageModal({
             onComplete={(c) => setCompletedCrop(c)}
             aspect={aspect}
             css={styles.cropWrapper}
-            style={{ 
-              transform: `rotate(${rotation}deg)`,
-              transition: 'transform 0.2s ease',
-            }}
           >
             <img
               ref={imgRef}
@@ -561,7 +552,9 @@ export function EditImageModal({
                   CW
                 </button>
               </div>
-              <p css={styles.rotationDisplay}>{rotation}°</p>
+              {rotation !== 0 && (
+                <p css={styles.hint}>Will rotate {rotation}° on save</p>
+              )}
             </div>
             
             {/* Crop Info */}
