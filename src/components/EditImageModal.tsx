@@ -342,7 +342,7 @@ export function EditImageModal({
   // When image loads, set initial crop to full image and calculate scale
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
-    const { naturalWidth, naturalHeight, width: displayWidth } = img
+    const { naturalWidth, naturalHeight, width: displayWidth, height: displayHeight } = img
     
     setNaturalSize({ width: naturalWidth, height: naturalHeight })
     setScale(naturalWidth / displayWidth)
@@ -359,6 +359,16 @@ export function EditImageModal({
       height: 100,
     }
     setCrop(initialCrop)
+    
+    // Also set completedCrop so save works immediately
+    const initialPixelCrop: PixelCrop = {
+      unit: 'px',
+      x: 0,
+      y: 0,
+      width: displayWidth,
+      height: displayHeight,
+    }
+    setCompletedCrop(initialPixelCrop)
   }
 
   // Update output dimensions when crop changes - calculate actual pixel values
@@ -383,27 +393,63 @@ export function EditImageModal({
   const handleAspectChange = (newAspect: number | undefined) => {
     setAspect(newAspect)
     
-    // Reset crop when aspect changes
-    if (newAspect && imageLoaded) {
-      const imgAspect = naturalSize.width / naturalSize.height
-      let cropWidth: number
-      let cropHeight: number
+    if (!imageLoaded || !imgRef.current) return
+    
+    const displayWidth = imgRef.current.width
+    const displayHeight = imgRef.current.height
+    
+    if (newAspect) {
+      // Calculate crop with specific aspect ratio
+      const imgAspect = displayWidth / displayHeight
+      let cropWidthPercent: number
+      let cropHeightPercent: number
       
       if (newAspect > imgAspect) {
-        cropWidth = 100
-        cropHeight = (imgAspect / newAspect) * 100
+        cropWidthPercent = 100
+        cropHeightPercent = (imgAspect / newAspect) * 100
       } else {
-        cropHeight = 100
-        cropWidth = (newAspect / imgAspect) * 100
+        cropHeightPercent = 100
+        cropWidthPercent = (newAspect / imgAspect) * 100
       }
       
-      setCrop({
+      const newCrop: Crop = {
         unit: '%',
-        x: (100 - cropWidth) / 2,
-        y: (100 - cropHeight) / 2,
-        width: cropWidth,
-        height: cropHeight,
-      })
+        x: (100 - cropWidthPercent) / 2,
+        y: (100 - cropHeightPercent) / 2,
+        width: cropWidthPercent,
+        height: cropHeightPercent,
+      }
+      setCrop(newCrop)
+      
+      // Also set completedCrop in pixels
+      const pixelCrop: PixelCrop = {
+        unit: 'px',
+        x: Math.round((newCrop.x / 100) * displayWidth),
+        y: Math.round((newCrop.y / 100) * displayHeight),
+        width: Math.round((newCrop.width / 100) * displayWidth),
+        height: Math.round((newCrop.height / 100) * displayHeight),
+      }
+      setCompletedCrop(pixelCrop)
+    } else {
+      // Free aspect - set to full image
+      const newCrop: Crop = {
+        unit: '%',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+      }
+      setCrop(newCrop)
+      
+      // Also set completedCrop in pixels
+      const pixelCrop: PixelCrop = {
+        unit: 'px',
+        x: 0,
+        y: 0,
+        width: displayWidth,
+        height: displayHeight,
+      }
+      setCompletedCrop(pixelCrop)
     }
   }
 
