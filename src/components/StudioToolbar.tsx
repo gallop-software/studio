@@ -750,6 +750,7 @@ export function StudioToolbar() {
       endpoint: '/api/studio/delete-stream',
       body: { paths },
       title: 'Deleting Files',
+      operationType: 'delete',
       onComplete: () => {
         clearSelection()
       },

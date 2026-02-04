@@ -400,6 +400,13 @@ export function ProgressModal({
               <p css={styles.message}>
                 {progress.message ? (
                   progress.message
+                ) : progress.isDelete ? (
+                  <>
+                    Deleted {progress.processed} file{progress.processed !== 1 ? 's' : ''}.
+                    {progress.errors !== undefined && progress.errors > 0 ? (
+                      <> {progress.errors} error{progress.errors !== 1 ? 's' : ''} occurred.</>
+                    ) : null}
+                  </>
                 ) : progress.isMove ? (
                   <>
                     Moved {progress.processed} file{progress.processed !== 1 ? 's' : ''}.

@@ -31,6 +31,7 @@ export interface ProgressState {
   errorMessages?: string[]
   isScan?: boolean
   isMove?: boolean
+  isDelete?: boolean
 }
 
 /**

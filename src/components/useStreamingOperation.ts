@@ -43,6 +43,8 @@ export interface StreamingOperationConfig {
   body: Record<string, unknown>;
   /** Title to show in progress modal */
   title: string;
+  /** Type of operation for progress message formatting */
+  operationType?: 'delete' | 'move' | 'scan' | 'process';
   /** Called when operation completes successfully (including cancelled) */
   onComplete?: (event: StreamEvent) => void;
   /** Called when operation errors */
@@ -106,7 +108,7 @@ export function useStreamingOperation(
 
   const execute = useCallback(
     async (config: StreamingOperationConfig) => {
-      const { endpoint, body, title, onComplete, onError } = config;
+      const { endpoint, body, title, operationType, onComplete, onError } = config;
 
       // Prevent concurrent operations
       if (isRunningRef.current) {
@@ -118,9 +120,9 @@ export function useStreamingOperation(
       stopRequestedRef.current = false;
 
       // Generate unique operation ID
-      const operationType =
+      const opName =
         endpoint.split("/").pop()?.replace("-stream", "") || "op";
-      const operationId = `${operationType}-${Date.now()}-${Math.random()
+      const operationId = `${opName}-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2)}`;
       operationIdRef.current = operationId;
@@ -248,6 +250,9 @@ export function useStreamingOperation(
                     processed,
                     errors: data.errors,
                     orphanedFiles: data.orphanedFiles,
+                    isDelete: operationType === 'delete',
+                    isMove: operationType === 'move',
+                    isScan: operationType === 'scan',
                   });
 
                   triggerRefresh();
