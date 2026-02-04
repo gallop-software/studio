@@ -532,11 +532,20 @@ export function EditImageModal({
         height: naturalSize.height,
       }
       
-      // When rotation is 90° or 270°, dimensions swap
-      // Server applies resize AFTER rotation, so we need to swap the resize dimensions
-      const isRotated90or270 = rotation === 90 || rotation === 270
-      const finalWidth = isRotated90or270 ? outputHeight : outputWidth
-      const finalHeight = isRotated90or270 ? outputWidth : outputHeight
+      // Determine final resize dimensions
+      // When crop is enabled: crop dimensions are from unrotated image, so swap for 90/270
+      // When crop is disabled: outputWidth/Height already account for rotation, don't swap
+      let finalWidth = outputWidth
+      let finalHeight = outputHeight
+      
+      if (cropEnabled && completedCrop) {
+        // Crop was on unrotated image, need to swap resize dimensions for 90/270
+        const isRotated90or270 = rotation === 90 || rotation === 270
+        if (isRotated90or270) {
+          finalWidth = outputHeight
+          finalHeight = outputWidth
+        }
+      }
       
       const response = await fetch('/api/studio/edit-image', {
         method: 'POST',
@@ -605,7 +614,12 @@ export function EditImageModal({
               />
             </ReactCrop>
             {!cropEnabled && imageLoaded && (
-              <div css={styles.cropHint}>Click to enable crop selection</div>
+              <div 
+                css={styles.cropHint}
+                style={{ transform: `rotate(${-rotation}deg)` }}
+              >
+                Click to enable crop selection
+              </div>
             )}
           </div>
         </div>
