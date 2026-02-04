@@ -228,9 +228,14 @@ const styles = {
     transition: all 0.15s ease;
     color: ${colors.text};
     
-    &:hover {
+    &:hover:not(:disabled) {
       background-color: ${colors.surfaceHover};
       border-color: ${colors.borderHover};
+    }
+    
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
   `,
   rotateIcon: css`
