@@ -91,11 +91,11 @@ const styles = {
     background-color: ${colors.background};
     border-radius: 8px;
     padding: 16px;
-    min-height: 300px;
-    max-height: 500px;
-    overflow: auto;
+    height: 400px;
+    overflow: hidden;
     
     .ReactCrop {
+      max-width: 100%;
       max-height: 100%;
     }
     
@@ -105,8 +105,9 @@ const styles = {
   `,
   cropImage: css`
     max-width: 100%;
-    max-height: 450px;
+    max-height: 368px;
     display: block;
+    object-fit: contain;
   `,
   controls: css`
     margin-top: 20px;
