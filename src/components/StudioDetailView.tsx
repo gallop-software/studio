@@ -821,7 +821,7 @@ export function StudioDetailView() {
                   <svg css={styles.actionIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M14 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
                   </svg>
-                  Edit Image
+                  {canEditImage ? 'Edit Image' : 'Download to Edit'}
                 </button>
               )}
               <button 
