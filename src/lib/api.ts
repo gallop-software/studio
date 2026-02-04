@@ -68,7 +68,6 @@ interface MoveResponse {
 interface CheckFeaturedImageResponse {
   filename: string;
   exists: boolean;
-  projectName: string;
 }
 
 interface FeaturedImageOptionsResponse {

@@ -139,12 +139,8 @@ const styles = {
     padding: 16px;
     background: ${colors.background};
   `,
-  contentCloud: css`
-    background: #fff7ed;
-  `,
-  contentRemote: css`
-    background: #fef2f2;
-  `,
+  contentCloud: css``,
+  contentRemote: css``,
   folderIcon: css`
     width: 56px;
     height: 56px;
@@ -440,15 +436,15 @@ const styles = {
   featuredPlaceholder: css`
     position: relative;
     border-radius: 8px;
-    border: 2px dashed ${colors.primary};
+    border: 2px dashed ${colors.success};
     overflow: hidden;
     cursor: pointer;
     transition: all 0.15s ease;
     background-color: ${colors.background};
     
     &:hover {
-      border-color: ${colors.primaryHover};
-      background-color: rgba(99, 102, 241, 0.08);
+      border-color: ${colors.success};
+      background-color: ${colors.successLight};
     }
   `,
   featuredContent: css`
@@ -464,11 +460,11 @@ const styles = {
   featuredIcon: css`
     width: 40px;
     height: 40px;
-    color: ${colors.primary};
+    color: ${colors.success};
   `,
   featuredText: css`
     font-size: ${fontSize.sm};
-    color: ${colors.primary};
+    color: ${colors.success};
     text-align: center;
     font-weight: 500;
   `,

@@ -315,12 +315,8 @@ const styles = {
     flex-shrink: 0;
     border-radius: 4px;
   `,
-  thumbnailCloud: css`
-    background: #fff7ed;
-  `,
-  thumbnailRemote: css`
-    background: #fef2f2;
-  `,
+  thumbnailCloud: css``,
+  thumbnailRemote: css``,
   folderIconWrapper: css`
     width: 48px;
     height: 36px;
@@ -440,10 +436,10 @@ const styles = {
   featuredRow: css`
     cursor: pointer;
     transition: background-color 0.15s ease;
-    border: 2px dashed ${colors.primary};
+    border: 2px dashed ${colors.success};
     
     &:hover {
-      background-color: rgba(99, 102, 241, 0.08);
+      background-color: ${colors.successLight};
     }
     
     td {
@@ -453,10 +449,10 @@ const styles = {
   featuredIcon: css`
     width: 24px;
     height: 24px;
-    color: ${colors.primary};
+    color: ${colors.success};
   `,
   featuredText: css`
-    color: ${colors.primary};
+    color: ${colors.success};
     font-weight: 500;
   `,
   openBtn: css`

@@ -65,9 +65,8 @@ export async function handleGenerateFeaturedImage(request: Request) {
       };
 
       try {
-        // Read package.json to get project name and homepage
+        // Read package.json to get homepage URL
         const packageJsonPath = getWorkspacePath("package.json");
-        let projectName = "featured-image";
         let homepageUrl =
           customUrl ||
           process.env.STUDIO_DEV_SITE_URL ||
@@ -76,7 +75,6 @@ export async function handleGenerateFeaturedImage(request: Request) {
         try {
           const packageJsonContent = await fs.readFile(packageJsonPath, "utf8");
           const packageJson = JSON.parse(packageJsonContent);
-          projectName = packageJson.name || "featured-image";
           if (!customUrl && packageJson.homepage) {
             homepageUrl = packageJson.homepage;
           }
@@ -84,13 +82,12 @@ export async function handleGenerateFeaturedImage(request: Request) {
           // package.json not found or invalid, use defaults
         }
 
-        const outputPath = getPublicPath(`${projectName}.jpg`);
-        const relativePath = `public/${projectName}.jpg`;
+        const outputPath = getPublicPath(`featured.jpg`);
+        const relativePath = `public/featured.jpg`;
 
         sendEvent({
           type: "start",
           total: 4,
-          projectName,
           url: homepageUrl,
           output: relativePath,
         });
@@ -170,7 +167,7 @@ export async function handleGenerateFeaturedImage(request: Request) {
           // Only set 'o' (original dimensions), not 'f' (full thumbnail)
           // because the featured image is stored at root level, not in /images/
           const meta = await loadMeta();
-          const metaKey = `/${projectName}.jpg`;
+          const metaKey = `/featured.jpg`;
           setMetaEntry(meta, metaKey, {
             o: { w: width, h: height },
           });
@@ -271,20 +268,8 @@ export async function handleGetFeaturedImageOptions() {
  */
 export async function handleCheckFeaturedImage() {
   try {
-    // Read package.json to get project name
-    const packageJsonPath = getWorkspacePath("package.json");
-    let projectName = "featured-image";
-
-    try {
-      const packageJsonContent = await fs.readFile(packageJsonPath, "utf8");
-      const packageJson = JSON.parse(packageJsonContent);
-      projectName = packageJson.name || "featured-image";
-    } catch {
-      // package.json not found or invalid
-    }
-
-    const expectedFilename = `${projectName}.jpg`;
-    const metaKey = `/${projectName}.jpg`;
+    const expectedFilename = `featured.jpg`;
+    const metaKey = `/featured.jpg`;
 
     // Check if the image exists in _studio.json
     const meta = await loadMeta();
@@ -293,7 +278,6 @@ export async function handleCheckFeaturedImage() {
     return jsonResponse({
       filename: expectedFilename,
       exists,
-      projectName,
     });
   } catch (error) {
     console.error("Check featured image error:", error);

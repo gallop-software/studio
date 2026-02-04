@@ -303,6 +303,7 @@ export function StudioToolbar() {
   const [scanning, setScanning] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteFileCount, setDeleteFileCount] = useState(0)
   const [showSyncConfirm, setShowSyncConfirm] = useState(false)
   const [syncImageCount, setSyncImageCount] = useState(0)
   const [syncHasRemote, setSyncHasRemote] = useState(false)
@@ -704,8 +705,38 @@ export function StudioToolbar() {
     }
   }, [progressState.orphanedFiles, triggerRefresh])
 
-  const handleDeleteClick = useCallback(() => {
+  const handleDeleteClick = useCallback(async () => {
     if (selectedItems.size === 0) return
+
+    const selectedPaths = Array.from(selectedItems)
+
+    // Separate folders and files
+    const selectedFilePaths = selectedPaths.filter(p => {
+      const lastPart = p.split('/').pop() || ''
+      return lastPart.includes('.') && !p.endsWith('/')
+    })
+    const selectedFolders = selectedPaths.filter(p => {
+      const lastPart = p.split('/').pop() || ''
+      return !lastPart.includes('.') || p.endsWith('/')
+    })
+
+    let totalFileCount = selectedFilePaths.length
+
+    // If folders are selected, fetch the file count from them
+    if (selectedFolders.length > 0) {
+      try {
+        const response = await fetch(`/api/studio/folder-images?folders=${encodeURIComponent(selectedFolders.join(','))}`)
+        const data = await response.json()
+
+        if (data.images) {
+          totalFileCount += data.images.length
+        }
+      } catch (error) {
+        console.error('Failed to get folder files:', error)
+      }
+    }
+
+    setDeleteFileCount(totalFileCount)
     setShowDeleteConfirm(true)
   }, [selectedItems])
 
@@ -1204,7 +1235,7 @@ export function StudioToolbar() {
       {showDeleteConfirm && (
         <ConfirmModal
           title="Delete Items"
-          message={`Are you sure you want to delete ${selectedItems.size} item(s)? This action cannot be undone.`}
+          message={`Are you sure you want to delete ${deleteFileCount} file${deleteFileCount !== 1 ? 's' : ''}? This action cannot be undone.`}
           confirmLabel="Delete"
           variant="danger"
           onConfirm={handleDeleteConfirm}
