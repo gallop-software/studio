@@ -97,6 +97,28 @@ const styles = {
     pointer-events: none;
     white-space: nowrap;
   `,
+  successBanner: css`
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fbbf24;
+    color: #000;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: ${fontSize.sm};
+    font-weight: 600;
+    pointer-events: none;
+    z-index: 10;
+    animation: fadeInOut 3s ease-in-out forwards;
+    
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+      10% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      90% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+    }
+  `,
   cropWrapper: css`
     max-width: 100%;
     max-height: calc(100vh - 150px);
@@ -142,6 +164,13 @@ const styles = {
     font-size: ${fontSize.sm};
     font-weight: 600;
     color: ${colors.text};
+  `,
+  subSectionLabel: css`
+    font-size: ${fontSize.xs};
+    font-weight: 500;
+    color: ${colors.textMuted};
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   `,
   aspectButtons: css`
     display: flex;
@@ -380,6 +409,8 @@ export function EditImageModal({
   // Crop selection dimensions (in actual pixels)
   const [cropWidth, setCropWidth] = useState(0)
   const [cropHeight, setCropHeight] = useState(0)
+  // Success banner after save
+  const [showSuccessBanner, setShowSuccessBanner] = useState(false)
 
   // When image loads, calculate scale but don't set crop yet (user must click)
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -766,7 +797,20 @@ export function EditImageModal({
       if (result.success) {
         triggerRefresh()
         onSaveComplete(result.updatedItem)
-        onClose()
+        // Update natural size to new dimensions
+        setNaturalSize({ width: result.dimensions.width, height: result.dimensions.height })
+        setOutputWidth(result.dimensions.width)
+        setOutputHeight(result.dimensions.height)
+        // Reset crop state
+        setCropEnabled(false)
+        setCrop(undefined)
+        setCompletedCrop(undefined)
+        // Mark as modified and bust cache
+        setWasModified(true)
+        setImageCacheBuster(Date.now())
+        // Show success banner for 3 seconds
+        setShowSuccessBanner(true)
+        setTimeout(() => setShowSuccessBanner(false), 3000)
       } else {
         console.error('Edit failed:', result.error)
         alert(result.error || 'Failed to save image')
@@ -824,6 +868,11 @@ export function EditImageModal({
                 Rotating...
               </div>
             )}
+            {showSuccessBanner && (
+              <div css={styles.successBanner}>
+                Image updated
+              </div>
+            )}
           </div>
         </div>
         
@@ -834,21 +883,58 @@ export function EditImageModal({
           </div>
           
           <div css={styles.sidebarContent}>
-            {/* Aspect Ratio */}
+            {/* Crop Selection */}
             <div css={styles.section}>
-              <span css={styles.sectionLabel}>Aspect Ratio</span>
+              <span css={styles.sectionLabel}>Crop Selection</span>
+              
+              {/* Aspect Ratio - sub-heading */}
+              <span css={styles.subSectionLabel}>Aspect Ratio</span>
               <div css={styles.aspectButtons}>
                 {ASPECT_OPTIONS.map((option) => (
                   <button
                     key={option.label}
                     css={[styles.aspectBtn, aspect === option.value && styles.aspectBtnActive]}
                     onClick={() => handleAspectChange(option.value)}
+                    disabled={resizeActive}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-              <p css={styles.hint}>Drag corners to resize crop area</p>
+              
+              {/* Crop dimension inputs - only when crop is enabled */}
+              {cropEnabled && (
+                <>
+                  <span css={styles.subSectionLabel}>Selection Size</span>
+                  <div css={styles.resizeRow}>
+                    <input
+                      type="number"
+                      css={styles.resizeInput}
+                      value={cropWidth}
+                      onChange={handleCropWidthChange}
+                      min={1}
+                    />
+                    <span css={styles.resizeX}>×</span>
+                    <input
+                      type="number"
+                      css={styles.resizeInput}
+                      value={cropHeight}
+                      onChange={handleCropHeightChange}
+                      min={1}
+                    />
+                    <span css={styles.resizeX}>px</span>
+                  </div>
+                </>
+              )}
+              
+              <p css={styles.hint}>
+                {resizeActive 
+                  ? 'Save resize first to enable crop'
+                  : cropEnabled 
+                    ? 'Drag corners to resize crop area' 
+                    : 'Click image to enable crop'}
+              </p>
+              
               {cropEnabled && (
                 <button 
                   css={styles.clearBtn}
@@ -878,32 +964,6 @@ export function EditImageModal({
               </div>
               <p css={styles.hint}>Rotates and saves immediately</p>
             </div>
-            
-            {/* Crop Selection - only when crop is enabled */}
-            {cropEnabled && (
-              <div css={styles.section}>
-                <span css={styles.sectionLabel}>Crop Selection</span>
-                <div css={styles.resizeRow}>
-                  <input
-                    type="number"
-                    css={styles.resizeInput}
-                    value={cropWidth}
-                    onChange={handleCropWidthChange}
-                    min={1}
-                  />
-                  <span css={styles.resizeX}>×</span>
-                  <input
-                    type="number"
-                    css={styles.resizeInput}
-                    value={cropHeight}
-                    onChange={handleCropHeightChange}
-                    min={1}
-                  />
-                  <span css={styles.resizeX}>px</span>
-                </div>
-                <p css={styles.hint}>Edit to adjust crop size</p>
-              </div>
-            )}
             
             {/* Output Size - disabled when crop is enabled */}
             <div css={styles.section}>
