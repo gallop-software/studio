@@ -70,28 +70,20 @@ export async function handleEditImage(request: Request) {
 
     // Step 2: Apply crop FIRST (extract region)
     // Crop coordinates are from the client's view (EXIF-corrected, non-rotated)
-    // Ensure crop values are within bounds and at least 1 pixel
-    const cropX = Math.max(0, Math.min(Math.round(crop.x), exifWidth - 1));
-    const cropY = Math.max(0, Math.min(Math.round(crop.y), exifHeight - 1));
-    const cropWidth = Math.max(1, Math.min(Math.round(crop.width), exifWidth - cropX));
-    const cropHeight = Math.max(1, Math.min(Math.round(crop.height), exifHeight - cropY));
+    const cropX = Math.max(0, Math.min(crop.x, exifWidth - 1));
+    const cropY = Math.max(0, Math.min(crop.y, exifHeight - 1));
+    const cropWidth = Math.min(crop.width, exifWidth - cropX);
+    const cropHeight = Math.min(crop.height, exifHeight - cropY);
 
     let pipeline = sharp(exifCorrectedBuffer);
     
     // Only extract if crop is different from full image
     if (cropX > 0 || cropY > 0 || cropWidth < exifWidth || cropHeight < exifHeight) {
-      // Validate crop area before extraction
-      if (cropX + cropWidth > exifWidth || cropY + cropHeight > exifHeight) {
-        return jsonResponse(
-          { error: `Invalid crop area: ${cropX},${cropY} ${cropWidth}x${cropHeight} exceeds image ${exifWidth}x${exifHeight}` },
-          { status: 400 }
-        );
-      }
       pipeline = pipeline.extract({
-        left: cropX,
-        top: cropY,
-        width: cropWidth,
-        height: cropHeight,
+        left: Math.round(cropX),
+        top: Math.round(cropY),
+        width: Math.round(cropWidth),
+        height: Math.round(cropHeight),
       });
     }
 
