@@ -13,125 +13,125 @@ const fadeIn = keyframes`
   to { opacity: 1; }
 `
 
-const slideIn = keyframes`
-  from { 
-    opacity: 0;
-    transform: translateY(-8px) scale(0.98);
-  }
-  to { 
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-`
-
 const styles = {
   overlay: css`
     position: fixed;
     inset: 0;
-    background-color: rgba(26, 31, 54, 0.5);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     z-index: 10001;
+    display: flex;
+    background: transparent;
     animation: ${fadeIn} 0.15s ease-out;
     font-family: ${fontStack};
   `,
-  modal: css`
+  container: css`
     ${baseReset}
-    background-color: ${colors.surface};
+    display: flex;
+    flex: 1;
+    margin: 24px;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
     border-radius: 12px;
-    box-shadow: 0 30px 60px -12px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.3);
-    max-width: 900px;
-    width: 95%;
-    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  `,
+  main: css`
+    position: relative;
+    flex: 1;
     display: flex;
     flex-direction: column;
-    animation: ${slideIn} 0.2s ease-out;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: ${colors.background};
     overflow: hidden;
-  `,
-  header: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    border-bottom: 1px solid ${colors.border};
-  `,
-  title: css`
-    font-size: ${fontSize.lg};
-    font-weight: 600;
-    color: ${colors.text};
-    margin: 0;
-  `,
-  closeBtn: css`
-    background: none;
-    border: none;
-    padding: 4px;
-    cursor: pointer;
-    color: ${colors.textMuted};
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    
-    &:hover {
-      color: ${colors.text};
-      background-color: ${colors.background};
-    }
-  `,
-  body: css`
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-  `,
-  cropperContainer: css`
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background-color: ${colors.background};
-    border-radius: 8px;
-    padding: 16px;
-    height: 400px;
     
     .ReactCrop__crop-selection {
       border: 2px solid ${colors.primary};
     }
   `,
-  cropWrapper: css`
-    max-width: 100%;
-    max-height: 368px;
-  `,
-  cropImage: css`
-    display: block;
-    max-width: 100%;
-    max-height: 368px;
-    width: auto;
-    height: auto;
-  `,
-  controls: css`
-    margin-top: 20px;
+  headerButtons: css`
+    position: absolute;
+    top: 16px;
+    right: 16px;
     display: flex;
-    flex-direction: column;
-    gap: 16px;
+    gap: 8px;
+    z-index: 10;
   `,
-  controlRow: css`
+  closeBtn: css`
+    padding: 8px;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    
+    &:hover {
+      background-color: ${colors.surfaceHover};
+      border-color: ${colors.borderHover};
+    }
   `,
-  controlLabel: css`
-    font-size: ${fontSize.sm};
-    font-weight: 500;
+  closeIcon: css`
+    width: 20px;
+    height: 20px;
+    color: ${colors.textSecondary};
+  `,
+  cropWrapper: css`
+    max-width: 100%;
+    max-height: calc(100vh - 150px);
+    
+    img {
+      max-width: 100%;
+      max-height: calc(100vh - 150px);
+      display: block;
+    }
+  `,
+  sidebar: css`
+    width: 280px;
+    background: ${colors.surface};
+    border-left: 1px solid ${colors.border};
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  `,
+  sidebarHeader: css`
+    padding: 16px 20px;
+    border-bottom: 1px solid ${colors.border};
+  `,
+  sidebarTitle: css`
+    font-size: ${fontSize.base};
+    font-weight: 600;
     color: ${colors.text};
-    min-width: 100px;
+    margin: 0;
+  `,
+  sidebarContent: css`
+    flex: 1;
+    padding: 20px;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  `,
+  section: css`
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  `,
+  sectionLabel: css`
+    font-size: ${fontSize.sm};
+    font-weight: 600;
+    color: ${colors.text};
   `,
   aspectButtons: css`
     display: flex;
-    gap: 8px;
+    gap: 6px;
     flex-wrap: wrap;
   `,
   aspectBtn: css`
-    padding: 6px 12px;
+    padding: 6px 10px;
     font-size: ${fontSize.sm};
     border: 1px solid ${colors.border};
     background: ${colors.surface};
@@ -141,7 +141,7 @@ const styles = {
     transition: all 0.15s ease;
     
     &:hover {
-      background-color: ${colors.background};
+      background-color: ${colors.surfaceHover};
       border-color: ${colors.borderHover};
     }
   `,
@@ -160,20 +160,23 @@ const styles = {
     gap: 8px;
   `,
   rotateBtn: css`
-    padding: 8px 12px;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 12px;
     font-size: ${fontSize.sm};
-    border: 1px solid ${colors.border};
+    font-weight: 500;
     background: ${colors.surface};
-    color: ${colors.text};
+    border: 1px solid ${colors.border};
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    color: ${colors.text};
     
     &:hover {
-      background-color: ${colors.background};
+      background-color: ${colors.surfaceHover};
       border-color: ${colors.borderHover};
     }
   `,
@@ -184,21 +187,34 @@ const styles = {
   rotationDisplay: css`
     font-size: ${fontSize.sm};
     color: ${colors.textSecondary};
-    margin-left: 12px;
+    text-align: center;
   `,
-  resizeInputs: css`
+  infoRow: css`
+    display: flex;
+    justify-content: space-between;
+    font-size: ${fontSize.sm};
+  `,
+  infoLabel: css`
+    color: ${colors.textSecondary};
+  `,
+  infoValue: css`
+    color: ${colors.text};
+    font-weight: 500;
+  `,
+  resizeRow: css`
     display: flex;
     align-items: center;
     gap: 8px;
   `,
   resizeInput: css`
-    width: 80px;
-    padding: 6px 10px;
+    flex: 1;
+    padding: 8px 10px;
     font-size: ${fontSize.sm};
     border: 1px solid ${colors.border};
     border-radius: 6px;
     background: ${colors.surface};
     color: ${colors.text};
+    text-align: center;
     
     &:focus {
       outline: none;
@@ -209,51 +225,59 @@ const styles = {
     font-size: ${fontSize.sm};
     color: ${colors.textMuted};
   `,
-  footer: css`
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
+  sidebarFooter: css`
     padding: 16px 20px;
     border-top: 1px solid ${colors.border};
-    background-color: ${colors.background};
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   `,
-  btn: css`
-    padding: 10px 18px;
+  actionBtn: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 14px;
     font-size: ${fontSize.base};
     font-weight: 500;
+    background: ${colors.primary};
+    border: 1px solid ${colors.primary};
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
+    color: white;
+    
+    &:hover:not(:disabled) {
+      background-color: ${colors.primaryHover};
+      border-color: ${colors.primaryHover};
+    }
+    
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   `,
-  btnCancel: css`
-    background-color: ${colors.surface};
+  cancelBtn: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 14px;
+    font-size: ${fontSize.base};
+    font-weight: 500;
+    background: ${colors.surface};
     border: 1px solid ${colors.border};
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
     color: ${colors.text};
     
     &:hover {
       background-color: ${colors.surfaceHover};
       border-color: ${colors.borderHover};
     }
-  `,
-  btnSave: css`
-    background-color: ${colors.primary};
-    border: 1px solid ${colors.primary};
-    color: white;
-    
-    &:hover {
-      background-color: ${colors.primaryHover};
-      border-color: ${colors.primaryHover};
-    }
-    
-    &:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-  `,
-  saving: css`
-    display: flex;
-    align-items: center;
-    gap: 8px;
   `,
   spinner: css`
     width: 16px;
@@ -270,13 +294,13 @@ const styles = {
   hint: css`
     font-size: ${fontSize.xs};
     color: ${colors.textMuted};
-    margin-left: 112px;
+    font-style: italic;
   `,
 }
 
 interface AspectOption {
   label: string
-  value: number | undefined // undefined = freehand
+  value: number | undefined
 }
 
 const ASPECT_OPTIONS: AspectOption[] = [
@@ -315,13 +339,21 @@ export function EditImageModal({
   const [outputHeight, setOutputHeight] = useState(dimensions.height)
   const [saving, setSaving] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
-  const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 })
+  // Store the actual natural size of the source image
+  const [naturalSize, setNaturalSize] = useState({ width: dimensions.width, height: dimensions.height })
+  // Store scale factor between displayed image and natural image
+  const [scale, setScale] = useState(1)
 
-  // When image loads, set initial crop to full image
+  // When image loads, set initial crop to full image and calculate scale
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const { naturalWidth, naturalHeight } = e.currentTarget
+    const img = e.currentTarget
+    const { naturalWidth, naturalHeight, width: displayWidth } = img
+    
     setNaturalSize({ width: naturalWidth, height: naturalHeight })
+    setScale(naturalWidth / displayWidth)
     setImageLoaded(true)
+    setOutputWidth(naturalWidth)
+    setOutputHeight(naturalHeight)
     
     // Set initial crop to full image
     const initialCrop: Crop = {
@@ -334,13 +366,16 @@ export function EditImageModal({
     setCrop(initialCrop)
   }
 
-  // Update output dimensions when crop changes
+  // Update output dimensions when crop changes - calculate actual pixel values
   useEffect(() => {
-    if (completedCrop && naturalSize.width > 0) {
-      setOutputWidth(Math.round(completedCrop.width))
-      setOutputHeight(Math.round(completedCrop.height))
+    if (completedCrop && imageLoaded && scale > 0) {
+      // completedCrop is in displayed pixels, multiply by scale to get actual pixels
+      const actualCropWidth = Math.round(completedCrop.width * scale)
+      const actualCropHeight = Math.round(completedCrop.height * scale)
+      setOutputWidth(actualCropWidth)
+      setOutputHeight(actualCropHeight)
     }
-  }, [completedCrop, naturalSize])
+  }, [completedCrop, imageLoaded, scale])
 
   const handleRotateCW = () => {
     setRotation((prev) => (prev + 90) % 360)
@@ -355,17 +390,14 @@ export function EditImageModal({
     
     // Reset crop when aspect changes
     if (newAspect && imageLoaded) {
-      // Calculate a centered crop with the new aspect ratio
       const imgAspect = naturalSize.width / naturalSize.height
       let cropWidth: number
       let cropHeight: number
       
       if (newAspect > imgAspect) {
-        // Crop is wider than image
         cropWidth = 100
         cropHeight = (imgAspect / newAspect) * 100
       } else {
-        // Crop is taller than image
         cropHeight = 100
         cropWidth = (newAspect / imgAspect) * 100
       }
@@ -402,17 +434,20 @@ export function EditImageModal({
     setSaving(true)
     
     try {
+      // Calculate actual crop coordinates in source image pixels
+      const actualCrop = {
+        x: Math.round(completedCrop.x * scale),
+        y: Math.round(completedCrop.y * scale),
+        width: Math.round(completedCrop.width * scale),
+        height: Math.round(completedCrop.height * scale),
+      }
+      
       const response = await fetch('/api/studio/edit-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imagePath,
-          crop: {
-            x: Math.round(completedCrop.x),
-            y: Math.round(completedCrop.y),
-            width: Math.round(completedCrop.width),
-            height: Math.round(completedCrop.height),
-          },
+          crop: actualCrop,
           rotation,
           resize: {
             width: outputWidth,
@@ -439,44 +474,53 @@ export function EditImageModal({
     }
   }
 
+  // Calculate crop dimensions for display
+  const cropWidth = completedCrop ? Math.round(completedCrop.width * scale) : naturalSize.width
+  const cropHeight = completedCrop ? Math.round(completedCrop.height * scale) : naturalSize.height
+
   return (
-    <div css={styles.overlay} onClick={onClose}>
-      <div css={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div css={styles.header}>
-          <h2 css={styles.title}>Edit Image</h2>
-          <button css={styles.closeBtn} onClick={onClose}>
-            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <div css={styles.body}>
-          <div css={styles.cropperContainer}>
-            <ReactCrop
-              crop={crop}
-              onChange={(c) => setCrop(c)}
-              onComplete={(c) => setCompletedCrop(c)}
-              aspect={aspect}
-              css={styles.cropWrapper}
-              style={{ 
-                transform: `rotate(${rotation}deg)`,
-                transition: 'transform 0.2s ease',
-              }}
-            >
-              <img
-                ref={imgRef}
-                src={imageSrc}
-                alt="Edit"
-                css={styles.cropImage}
-                onLoad={onImageLoad}
-              />
-            </ReactCrop>
+    <div css={styles.overlay}>
+      <div css={styles.container}>
+        {/* Main area - Image cropper */}
+        <div css={styles.main}>
+          <div css={styles.headerButtons}>
+            <button css={styles.closeBtn} onClick={onClose}>
+              <svg css={styles.closeIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
           
-          <div css={styles.controls}>
-            <div css={styles.controlRow}>
-              <span css={styles.controlLabel}>Aspect Ratio</span>
+          <ReactCrop
+            crop={crop}
+            onChange={(c) => setCrop(c)}
+            onComplete={(c) => setCompletedCrop(c)}
+            aspect={aspect}
+            css={styles.cropWrapper}
+            style={{ 
+              transform: `rotate(${rotation}deg)`,
+              transition: 'transform 0.2s ease',
+            }}
+          >
+            <img
+              ref={imgRef}
+              src={imageSrc}
+              alt="Edit"
+              onLoad={onImageLoad}
+            />
+          </ReactCrop>
+        </div>
+        
+        {/* Sidebar */}
+        <div css={styles.sidebar}>
+          <div css={styles.sidebarHeader}>
+            <h2 css={styles.sidebarTitle}>Edit Image</h2>
+          </div>
+          
+          <div css={styles.sidebarContent}>
+            {/* Aspect Ratio */}
+            <div css={styles.section}>
+              <span css={styles.sectionLabel}>Aspect Ratio</span>
               <div css={styles.aspectButtons}>
                 {ASPECT_OPTIONS.map((option) => (
                   <button
@@ -488,11 +532,12 @@ export function EditImageModal({
                   </button>
                 ))}
               </div>
+              <p css={styles.hint}>Drag corners to resize crop area</p>
             </div>
-            <p css={styles.hint}>Drag corners or edges to resize crop area</p>
             
-            <div css={styles.controlRow}>
-              <span css={styles.controlLabel}>Rotation</span>
+            {/* Rotation */}
+            <div css={styles.section}>
+              <span css={styles.sectionLabel}>Rotation</span>
               <div css={styles.rotateButtons}>
                 <button css={styles.rotateBtn} onClick={handleRotateCCW}>
                   <svg css={styles.rotateIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -507,12 +552,22 @@ export function EditImageModal({
                   CW
                 </button>
               </div>
-              <span css={styles.rotationDisplay}>{rotation}°</span>
+              <p css={styles.rotationDisplay}>{rotation}°</p>
             </div>
             
-            <div css={styles.controlRow}>
-              <span css={styles.controlLabel}>Output Size</span>
-              <div css={styles.resizeInputs}>
+            {/* Crop Info */}
+            <div css={styles.section}>
+              <span css={styles.sectionLabel}>Crop Selection</span>
+              <div css={styles.infoRow}>
+                <span css={styles.infoLabel}>Size</span>
+                <span css={styles.infoValue}>{cropWidth} × {cropHeight} px</span>
+              </div>
+            </div>
+            
+            {/* Output Size */}
+            <div css={styles.section}>
+              <span css={styles.sectionLabel}>Output Size</span>
+              <div css={styles.resizeRow}>
                 <input
                   type="number"
                   css={styles.resizeInput}
@@ -528,26 +583,30 @@ export function EditImageModal({
                   onChange={handleHeightChange}
                   min={1}
                 />
-                <span css={styles.resizeX}>px</span>
               </div>
+              <p css={styles.hint}>Modify to resize the output</p>
             </div>
           </div>
-        </div>
-        
-        <div css={styles.footer}>
-          <button css={[styles.btn, styles.btnCancel]} onClick={onClose} disabled={saving}>
-            Cancel
-          </button>
-          <button css={[styles.btn, styles.btnSave]} onClick={handleSave} disabled={saving || !completedCrop}>
-            {saving ? (
-              <span css={styles.saving}>
-                <span css={styles.spinner} />
-                Saving...
-              </span>
-            ) : (
-              'Save Changes'
-            )}
-          </button>
+          
+          <div css={styles.sidebarFooter}>
+            <button 
+              css={styles.actionBtn} 
+              onClick={handleSave} 
+              disabled={saving || !completedCrop}
+            >
+              {saving ? (
+                <>
+                  <span css={styles.spinner} />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </button>
+            <button css={styles.cancelBtn} onClick={onClose} disabled={saving}>
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     </div>
