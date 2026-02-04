@@ -495,8 +495,8 @@ export function StudioUI({
           </div>
         </div>
 
-        {/* Detail view as modal overlay */}
-        {focusedItem && <StudioDetailView />}
+        {/* Detail view as modal overlay - always render to preserve edit state */}
+        <StudioDetailView />
 
         {/* Error modal */}
         <ErrorModal />
