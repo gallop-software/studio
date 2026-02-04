@@ -60,21 +60,35 @@ export async function handleEditImage(request: Request) {
     // Read the original image
     const imageBuffer = await fs.readFile(absolutePath);
     
-    // Start with the image, applying EXIF rotation first
-    let pipeline = sharp(imageBuffer).rotate();
+    // Step 1: Apply EXIF rotation first to normalize the image
+    // This matches what the browser displays
+    const exifCorrectedBuffer = await sharp(imageBuffer).rotate().toBuffer();
+    const exifMeta = await sharp(exifCorrectedBuffer).metadata();
+    const exifWidth = exifMeta.width || 0;
+    const exifHeight = exifMeta.height || 0;
 
-    // 1. Apply rotation (if any)
+    // Step 2: Apply user rotation if any (90° increments)
+    let rotatedBuffer: Buffer;
+    let rotatedWidth: number;
+    let rotatedHeight: number;
+
     if (rotation !== 0) {
-      pipeline = pipeline.rotate(rotation);
+      rotatedBuffer = await sharp(exifCorrectedBuffer).rotate(rotation).toBuffer();
+      // 90° and 270° swap dimensions
+      if (rotation === 90 || rotation === 270) {
+        rotatedWidth = exifHeight;
+        rotatedHeight = exifWidth;
+      } else {
+        rotatedWidth = exifWidth;
+        rotatedHeight = exifHeight;
+      }
+    } else {
+      rotatedBuffer = exifCorrectedBuffer;
+      rotatedWidth = exifWidth;
+      rotatedHeight = exifHeight;
     }
 
-    // Get metadata after rotation to understand dimensions
-    const rotatedBuffer = await pipeline.toBuffer();
-    const rotatedMeta = await sharp(rotatedBuffer).metadata();
-    const rotatedWidth = rotatedMeta.width || 0;
-    const rotatedHeight = rotatedMeta.height || 0;
-
-    // 2. Apply crop (extract region)
+    // Step 3: Apply crop (extract region)
     // Clamp crop values to valid range
     const cropX = Math.max(0, Math.min(crop.x, rotatedWidth - 1));
     const cropY = Math.max(0, Math.min(crop.y, rotatedHeight - 1));
@@ -93,7 +107,7 @@ export async function handleEditImage(request: Request) {
       });
     }
 
-    // 3. Apply resize (if different from crop dimensions)
+    // Step 4: Apply resize (if different from crop dimensions)
     if (resize.width !== cropWidth || resize.height !== cropHeight) {
       croppedPipeline = croppedPipeline.resize(resize.width, resize.height);
     }

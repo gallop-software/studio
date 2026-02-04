@@ -193,6 +193,47 @@ const styles = {
     font-size: ${fontSize.sm};
     color: ${colors.textMuted};
   `,
+  zoomSlider: css`
+    flex: 1;
+    max-width: 200px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: ${colors.border};
+    border-radius: 2px;
+    outline: none;
+    
+    &::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      background: ${colors.primary};
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    
+    &::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      background: ${colors.primary};
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+    }
+  `,
+  zoomValue: css`
+    font-size: ${fontSize.sm};
+    color: ${colors.textSecondary};
+    min-width: 45px;
+    text-align: right;
+  `,
+  hint: css`
+    font-size: ${fontSize.xs};
+    color: ${colors.textMuted};
+    margin-top: 8px;
+    font-style: italic;
+  `,
   footer: css`
     display: flex;
     justify-content: flex-end;
@@ -412,6 +453,21 @@ export function EditImageModal({
                   </button>
                 ))}
               </div>
+            </div>
+            <p css={styles.hint}>Zoom in and drag to select crop area</p>
+            
+            <div css={styles.controlRow}>
+              <span css={styles.controlLabel}>Zoom</span>
+              <input
+                type="range"
+                css={styles.zoomSlider}
+                min={1}
+                max={3}
+                step={0.1}
+                value={zoom}
+                onChange={(e) => setZoom(parseFloat(e.target.value))}
+              />
+              <span css={styles.zoomValue}>{Math.round(zoom * 100)}%</span>
             </div>
             
             <div css={styles.controlRow}>
