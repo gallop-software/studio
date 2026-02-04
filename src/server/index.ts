@@ -210,16 +210,7 @@ export async function startServer(options: ServerOptions) {
 
   // Serve static files from workspace's public folder
   // Files are accessed at root path (e.g., /favicon.png, /images/photo.jpg)
-  // Disable caching so edited images always show fresh
-  app.use(express.static(join(workspace, "public"), {
-    etag: false,
-    lastModified: false,
-    setHeaders: (res) => {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    }
-  }));
+  app.use(express.static(join(workspace, "public")));
 
   // Serve the client app
   const clientDir = resolve(__dirname, "../client");
@@ -242,16 +233,8 @@ export async function startServer(options: ServerOptions) {
     }
   });
 
-  // Serve other static assets (client app)
-  app.use(express.static(clientDir, {
-    etag: false,
-    lastModified: false,
-    setHeaders: (res) => {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    }
-  }));
+  // Serve other static assets
+  app.use(express.static(clientDir));
 
   // Start server
   const title = `Gallop - Studio (${version})`;
