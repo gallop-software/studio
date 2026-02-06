@@ -344,6 +344,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const [canCreate, setCanCreate] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [showRenameFolderModal, setShowRenameFolderModal] = useState(false)
+  const [showRenameFileModal, setShowRenameFileModal] = useState(false)
   const [showNewFolderModal, setShowNewFolderModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -418,6 +419,11 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const selectedFolderPath = singleFolderSelected ? selectedPaths[0] : null
   const selectedFolderName = selectedFolderPath ? selectedFolderPath.split('/').pop() || '' : ''
 
+  // Check if single file selected for rename
+  const singleFileSelected = selectedPaths.length === 1 && items.find(i => i.path === selectedPaths[0])?.type === 'file'
+  const selectedFilePath = singleFileSelected ? selectedPaths[0] : null
+  const selectedFileName = selectedFilePath ? selectedFilePath.split('/').pop() || '' : ''
+
   const handleRenameFolder = useCallback(async (newName: string) => {
     if (!selectedFolderPath) return
     setShowRenameFolderModal(false)
@@ -436,6 +442,25 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
       console.error('Rename failed:', error)
     }
   }, [selectedFolderPath, triggerRefresh])
+
+  const handleRenameFile = useCallback(async (newName: string) => {
+    if (!selectedFilePath) return
+    setShowRenameFileModal(false)
+
+    try {
+      const response = await fetch('/api/studio/fonts/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPath: selectedFilePath, newName }),
+      })
+      if (response.ok) {
+        setSelectedItems(new Set())
+        triggerRefresh()
+      }
+    } catch (error) {
+      console.error('Rename file failed:', error)
+    }
+  }, [selectedFilePath, triggerRefresh])
 
   const handleDeleteClick = useCallback(() => {
     if (selectedItems.size === 0) return
@@ -595,15 +620,17 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           <button
             css={styles.btn}
             onClick={() => {
-              if (singleFolderSelected) {
+              if (singleFileSelected) {
+                setShowRenameFileModal(true)
+              } else if (singleFolderSelected) {
                 setShowRenameFolderModal(true)
               } else {
                 handleNewFolderClick()
               }
             }}
           >
-            {singleFolderSelected ? <RenameIcon /> : <FolderPlusIcon />}
-            {singleFolderSelected ? 'Rename' : 'New Folder'}
+            {singleFileSelected || singleFolderSelected ? <RenameIcon /> : <FolderPlusIcon />}
+            {singleFileSelected ? 'Rename File' : singleFolderSelected ? 'Rename Folder' : 'New Folder'}
           </button>
           <button
             css={[styles.btn, styles.btnDanger]}
@@ -760,6 +787,18 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           confirmLabel="Rename"
           onConfirm={handleRenameFolder}
           onCancel={() => setShowRenameFolderModal(false)}
+        />
+      )}
+
+      {showRenameFileModal && selectedFilePath && (
+        <InputModal
+          title="Rename File"
+          message="Enter a new name for the file:"
+          placeholder={selectedFileName}
+          defaultValue={selectedFileName}
+          confirmLabel="Rename"
+          onConfirm={handleRenameFile}
+          onCancel={() => setShowRenameFileModal(false)}
         />
       )}
 
