@@ -7,7 +7,6 @@ import {
   loadMeta,
   saveMeta,
   isImageFile,
-  isMediaFile,
   getCdnUrls,
   downloadFromCdn,
   downloadFromRemoteUrl,
@@ -47,7 +46,6 @@ export async function handleUpload(request: Request) {
     const ext = path.extname(fileName).toLowerCase();
 
     const isImage = isImageFile(fileName);
-    const isMedia = isMediaFile(fileName);
 
     const meta = await loadMeta();
 
@@ -96,14 +94,6 @@ export async function handleUpload(request: Request) {
     const uploadDir = getPublicPath(relativeDir);
     await fs.mkdir(uploadDir, { recursive: true });
     await fs.writeFile(path.join(uploadDir, actualFileName), buffer);
-
-    if (!isMedia) {
-      return jsonResponse({
-        success: true,
-        message: "File uploaded (not a media file)",
-        path: `public/${relativeDir ? relativeDir + "/" : ""}${actualFileName}`,
-      });
-    }
 
     // Add to meta
     if (isImage && ext !== ".svg") {
