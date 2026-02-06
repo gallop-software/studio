@@ -325,6 +325,44 @@ export async function handleFontsDeleteStream(request: Request): Promise<Respons
       }
     }
 
+    // Helper to count files in a directory recursively
+    async function countFilesInDir(dirPath: string): Promise<number> {
+      let count = 0
+      try {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true })
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            count += await countFilesInDir(path.join(dirPath, entry.name))
+          } else {
+            count++
+          }
+        }
+      } catch {
+        // Directory might not exist
+      }
+      return count
+    }
+
+    // Helper to get all files in a directory recursively
+    async function getFilesInDir(dirPath: string, basePath: string): Promise<string[]> {
+      const files: string[] = []
+      try {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true })
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name)
+          const relativePath = path.join(basePath, entry.name)
+          if (entry.isDirectory()) {
+            files.push(...await getFilesInDir(fullPath, relativePath))
+          } else {
+            files.push(relativePath)
+          }
+        }
+      } catch {
+        // Directory might not exist
+      }
+      return files
+    }
+
     // Set up SSE streaming
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
@@ -333,33 +371,63 @@ export async function handleFontsDeleteStream(request: Request): Promise<Respons
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
         }
 
+        // First, expand folders to get total file count
+        const allFiles: { path: string; isFolder: boolean; parentFolder?: string }[] = []
+        const foldersToDelete: string[] = []
+
+        for (const p of paths) {
+          const fullPath = getWorkspacePath(p)
+          try {
+            const stat = await fs.stat(fullPath)
+            if (stat.isDirectory()) {
+              foldersToDelete.push(p)
+              const filesInDir = await getFilesInDir(fullPath, p)
+              for (const f of filesInDir) {
+                allFiles.push({ path: f, isFolder: false, parentFolder: p })
+              }
+            } else {
+              allFiles.push({ path: p, isFolder: false })
+            }
+          } catch {
+            // File/folder doesn't exist, skip
+          }
+        }
+
+        const total = allFiles.length
         const deleted: string[] = []
         const errors: string[] = []
+        let current = 0
 
-        for (let i = 0; i < paths.length; i++) {
-          const p = paths[i]
-          const fileName = p.split('/').pop() || p
+        // Delete individual files first (for progress)
+        for (const file of allFiles) {
+          current++
+          const fileName = file.path.split('/').pop() || file.path
           
-          send({ status: 'progress', message: `Deleting ${fileName}...`, current: i + 1, total: paths.length })
+          send({ status: 'progress', message: `Deleting ${fileName}...`, current, total })
 
           try {
-            const fullPath = getWorkspacePath(p)
-            const stat = await fs.stat(fullPath)
-
-            if (stat.isDirectory()) {
-              await fs.rm(fullPath, { recursive: true })
-            } else {
-              await fs.unlink(fullPath)
-            }
-            deleted.push(p)
+            const fullPath = getWorkspacePath(file.path)
+            await fs.unlink(fullPath)
+            deleted.push(file.path)
           } catch (err) {
-            errors.push(`Failed to delete ${p}: ${err instanceof Error ? err.message : 'Unknown error'}`)
+            // File might already be deleted or not exist
+            errors.push(`Failed to delete ${file.path}: ${err instanceof Error ? err.message : 'Unknown error'}`)
+          }
+        }
+
+        // Now delete the empty folders
+        for (const folder of foldersToDelete) {
+          try {
+            const fullPath = getWorkspacePath(folder)
+            await fs.rm(fullPath, { recursive: true })
+          } catch {
+            // Folder might already be deleted
           }
         }
 
         send({
           status: 'complete',
-          message: `Deleted ${deleted.length} item${deleted.length !== 1 ? 's' : ''}`,
+          message: `Deleted ${deleted.length} file${deleted.length !== 1 ? 's' : ''}`,
           deleted,
           errors: errors.length > 0 ? errors : undefined,
         })

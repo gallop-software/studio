@@ -324,11 +324,57 @@ export async function handleDeleteStream(request: Request) {
         const isCancelled = () =>
           operationId ? isOperationCancelled(operationId) : false;
 
+        // Helper to count files in a directory recursively
+        async function countFilesInDir(dirPath: string): Promise<number> {
+          let count = 0;
+          try {
+            const entries = await fs.readdir(dirPath, { withFileTypes: true });
+            for (const entry of entries) {
+              if (entry.isDirectory()) {
+                count += await countFilesInDir(path.join(dirPath, entry.name));
+              } else {
+                count++;
+              }
+            }
+          } catch {
+            // Directory might not exist
+          }
+          return count;
+        }
+
+        // Pre-calculate total file count (expanding folders)
+        let totalFiles = 0;
+        for (const itemPath of paths) {
+          if (!itemPath.startsWith("public/")) continue;
+          const absolutePath = getWorkspacePath(itemPath);
+          try {
+            const stats = await fs.stat(absolutePath);
+            if (stats.isDirectory()) {
+              totalFiles += await countFilesInDir(absolutePath);
+            } else {
+              totalFiles++;
+            }
+          } catch {
+            // Check if it's a virtual folder in meta
+            const imageKey = "/" + itemPath.replace(/^public\//, "");
+            const meta = await loadMeta();
+            const prefix = imageKey + "/";
+            let count = 0;
+            for (const key of Object.keys(meta)) {
+              if (key.startsWith(prefix) || key === imageKey) {
+                count++;
+              }
+            }
+            totalFiles += count || 1; // At least 1 for the item itself
+          }
+        }
+
         const meta = await loadMeta();
         const deleted: string[] = [];
         const errors: string[] = [];
         const sourceFolders = new Set<string>();
-        const total = paths.length;
+        const total = totalFiles || paths.length; // Fallback to paths.length if no files found
+        let currentProgress = 0;
 
         sendEvent({ type: "start", total });
 
@@ -359,12 +405,13 @@ export async function handleDeleteStream(request: Request) {
           try {
             if (!itemPath.startsWith("public/")) {
               errors.push(`Invalid path: ${itemPath}`);
+              currentProgress++;
               sendEvent({
                 type: "progress",
-                current: i + 1,
+                current: currentProgress,
                 total,
                 deleted: deleted.length,
-                percent: Math.round(((i + 1) / total) * 100),
+                percent: Math.round((currentProgress / total) * 100),
                 currentFile: path.basename(itemPath),
               });
               continue;
@@ -386,6 +433,9 @@ export async function handleDeleteStream(request: Request) {
               const stats = await fs.stat(absolutePath);
 
               if (stats.isDirectory()) {
+                // Count files in this directory for progress
+                const filesInDir = await countFilesInDir(absolutePath);
+                
                 await fs.rm(absolutePath, { recursive: true });
 
                 // Remove all meta entries under this folder
@@ -418,6 +468,9 @@ export async function handleDeleteStream(request: Request) {
                     delete meta[key];
                   }
                 }
+                
+                // Increment progress by number of files in folder
+                currentProgress += filesInDir || 1;
               } else {
                 await fs.unlink(absolutePath);
 
@@ -444,6 +497,9 @@ export async function handleDeleteStream(request: Request) {
                   }
                   delete meta[imageKey];
                 }
+                
+                // Increment progress by 1 for single file
+                currentProgress++;
               }
             } catch {
               // File doesn't exist locally - might be synced
@@ -457,6 +513,7 @@ export async function handleDeleteStream(request: Request) {
                   }
                 }
                 delete meta[imageKey];
+                currentProgress++;
               } else {
                 // Check if it's a folder prefix in meta
                 const prefix = imageKey + "/";
@@ -477,16 +534,18 @@ export async function handleDeleteStream(request: Request) {
                     }
                     delete meta[key];
                     foundAny = true;
+                    currentProgress++;
                   }
                 }
                 if (!foundAny) {
                   errors.push(`Not found: ${itemPath}`);
+                  currentProgress++;
                   sendEvent({
                     type: "progress",
-                    current: i + 1,
+                    current: currentProgress,
                     total,
                     deleted: deleted.length,
-                    percent: Math.round(((i + 1) / total) * 100),
+                    percent: Math.round((currentProgress / total) * 100),
                     currentFile: path.basename(itemPath),
                   });
                   continue;
@@ -504,10 +563,10 @@ export async function handleDeleteStream(request: Request) {
 
           sendEvent({
             type: "progress",
-            current: i + 1,
+            current: currentProgress,
             total,
             deleted: deleted.length,
-            percent: Math.round(((i + 1) / total) * 100),
+            percent: Math.round((currentProgress / total) * 100),
             currentFile: path.basename(itemPath),
           });
         }
