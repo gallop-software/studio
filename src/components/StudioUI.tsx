@@ -171,6 +171,18 @@ const styles = {
       color: ${colors.primary};
     }
   `,
+  breadcrumbItemFirst: css`
+    color: ${colors.text};
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.15s ease;
+    white-space: nowrap;
+    font-weight: 500;
+    
+    &:hover {
+      color: ${colors.primary};
+    }
+  `,
   breadcrumbCurrent: css`
     color: ${colors.text};
     font-weight: 500;
@@ -864,7 +876,7 @@ function Breadcrumbs({ currentPath, onNavigate, projectName }: { currentPath: st
             <span css={styles.breadcrumbCurrent}>{crumb.name}</span>
           ) : (
             <span
-              css={styles.breadcrumbItem}
+              css={index === 0 ? styles.breadcrumbItemFirst : styles.breadcrumbItem}
               onClick={() => onNavigate(crumb.path)}
             >
               {crumb.name}
