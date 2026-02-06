@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { colors, fontSize } from './tokens'
-import { InputModal } from './StudioModal'
+import { InputModal, ConfirmModal } from './StudioModal'
 import type { FileItem } from '../types'
 
 const btnHeight = '36px'
@@ -344,6 +344,8 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const [canCreate, setCanCreate] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [showRenameFolderModal, setShowRenameFolderModal] = useState(false)
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const fetchItems = useCallback(async () => {
     try {
@@ -435,12 +437,14 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     }
   }, [selectedFolderPath, triggerRefresh])
 
-  const handleDelete = useCallback(async () => {
+  const handleDeleteClick = useCallback(() => {
     if (selectedItems.size === 0) return
-    
-    const confirmed = window.confirm(`Delete ${selectedItems.size} item(s)?`)
-    if (!confirmed) return
+    setShowDeleteConfirm(true)
+  }, [selectedItems.size])
 
+  const handleDeleteConfirm = useCallback(async () => {
+    setShowDeleteConfirm(false)
+    
     try {
       const response = await fetch('/api/studio/fonts/delete', {
         method: 'POST',
@@ -456,10 +460,13 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     }
   }, [selectedItems, triggerRefresh])
 
-  const handleCreateFolder = useCallback(async () => {
-    const name = window.prompt('Folder name:')
-    if (!name) return
+  const handleNewFolderClick = useCallback(() => {
+    setShowNewFolderModal(true)
+  }, [])
 
+  const handleCreateFolder = useCallback(async (name: string) => {
+    setShowNewFolderModal(false)
+    
     try {
       const response = await fetch('/api/studio/fonts/create-folder', {
         method: 'POST',
@@ -591,7 +598,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
               if (singleFolderSelected) {
                 setShowRenameFolderModal(true)
               } else {
-                handleCreateFolder()
+                handleNewFolderClick()
               }
             }}
           >
@@ -600,7 +607,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           </button>
           <button
             css={[styles.btn, styles.btnDanger]}
-            onClick={handleDelete}
+            onClick={handleDeleteClick}
             disabled={selectedItems.size === 0}
           >
             <TrashIcon />
@@ -642,7 +649,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           <div css={styles.empty}>
             <FolderIcon css={styles.emptyIcon} />
             <p css={styles.emptyText}>Folder doesn't exist</p>
-            <button css={styles.createBtn} onClick={handleCreateFolder}>
+            <button css={styles.createBtn} onClick={handleNewFolderClick}>
               Create Folder
             </button>
           </div>
@@ -733,6 +740,17 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
         )}
       </div>
 
+      {showNewFolderModal && (
+        <InputModal
+          title="New Folder"
+          message="Enter a name for the new folder:"
+          placeholder="Folder name"
+          confirmLabel="Create"
+          onConfirm={handleCreateFolder}
+          onCancel={() => setShowNewFolderModal(false)}
+        />
+      )}
+
       {showRenameFolderModal && selectedFolderPath && (
         <InputModal
           title="Rename Folder"
@@ -742,6 +760,17 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           confirmLabel="Rename"
           onConfirm={handleRenameFolder}
           onCancel={() => setShowRenameFolderModal(false)}
+        />
+      )}
+
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title="Delete Items"
+          message={`Are you sure you want to delete ${selectedItems.size} item${selectedItems.size !== 1 ? 's' : ''}? This action cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setShowDeleteConfirm(false)}
         />
       )}
     </div>
