@@ -103,7 +103,7 @@ const styles = {
     background: transparent;
     border: none;
     border-radius: 6px;
-    font-size: 19px;
+    font-size: 19px !important;
     font-weight: 600;
     letter-spacing: -0.02em;
     color: ${colors.textSecondary};
@@ -118,6 +118,11 @@ const styles = {
   `,
   dropdownItemActive: css`
     color: ${colors.primary};
+    
+    &:hover {
+      background: rgba(99, 91, 255, 0.1);
+      color: ${colors.primaryHover};
+    }
   `,
   headerLeft: css`
     display: flex;
@@ -553,13 +558,13 @@ export function StudioUI({
                     css={[styles.dropdownItem, activeSection === 'media' && styles.dropdownItemActive]}
                     onClick={() => selectSection('media')}
                   >
-                    media.manager
+                    media & files
                   </button>
                   <button
                     css={[styles.dropdownItem, activeSection === 'fonts' && styles.dropdownItemActive]}
                     onClick={() => selectSection('fonts')}
                   >
-                    font.manager
+                    fonts
                   </button>
                 </div>
               )}
