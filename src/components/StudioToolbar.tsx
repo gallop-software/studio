@@ -1337,7 +1337,7 @@ export function StudioToolbar() {
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/*,video/*,audio/*,.pdf"
+          accept="*/*"
           onChange={handleFileChange}
           style={{ display: 'none' }}
         />

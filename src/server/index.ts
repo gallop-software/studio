@@ -46,7 +46,7 @@ import {
   handleGetFeaturedImageOptions,
 } from "../handlers/featured-image";
 import { handleEditImage } from "../handlers/edit-image";
-import { handleFontsList, handleFontsUpload, handleFontsCreateFolder, handleFontsDelete, handleFontsRename, handleFontsScan, handleFontsListAssignments, handleFontsAssign, handleFontsDeleteAssignment } from "../handlers/fonts";
+import { handleFontsList, handleFontsUpload, handleFontsCreateFolder, handleFontsDelete, handleFontsDeleteStream, handleFontsRename, handleFontsRenameStream, handleFontsScan, handleFontsListAssignments, handleFontsAssign, handleFontsDeleteAssignment } from "../handlers/fonts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -167,7 +167,9 @@ export async function startServer(options: ServerOptions) {
   app.post("/api/studio/fonts/upload", wrapRawHandler(handleFontsUpload));
   app.post("/api/studio/fonts/create-folder", wrapHandler(handleFontsCreateFolder));
   app.post("/api/studio/fonts/delete", wrapHandler(handleFontsDelete));
+  app.post("/api/studio/fonts/delete-stream", wrapHandler(handleFontsDeleteStream, true));
   app.post("/api/studio/fonts/rename", wrapHandler(handleFontsRename));
+  app.post("/api/studio/fonts/rename-stream", wrapHandler(handleFontsRenameStream, true));
   app.post("/api/studio/fonts/scan", wrapHandler(handleFontsScan));
   app.get("/api/studio/fonts/assignments", wrapHandler(handleFontsListAssignments));
   app.post("/api/studio/fonts/assign-stream", wrapHandler(handleFontsAssign, true));

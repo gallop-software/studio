@@ -449,7 +449,7 @@ export function AddNewModal({ currentPath, onClose, onUploadComplete, streamingO
                   Drop files here or click to browse
                 </p>
                 <p css={styles.dropzoneHint}>
-                  Supports images and other media files
+                  Supports all file types
                 </p>
               </div>
               <input

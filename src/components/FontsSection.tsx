@@ -7,6 +7,7 @@ import { colors, fontSize } from './tokens'
 import { InputModal, ConfirmModal, AlertModal, ProgressModal } from './StudioModal'
 import { FontsAssignModal } from './FontsAssignModal'
 import { FontsSettings } from './FontsSettings'
+import { AddNewFontModal } from './AddNewFontModal'
 import type { FileItem } from '../types'
 import type { ProgressState } from './StudioContext'
 
@@ -50,6 +51,27 @@ const styles = {
     flex-shrink: 0;
     align-items: center;
     gap: 8px;
+  `,
+  selectionCount: css`
+    font-size: ${fontSize.base};
+    color: ${colors.textSecondary};
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 8px;
+  `,
+  clearBtn: css`
+    color: ${colors.primary};
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: ${fontSize.base};
+    font-weight: 500;
+    padding: 0;
+    
+    &:hover {
+      text-decoration: underline;
+    }
   `,
   btn: css`
     display: inline-flex;
@@ -146,6 +168,7 @@ const styles = {
   selectAllRow: css`
     display: flex;
     align-items: center;
+    gap: 24px;
     margin-bottom: 16px;
     padding: 12px 16px;
     background: ${colors.surface};
@@ -199,6 +222,11 @@ const styles = {
   itemSelected: css`
     border-color: ${colors.primary};
     box-shadow: 0 0 0 1px ${colors.primary};
+    
+    &:hover {
+      border-color: ${colors.primary};
+      box-shadow: 0 0 0 1px ${colors.primary};
+    }
   `,
   checkboxWrapper: css`
     position: absolute;
@@ -517,8 +545,8 @@ const styles = {
   badgeGray: css`
     background-color: #9ca3af;
   `,
-  badgeBlue: css`
-    background-color: #3b82f6;
+  badgeYellow: css`
+    background-color: #eab308;
   `,
   badgeGreen: css`
     background-color: #10b981;
@@ -580,12 +608,15 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const [refreshing, setRefreshing] = useState(false)
   
   // New state for assign workflow
+  const [showAddNewModal, setShowAddNewModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showProgress, setShowProgress] = useState(false)
   const [progress, setProgress] = useState<ProgressState>({ status: 'idle', current: 0, total: 0, percent: 0 })
+  const [progressTitle, setProgressTitle] = useState('Processing')
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null)
   const [folderStatuses, setFolderStatuses] = useState<Record<string, FolderStatus>>({})
+  const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null)
 
   const fetchItems = useCallback(async () => {
     try {
@@ -651,16 +682,39 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
 
   const handleItemClick = useCallback((item: FileItem, e: React.MouseEvent) => {
     e.stopPropagation()
-    setSelectedItems(prev => {
-      const next = new Set(prev)
-      if (next.has(item.path)) {
-        next.delete(item.path)
-      } else {
-        next.add(item.path)
+    
+    if (e.shiftKey && lastSelectedPath) {
+      // Range selection
+      const fromIndex = items.findIndex(i => i.path === lastSelectedPath)
+      const toIndex = items.findIndex(i => i.path === item.path)
+      
+      if (fromIndex !== -1 && toIndex !== -1) {
+        const start = Math.min(fromIndex, toIndex)
+        const end = Math.max(fromIndex, toIndex)
+        
+        setSelectedItems(prev => {
+          const next = new Set(prev)
+          for (let i = start; i <= end; i++) {
+            next.add(items[i].path)
+          }
+          return next
+        })
       }
-      return next
-    })
-  }, [])
+    } else {
+      // Toggle selection
+      setSelectedItems(prev => {
+        const next = new Set(prev)
+        if (next.has(item.path)) {
+          next.delete(item.path)
+        } else {
+          next.add(item.path)
+        }
+        return next
+      })
+    }
+    
+    setLastSelectedPath(item.path)
+  }, [items, lastSelectedPath])
 
   const handleOpen = useCallback((item: FileItem) => {
     if (item.type === 'folder') {
@@ -689,6 +743,57 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     }
   }, [allItemsSelected, items])
 
+  const handleClearSelection = useCallback(() => {
+    setSelectedItems(new Set())
+    setLastSelectedPath(null)
+  }, [])
+
+  const handleSelectAllWoff = useCallback(() => {
+    const woffFiles = items.filter(item => 
+      item.type === 'file' && item.name.toLowerCase().endsWith('.woff2')
+    )
+    const allWoffSelected = woffFiles.every(item => selectedItems.has(item.path))
+    
+    if (allWoffSelected) {
+      // Deselect all WOFF2 files
+      setSelectedItems(prev => {
+        const next = new Set(prev)
+        woffFiles.forEach(item => next.delete(item.path))
+        return next
+      })
+    } else {
+      // Select all WOFF2 files (add to existing selection)
+      setSelectedItems(prev => {
+        const next = new Set(prev)
+        woffFiles.forEach(item => next.add(item.path))
+        return next
+      })
+    }
+  }, [items, selectedItems])
+
+  const handleSelectAllTtf = useCallback(() => {
+    const ttfFiles = items.filter(item => 
+      item.type === 'file' && item.name.toLowerCase().endsWith('.ttf')
+    )
+    const allTtfSelected = ttfFiles.every(item => selectedItems.has(item.path))
+    
+    if (allTtfSelected) {
+      // Deselect all TTF files
+      setSelectedItems(prev => {
+        const next = new Set(prev)
+        ttfFiles.forEach(item => next.delete(item.path))
+        return next
+      })
+    } else {
+      // Select all TTF files (add to existing selection)
+      setSelectedItems(prev => {
+        const next = new Set(prev)
+        ttfFiles.forEach(item => next.add(item.path))
+        return next
+      })
+    }
+  }, [items, selectedItems])
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     await fetchItems()
@@ -715,6 +820,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   // Handle assign confirmation - starts the streaming process
   const handleAssignConfirm = useCallback(async (assignments: string[]) => {
     setShowAssignModal(false)
+    setProgressTitle('Assigning Web Font')
     setShowProgress(true)
     setProgress({ status: 'progress', current: 0, total: 1, percent: 0, message: 'Starting...' })
 
@@ -798,19 +904,78 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const handleRenameFolder = useCallback(async (newName: string) => {
     if (!selectedFolderPath) return
     setShowRenameFolderModal(false)
+    setProgressTitle('Renaming Folder')
+    setShowProgress(true)
+    setProgress({ status: 'progress', current: 0, total: 1, percent: 0, message: 'Starting...' })
 
     try {
-      const response = await fetch('/api/studio/fonts/rename', {
+      const res = await fetch('/api/studio/fonts/rename-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPath: selectedFolderPath, newName }),
       })
-      if (response.ok) {
-        setSelectedItems(new Set())
-        triggerRefresh()
+
+      if (!res.ok || !res.body) {
+        setProgress({ status: 'error', current: 0, total: 0, percent: 0, message: 'Failed to start rename' })
+        return
       }
-    } catch (error) {
-      console.error('Rename failed:', error)
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const text = decoder.decode(value, { stream: true })
+        const lines = text.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              
+              if (data.status === 'progress') {
+                setProgress({
+                  status: 'progress',
+                  current: data.current || 0,
+                  total: data.total || 1,
+                  percent: data.total ? Math.round((data.current / data.total) * 100) : 0,
+                  message: data.message,
+                })
+              } else if (data.status === 'complete') {
+                setProgress({
+                  status: 'complete',
+                  current: 1,
+                  total: 1,
+                  percent: 100,
+                  message: data.message,
+                })
+                setSelectedItems(new Set())
+                triggerRefresh()
+              } else if (data.status === 'error') {
+                setProgress({
+                  status: 'error',
+                  current: 0,
+                  total: 0,
+                  percent: 0,
+                  message: data.message,
+                })
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    } catch (err) {
+      setProgress({
+        status: 'error',
+        current: 0,
+        total: 0,
+        percent: 0,
+        message: String(err),
+      })
     }
   }, [selectedFolderPath, triggerRefresh])
 
@@ -840,19 +1005,78 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
 
   const handleDeleteConfirm = useCallback(async () => {
     setShowDeleteConfirm(false)
+    setProgressTitle('Deleting Files')
+    setShowProgress(true)
+    setProgress({ status: 'progress', current: 0, total: selectedItems.size, percent: 0, message: 'Starting...' })
     
     try {
-      const response = await fetch('/api/studio/fonts/delete', {
+      const res = await fetch('/api/studio/fonts/delete-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paths: Array.from(selectedItems) }),
       })
-      if (response.ok) {
-        setSelectedItems(new Set())
-        triggerRefresh()
+
+      if (!res.ok || !res.body) {
+        setProgress({ status: 'error', current: 0, total: 0, percent: 0, message: 'Failed to start delete' })
+        return
       }
-    } catch (error) {
-      console.error('Delete failed:', error)
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const text = decoder.decode(value, { stream: true })
+        const lines = text.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              
+              if (data.status === 'progress') {
+                setProgress({
+                  status: 'progress',
+                  current: data.current || 0,
+                  total: data.total || 1,
+                  percent: data.total ? Math.round((data.current / data.total) * 100) : 0,
+                  message: data.message,
+                })
+              } else if (data.status === 'complete') {
+                setProgress({
+                  status: 'complete',
+                  current: data.deleted?.length || 0,
+                  total: data.deleted?.length || 0,
+                  percent: 100,
+                  message: data.message,
+                })
+                setSelectedItems(new Set())
+                triggerRefresh()
+              } else if (data.status === 'error') {
+                setProgress({
+                  status: 'error',
+                  current: 0,
+                  total: 0,
+                  percent: 0,
+                  message: data.message,
+                })
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    } catch (err) {
+      setProgress({
+        status: 'error',
+        current: 0,
+        total: 0,
+        percent: 0,
+        message: String(err),
+      })
     }
   }, [selectedItems, triggerRefresh])
 
@@ -923,35 +1147,6 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     triggerRefresh()
   }, [currentPath, triggerRefresh])
 
-  const fileInputRef = useCallback((input: HTMLInputElement | null) => {
-    if (input) {
-      input.addEventListener('change', async (e) => {
-        const files = (e.target as HTMLInputElement).files
-        if (!files || files.length === 0) return
-
-        for (const file of Array.from(files)) {
-          if (!file.name.toLowerCase().endsWith('.ttf')) continue
-          
-          const formData = new FormData()
-          formData.append('file', file)
-          formData.append('path', currentPath)
-
-          try {
-            await fetch('/api/studio/fonts/upload', {
-              method: 'POST',
-              body: formData,
-            })
-          } catch (error) {
-            console.error('Upload failed:', error)
-          }
-        }
-        
-        triggerRefresh()
-        input.value = ''
-      })
-    }
-  }, [currentPath, triggerRefresh])
-
   if (isLoading) {
     return (
       <div css={styles.container}>
@@ -970,23 +1165,13 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
       <div css={styles.toolbar}>
         <div css={styles.toolbarLeft}>
           {showUploadButton && (
-            <>
-              <button
-                css={[styles.btn, styles.btnPrimary]}
-                onClick={() => document.getElementById('font-file-input')?.click()}
-              >
-                <PlusIcon />
-                Add New
-              </button>
-              <input
-                id="font-file-input"
-                type="file"
-                accept=".ttf"
-                multiple
-                style={{ display: 'none' }}
-                ref={fileInputRef}
-              />
-            </>
+            <button
+              css={[styles.btn, styles.btnPrimary]}
+              onClick={() => setShowAddNewModal(true)}
+            >
+              <PlusIcon />
+              Add New
+            </button>
           )}
           <button
             css={styles.btn}
@@ -1022,6 +1207,14 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           </button>
         </div>
         <div css={styles.toolbarRight}>
+          {someItemsSelected && (
+            <span css={styles.selectionCount}>
+              {selectedItems.size} selected
+              <button css={styles.clearBtn} onClick={handleClearSelection}>
+                Clear
+              </button>
+            </span>
+          )}
           <button
             css={styles.btn}
             onClick={handleRefresh}
@@ -1074,15 +1267,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           </div>
         )}
 
-        {items.length === 0 && !canCreate ? (
-          <div css={styles.empty}>
-            <FolderIcon css={styles.emptyIcon} />
-            <p css={styles.emptyText}>No files yet</p>
-            <p css={styles.emptyText}>
-              {showUploadButton ? 'Drop TTF files here or click "Add New"' : 'This folder is empty'}
-            </p>
-          </div>
-        ) : items.length === 0 && canCreate ? (
+        {items.length === 0 && canCreate ? (
           <div css={styles.empty}>
             <FolderIcon css={styles.emptyIcon} />
             <p css={styles.emptyText}>Folder doesn't exist</p>
@@ -1106,6 +1291,28 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
                   />
                   Select all ({items.length})
                 </label>
+                {items.some(i => i.name.toLowerCase().endsWith('.woff2')) && (
+                  <label css={styles.selectAllLabel}>
+                    <input
+                      type="checkbox"
+                      css={styles.selectAllCheckbox}
+                      checked={items.filter(i => i.name.toLowerCase().endsWith('.woff2')).every(i => selectedItems.has(i.path))}
+                      onChange={handleSelectAllWoff}
+                    />
+                    WOFF2
+                  </label>
+                )}
+                {items.some(i => i.name.toLowerCase().endsWith('.ttf')) && (
+                  <label css={styles.selectAllLabel}>
+                    <input
+                      type="checkbox"
+                      css={styles.selectAllCheckbox}
+                      checked={items.filter(i => i.name.toLowerCase().endsWith('.ttf')).every(i => selectedItems.has(i.path))}
+                      onChange={handleSelectAllTtf}
+                    />
+                    TTF
+                  </label>
+                )}
               </div>
             )}
             <div css={styles.grid}>
@@ -1171,7 +1378,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
                               folderStatuses[item.path].assignments.length > 0
                                 ? styles.badgeGreen
                                 : folderStatuses[item.path].hasWoff2
-                                  ? styles.badgeBlue
+                                  ? styles.badgeYellow
                                   : styles.badgeGray,
                             ]}
                             title={
@@ -1199,27 +1406,66 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           </>
         ) : (
           /* List view */
-          <div css={styles.tableWrapper}>
-            <table css={styles.table}>
-              <thead>
-                <tr>
-                  <th css={[styles.th, styles.thCheckbox]}>
-                    {items.length > 0 && (
-                      <input
-                        type="checkbox"
-                        css={styles.checkbox}
-                        checked={allItemsSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = someItemsSelected && !allItemsSelected
-                        }}
-                        onChange={handleSelectAll}
-                      />
-                    )}
-                  </th>
-                  <th css={styles.th}>Name</th>
-                  <th css={[styles.th, styles.thSize]}>Size</th>
-                </tr>
-              </thead>
+          <>
+            {items.length > 0 && (
+              <div css={styles.selectAllRow}>
+                <label css={styles.selectAllLabel}>
+                  <input
+                    type="checkbox"
+                    css={styles.selectAllCheckbox}
+                    checked={allItemsSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someItemsSelected && !allItemsSelected
+                    }}
+                    onChange={handleSelectAll}
+                  />
+                  Select all ({items.length})
+                </label>
+                {items.some(i => i.name.toLowerCase().endsWith('.woff2')) && (
+                  <label css={styles.selectAllLabel}>
+                    <input
+                      type="checkbox"
+                      css={styles.selectAllCheckbox}
+                      checked={items.filter(i => i.name.toLowerCase().endsWith('.woff2')).every(i => selectedItems.has(i.path))}
+                      onChange={handleSelectAllWoff}
+                    />
+                    WOFF2
+                  </label>
+                )}
+                {items.some(i => i.name.toLowerCase().endsWith('.ttf')) && (
+                  <label css={styles.selectAllLabel}>
+                    <input
+                      type="checkbox"
+                      css={styles.selectAllCheckbox}
+                      checked={items.filter(i => i.name.toLowerCase().endsWith('.ttf')).every(i => selectedItems.has(i.path))}
+                      onChange={handleSelectAllTtf}
+                    />
+                    TTF
+                  </label>
+                )}
+              </div>
+            )}
+            <div css={styles.tableWrapper}>
+              <table css={styles.table}>
+                <thead>
+                  <tr>
+                    <th css={[styles.th, styles.thCheckbox]}>
+                      {items.length > 0 && (
+                        <input
+                          type="checkbox"
+                          css={styles.checkbox}
+                          checked={allItemsSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = someItemsSelected && !allItemsSelected
+                          }}
+                          onChange={handleSelectAll}
+                        />
+                      )}
+                    </th>
+                    <th css={styles.th}>Name</th>
+                    <th css={[styles.th, styles.thSize]}>Size</th>
+                  </tr>
+                </thead>
               <tbody>
                 {/* Parent folder navigation */}
                 {!isAtRoot && (
@@ -1280,7 +1526,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
                                   folderStatuses[item.path].assignments.length > 0
                                     ? styles.badgeGreen
                                     : folderStatuses[item.path].hasWoff2
-                                      ? styles.badgeBlue
+                                      ? styles.badgeYellow
                                       : styles.badgeGray,
                                 ]}
                                 title={
@@ -1317,7 +1563,8 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -1367,6 +1614,20 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
         />
       )}
 
+      {showAddNewModal && (
+        <AddNewFontModal
+          currentPath={currentPath}
+          onClose={() => setShowAddNewModal(false)}
+          onUploadComplete={() => {
+            setShowAddNewModal(false)
+            triggerRefresh()
+          }}
+          setShowProgress={setShowProgress}
+          setProgressTitle={setProgressTitle}
+          setProgress={setProgress}
+        />
+      )}
+
       {showAssignModal && selectedFolderPath && (
         <FontsAssignModal
           folderPath={selectedFolderPath}
@@ -1377,7 +1638,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
 
       {showProgress && (
         <ProgressModal
-          title="Assigning Web Font"
+          title={progressTitle}
           progress={progress}
           onClose={handleProgressClose}
         />

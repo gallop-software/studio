@@ -163,12 +163,13 @@ export async function handleFontsList(request: Request): Promise<Response> {
 
 /**
  * Upload TTF font files
+ * Automatically creates a folder based on the filename prefix (before the first "-")
  */
 export async function handleFontsUpload(request: Request): Promise<Response> {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
-    const targetPath = formData.get('path') as string || '_fonts'
+    const basePath = formData.get('path') as string || '_fonts'
 
     if (!file) {
       return jsonResponse({ error: 'No file provided' }, { status: 400 })
@@ -180,24 +181,46 @@ export async function handleFontsUpload(request: Request): Promise<Response> {
     }
 
     // Validate path
-    if (!targetPath.startsWith('_fonts')) {
+    if (!basePath.startsWith('_fonts')) {
       return jsonResponse({ error: 'Can only upload to _fonts/' }, { status: 400 })
     }
 
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
+    // Extract folder name from filename (part before the first "-")
+    const fileName = file.name.toLowerCase()
+    const dashIndex = fileName.indexOf('-')
+    let folderName: string
+    
+    if (dashIndex > 0) {
+      folderName = fileName.substring(0, dashIndex)
+    } else {
+      // No dash found, use filename without extension as folder name
+      folderName = fileName.replace('.ttf', '')
+    }
+
+    // Determine target folder - if we're at _fonts root, create subfolder
+    // If we're already in a subfolder, use that
+    let targetPath: string
+    if (basePath === '_fonts') {
+      targetPath = `_fonts/${folderName}`
+    } else {
+      targetPath = basePath
+    }
+
     // Ensure directory exists
     const uploadDir = getWorkspacePath(targetPath)
     await fs.mkdir(uploadDir, { recursive: true })
 
     // Save file
-    const filePath = path.join(uploadDir, file.name.toLowerCase())
+    const filePath = path.join(uploadDir, fileName)
     await fs.writeFile(filePath, buffer)
 
     return jsonResponse({
       success: true,
-      path: `${targetPath}/${file.name.toLowerCase()}`,
+      path: `${targetPath}/${fileName}`,
+      folder: targetPath,
     })
   } catch (error) {
     console.error('Error uploading font:', error)
@@ -277,6 +300,83 @@ export async function handleFontsDelete(request: Request): Promise<Response> {
       success: true,
       deleted,
       errors: errors.length > 0 ? errors : undefined,
+    })
+  } catch (error) {
+    console.error('Error deleting:', error)
+    return jsonResponse({ error: 'Failed to delete' }, { status: 500 })
+  }
+}
+
+/**
+ * Delete files or folders from _fonts with streaming progress
+ */
+export async function handleFontsDeleteStream(request: Request): Promise<Response> {
+  try {
+    const { paths } = await request.json()
+
+    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+      return jsonResponse({ error: 'Paths are required' }, { status: 400 })
+    }
+
+    // Validate all paths - only allow within _fonts/
+    for (const p of paths) {
+      if (!p.startsWith('_fonts/')) {
+        return jsonResponse({ error: `Path not allowed: ${p}` }, { status: 400 })
+      }
+    }
+
+    // Set up SSE streaming
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (data: Record<string, unknown>) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        }
+
+        const deleted: string[] = []
+        const errors: string[] = []
+
+        for (let i = 0; i < paths.length; i++) {
+          const p = paths[i]
+          const fileName = p.split('/').pop() || p
+          
+          send({ status: 'progress', message: `Deleting ${fileName}...`, current: i + 1, total: paths.length })
+          
+          // Delay for visibility
+          await new Promise(resolve => setTimeout(resolve, 1000))
+
+          try {
+            const fullPath = getWorkspacePath(p)
+            const stat = await fs.stat(fullPath)
+
+            if (stat.isDirectory()) {
+              await fs.rm(fullPath, { recursive: true })
+            } else {
+              await fs.unlink(fullPath)
+            }
+            deleted.push(p)
+          } catch (err) {
+            errors.push(`Failed to delete ${p}: ${err instanceof Error ? err.message : 'Unknown error'}`)
+          }
+        }
+
+        send({
+          status: 'complete',
+          message: `Deleted ${deleted.length} item${deleted.length !== 1 ? 's' : ''}`,
+          deleted,
+          errors: errors.length > 0 ? errors : undefined,
+        })
+
+        controller.close()
+      }
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
     })
   } catch (error) {
     console.error('Error deleting:', error)
@@ -366,6 +466,126 @@ export async function handleFontsRename(request: Request): Promise<Response> {
       success: true,
       oldPath,
       newPath,
+    })
+  } catch (error) {
+    console.error('Error renaming:', error)
+    return jsonResponse({ error: 'Failed to rename' }, { status: 500 })
+  }
+}
+
+/**
+ * Rename a folder in _fonts with streaming progress
+ * Also renames all files inside to match the new folder name convention
+ */
+export async function handleFontsRenameStream(request: Request): Promise<Response> {
+  try {
+    const { oldPath, newName } = await request.json()
+
+    if (!oldPath || !newName) {
+      return jsonResponse({ error: 'oldPath and newName are required' }, { status: 400 })
+    }
+
+    // Only allow renaming within _fonts/
+    if (!oldPath.startsWith('_fonts/')) {
+      return jsonResponse({ error: 'Can only rename items in _fonts/' }, { status: 400 })
+    }
+
+    // Validate newName (no slashes, etc.)
+    if (newName.includes('/') || newName.includes('\\')) {
+      return jsonResponse({ error: 'Invalid folder name' }, { status: 400 })
+    }
+
+    const oldFullPath = getWorkspacePath(oldPath)
+    
+    // Get the parent directory and construct new path
+    const parentDir = path.dirname(oldPath)
+    const oldFolderName = path.basename(oldPath).toLowerCase()
+    const newFolderName = newName.toLowerCase()
+    const newPath = `${parentDir}/${newFolderName}`
+    const newFullPath = getWorkspacePath(newPath)
+
+    // Check if old path exists and is a directory
+    let isDirectory = false
+    try {
+      const stat = await fs.stat(oldFullPath)
+      isDirectory = stat.isDirectory()
+    } catch {
+      return jsonResponse({ error: 'Path not found' }, { status: 404 })
+    }
+
+    // Check if new path already exists
+    try {
+      await fs.stat(newFullPath)
+      return jsonResponse({ error: 'A folder with that name already exists' }, { status: 400 })
+    } catch {
+      // Good, it doesn't exist
+    }
+
+    // Set up SSE streaming
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (data: Record<string, unknown>) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        }
+
+        try {
+          send({ status: 'progress', message: `Renaming folder to ${newFolderName}...`, current: 0, total: 1 })
+          
+          // Delay for visibility
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          // Rename the folder first
+          await fs.rename(oldFullPath, newFullPath)
+
+          // If it's a directory, also rename files inside to match the new folder name
+          if (isDirectory) {
+            const entries = await fs.readdir(newFullPath)
+            const filesToRename = entries.filter(entry => {
+              const entryLower = entry.toLowerCase()
+              return entryLower.startsWith(oldFolderName + '-') || entryLower.startsWith(oldFolderName + '_')
+            })
+            
+            let renamed = 0
+            for (const entry of filesToRename) {
+              const entryLower = entry.toLowerCase()
+              const separator = entryLower.startsWith(oldFolderName + '-') ? '-' : '_'
+              const suffix = entry.substring(oldFolderName.length)
+              const newFileName = newFolderName + suffix.toLowerCase()
+              
+              send({ status: 'progress', message: `Renaming ${entry} → ${newFileName}...`, current: renamed + 1, total: filesToRename.length })
+              
+              // Delay for visibility
+              await new Promise(resolve => setTimeout(resolve, 1000))
+              
+              const oldFilePath = path.join(newFullPath, entry)
+              const newFilePath = path.join(newFullPath, newFileName)
+              
+              await fs.rename(oldFilePath, newFilePath)
+              renamed++
+            }
+          }
+
+          send({
+            status: 'complete',
+            message: `Renamed to ${newFolderName}`,
+            oldPath,
+            newPath,
+          })
+        } catch (err) {
+          send({ status: 'error', message: String(err) })
+        }
+
+        controller.close()
+      }
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
     })
   } catch (error) {
     console.error('Error renaming:', error)
@@ -584,6 +804,9 @@ export async function handleFontsAssign(request: Request): Promise<Response> {
               
               send({ status: 'progress', message: `Compressing ${ttfFile}...`, current: i + 1, total: ttfFiles.length, currentFile: ttfFile })
               
+              // Small delay for UI visibility
+              await new Promise(resolve => setTimeout(resolve, 1000))
+              
               try {
                 const ttfPath = path.join(folderPath, ttfFile)
                 const input = readFileSync(ttfPath)
@@ -627,6 +850,9 @@ export async function handleFontsAssign(request: Request): Promise<Response> {
           for (let i = 0; i < assignments.length; i++) {
             const assignmentName = assignments[i]
             send({ status: 'progress', message: `Writing ${assignmentName}.ts...`, current: i + 1, total: assignments.length })
+            
+            // Small delay for UI visibility
+            await new Promise(resolve => setTimeout(resolve, 1000))
             
             try {
               const fileName = `${assignmentName}.ts`
