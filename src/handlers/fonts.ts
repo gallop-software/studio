@@ -223,6 +223,7 @@ export async function handleFontsDelete(request: Request): Promise<Response> {
 
 /**
  * Rename a folder in _fonts
+ * Also renames all files inside to match the new folder name convention
  */
 export async function handleFontsRename(request: Request): Promise<Response> {
   try {
@@ -246,12 +247,16 @@ export async function handleFontsRename(request: Request): Promise<Response> {
     
     // Get the parent directory and construct new path
     const parentDir = path.dirname(oldPath)
-    const newPath = `${parentDir}/${newName.toLowerCase()}`
+    const oldFolderName = path.basename(oldPath).toLowerCase()
+    const newFolderName = newName.toLowerCase()
+    const newPath = `${parentDir}/${newFolderName}`
     const newFullPath = getWorkspacePath(newPath)
 
-    // Check if old path exists
+    // Check if old path exists and is a directory
+    let isDirectory = false
     try {
-      await fs.stat(oldFullPath)
+      const stat = await fs.stat(oldFullPath)
+      isDirectory = stat.isDirectory()
     } catch {
       return jsonResponse({ error: 'Path not found' }, { status: 404 })
     }
@@ -264,8 +269,35 @@ export async function handleFontsRename(request: Request): Promise<Response> {
       // Good, it doesn't exist
     }
 
-    // Rename
+    // Rename the folder first
     await fs.rename(oldFullPath, newFullPath)
+
+    // If it's a directory, also rename files inside to match the new folder name
+    if (isDirectory) {
+      try {
+        const entries = await fs.readdir(newFullPath)
+        
+        for (const entry of entries) {
+          const entryLower = entry.toLowerCase()
+          
+          // Check if file starts with old folder name followed by - or _
+          if (entryLower.startsWith(oldFolderName + '-') || entryLower.startsWith(oldFolderName + '_')) {
+            // Determine the separator used
+            const separator = entryLower.startsWith(oldFolderName + '-') ? '-' : '_'
+            const suffix = entry.substring(oldFolderName.length) // includes the separator and everything after
+            const newFileName = newFolderName + suffix.toLowerCase()
+            
+            const oldFilePath = path.join(newFullPath, entry)
+            const newFilePath = path.join(newFullPath, newFileName)
+            
+            await fs.rename(oldFilePath, newFilePath)
+          }
+        }
+      } catch (err) {
+        console.error('Error renaming files inside folder:', err)
+        // Don't fail the whole operation, folder was already renamed
+      }
+    }
 
     return jsonResponse({
       success: true,
