@@ -322,6 +322,188 @@ const styles = {
       background: ${colors.primaryHover};
     }
   `,
+  viewToggle: css`
+    display: flex;
+    align-items: center;
+    height: ${btnHeight};
+    background-color: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 6px;
+    overflow: hidden;
+  `,
+  viewBtn: css`
+    height: 100%;
+    padding: 0 10px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: ${colors.textSecondary};
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    &:hover {
+      color: ${colors.text};
+      background-color: ${colors.surfaceHover};
+    }
+  `,
+  viewBtnActive: css`
+    background-color: ${colors.primaryLight};
+    color: ${colors.primary};
+    
+    &:hover {
+      background-color: ${colors.primaryLight};
+      color: ${colors.primary};
+    }
+  `,
+  iconSpin: css`
+    animation: ${spin} 1s linear infinite;
+  `,
+  tableWrapper: css`
+    background: ${colors.surface};
+    border-radius: 8px;
+    border: 1px solid ${colors.border};
+    overflow-x: auto;
+  `,
+  table: css`
+    width: 100%;
+    min-width: 400px;
+    border-collapse: collapse;
+    white-space: nowrap;
+  `,
+  th: css`
+    text-align: left;
+    font-size: 11px;
+    color: ${colors.textMuted};
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 12px 16px;
+    font-weight: 600;
+    background: ${colors.background};
+    border-bottom: 1px solid ${colors.border};
+  `,
+  thCheckbox: css`
+    width: 48px;
+  `,
+  thSize: css`
+    width: 96px;
+  `,
+  row: css`
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    user-select: none;
+    
+    &:hover {
+      background-color: ${colors.surfaceHover};
+    }
+    
+    &:not(:last-child) td {
+      border-bottom: 1px solid ${colors.borderLight};
+    }
+  `,
+  rowSelected: css`
+    background-color: ${colors.primaryLight};
+    
+    &:hover {
+      background-color: ${colors.primaryLight};
+    }
+  `,
+  parentRow: css`
+    cursor: pointer;
+    border-bottom: 1px solid ${colors.border};
+    
+    &:hover {
+      background-color: ${colors.surfaceHover};
+    }
+  `,
+  td: css`
+    padding: 12px 16px;
+  `,
+  checkboxCell: css`
+    padding: 12px 16px;
+    cursor: pointer;
+    vertical-align: middle;
+  `,
+  nameCell: css`
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+  `,
+  folderIconWrapper: css`
+    width: 48px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  `,
+  folderIconSmall: css`
+    width: 24px;
+    height: 24px;
+    color: #f9935e;
+  `,
+  fileIconWrapper: css`
+    width: 48px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  `,
+  fileIconSmall: css`
+    width: 20px;
+    height: 20px;
+    color: ${colors.textMuted};
+  `,
+  parentIconSmall: css`
+    width: 20px;
+    height: 20px;
+    color: ${colors.textMuted};
+    flex-shrink: 0;
+  `,
+  name: css`
+    font-size: ${fontSize.base};
+    font-weight: 500;
+    color: ${colors.text};
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 300px;
+  `,
+  meta: css`
+    font-size: ${fontSize.sm};
+    color: ${colors.textSecondary};
+  `,
+  actionsCell: css`
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-left: auto;
+    flex-shrink: 0;
+  `,
+  listOpenBtn: css`
+    height: 32px;
+    font-size: ${fontSize.sm};
+    font-weight: 500;
+    color: ${colors.primary};
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    padding: 0 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    
+    &:hover {
+      background-color: ${colors.primaryLight};
+      border-color: ${colors.primary};
+    }
+  `,
 }
 
 interface FontsSectionProps {
@@ -347,6 +529,8 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const [showRenameFileModal, setShowRenameFileModal] = useState(false)
   const [showNewFolderModal, setShowNewFolderModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [refreshing, setRefreshing] = useState(false)
 
   const fetchItems = useCallback(async () => {
     try {
@@ -412,6 +596,12 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
       setSelectedItems(new Set(items.map(item => item.path)))
     }
   }, [allItemsSelected, items])
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await fetchItems()
+    setRefreshing(false)
+  }, [fetchItems])
 
   // Check if single folder selected for rename
   const selectedPaths = Array.from(selectedItems)
@@ -642,9 +832,31 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           </button>
         </div>
         <div css={styles.toolbarRight}>
-          <span style={{ color: colors.textSecondary, fontSize: fontSize.sm }}>
-            {items.length} item{items.length !== 1 ? 's' : ''}
-          </span>
+          <button
+            css={styles.btn}
+            onClick={handleRefresh}
+            title="Refresh view"
+            disabled={refreshing}
+          >
+            <RefreshIcon spinning={refreshing} />
+          </button>
+
+          <div css={styles.viewToggle}>
+            <button
+              css={[styles.viewBtn, viewMode === 'grid' && styles.viewBtnActive]}
+              onClick={() => setViewMode('grid')}
+              aria-label="Grid view"
+            >
+              <GridIcon />
+            </button>
+            <button
+              css={[styles.viewBtn, viewMode === 'list' && styles.viewBtnActive]}
+              onClick={() => setViewMode('list')}
+              aria-label="List view"
+            >
+              <ListIcon />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -680,7 +892,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
               Create Folder
             </button>
           </div>
-        ) : (
+        ) : viewMode === 'grid' ? (
           <>
             {items.length > 0 && (
               <div css={styles.selectAllRow}>
@@ -764,6 +976,106 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
             })}
             </div>
           </>
+        ) : (
+          /* List view */
+          <div css={styles.tableWrapper}>
+            <table css={styles.table}>
+              <thead>
+                <tr>
+                  <th css={[styles.th, styles.thCheckbox]}>
+                    {items.length > 0 && (
+                      <input
+                        type="checkbox"
+                        css={styles.checkbox}
+                        checked={allItemsSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someItemsSelected && !allItemsSelected
+                        }}
+                        onChange={handleSelectAll}
+                      />
+                    )}
+                  </th>
+                  <th css={styles.th}>Name</th>
+                  <th css={[styles.th, styles.thSize]}>Size</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Parent folder navigation */}
+                {!isAtRoot && (
+                  <tr css={styles.parentRow} onClick={handleNavigateUp}>
+                    <td css={styles.td}></td>
+                    <td css={styles.td}>
+                      <div css={styles.nameCell}>
+                        <svg css={styles.parentIconSmall} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                        </svg>
+                        <span css={styles.name}>..</span>
+                      </div>
+                    </td>
+                    <td css={[styles.td, styles.meta]}>Parent folder</td>
+                  </tr>
+                )}
+
+                {items.map(item => {
+                  const isSelected = selectedItems.has(item.path)
+                  
+                  return (
+                    <tr
+                      key={item.path}
+                      css={[styles.row, isSelected && styles.rowSelected]}
+                      onClick={(e) => handleItemClick(item, e)}
+                    >
+                      <td
+                        css={[styles.td, styles.checkboxCell]}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          css={styles.checkbox}
+                          checked={isSelected}
+                          onChange={() => handleItemClick(item, {} as React.MouseEvent)}
+                        />
+                      </td>
+                      <td css={styles.td}>
+                        <div css={styles.nameCell}>
+                          {item.type === 'folder' ? (
+                            <div css={styles.folderIconWrapper}>
+                              <svg css={styles.folderIconSmall} fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
+                              </svg>
+                            </div>
+                          ) : (
+                            <div css={styles.fileIconWrapper}>
+                              <svg css={styles.fileIconSmall} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                          )}
+                          <span css={styles.name} title={item.name}>{item.name}</span>
+                          <div css={styles.actionsCell}>
+                            <button
+                              css={styles.listOpenBtn}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleOpen(item)
+                              }}
+                            >
+                              Open
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                      <td css={[styles.td, styles.meta]}>
+                        {item.type === 'folder'
+                          ? `${item.fileCount || 0} files`
+                          : item.size ? formatSize(item.size) : '--'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -876,6 +1188,30 @@ function FileIcon() {
   return (
     <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+    </svg>
+  )
+}
+
+function RefreshIcon({ spinning }: { spinning?: boolean }) {
+  return (
+    <svg css={[styles.btnIcon, spinning && styles.iconSpin]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+  )
+}
+
+function GridIcon() {
+  return (
+    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+    </svg>
+  )
+}
+
+function ListIcon() {
+  return (
+    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
     </svg>
   )
 }
