@@ -2,219 +2,122 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import { getWorkspacePath } from '../config'
 import { jsonResponse } from './utils/response'
-
-// Valid font weights for naming convention
-const VALID_WEIGHTS = [
-  'thin',
-  'extralight',
-  'light',
-  'regular',
-  'medium',
-  'semibold',
-  'bold',
-  'extrabold',
-  'black',
-]
-
-interface FontFile {
-  name: string
-  weight: string
-  style: string
-  path: string
-}
-
-interface FontFamily {
-  name: string
-  files: FontFile[]
-  fileCount: number
-  weights: string[]
-}
-
-interface FontConfig {
-  type: string
-  family: string
-  path: string
-  exportName: string
-}
-
-interface FontsListResponse {
-  families: FontFamily[]
-  configs: FontConfig[]
-}
+import type { FileItem } from '../types'
 
 /**
- * Parse a font filename to extract basename, weight, and style
- * Examples:
- *   "Raleway-Bold.ttf" → { basename: "raleway", weight: "bold", style: "normal" }
- *   "OpenSans-BoldItalic.ttf" → { basename: "opensans", weight: "bold", style: "italic" }
- *   "MyFont.ttf" → { basename: "myfont", weight: "regular", style: "normal" }
+ * List files and folders for fonts paths
+ * Works like the regular list handler but for _fonts/ and src/fonts/
  */
-export function parseFontFilename(filename: string): {
-  basename: string
-  weight: string
-  style: string
-  isValid: boolean
-} {
-  // Remove extension
-  const nameWithoutExt = filename.replace(/\.(ttf|woff2?|otf)$/i, '')
-  const nameLower = nameWithoutExt.toLowerCase()
+export async function handleFontsList(request: Request): Promise<Response> {
+  const searchParams = new URL(request.url).searchParams
+  const requestedPath = searchParams.get('path') || '_fonts'
 
-  // Check for italic
-  const hasItalic = nameLower.includes('italic')
-  const style = hasItalic ? 'italic' : 'normal'
-
-  // Try to find weight by splitting on dash or underscore
-  const parts = nameWithoutExt.split(/[-_]/)
-
-  if (parts.length === 1) {
-    // No separator - just basename, default to regular
-    return {
-      basename: nameLower.replace('italic', '').trim(),
-      weight: 'regular',
-      style,
-      isValid: false,
-    }
-  }
-
-  // First part is basename, rest is weight/style
-  const basename = parts[0].toLowerCase()
-  const weightPart = parts.slice(1).join('').toLowerCase().replace('italic', '')
-
-  // Check if weight is valid
-  let weight = 'regular'
-  let isValid = false
-
-  for (const validWeight of VALID_WEIGHTS) {
-    if (weightPart.includes(validWeight)) {
-      weight = validWeight
-      isValid = true
-      break
-    }
-  }
-
-  // Handle common variations
-  if (!isValid) {
-    if (weightPart === '' || weightPart === 'regular' || weightPart === 'normal') {
-      weight = 'regular'
-      isValid = true
-    }
-  }
-
-  return { basename, weight, style, isValid }
-}
-
-/**
- * Generate the correct filename based on naming convention
- */
-export function generateFontFilename(
-  basename: string,
-  weight: string,
-  style: string,
-  ext: string
-): string {
-  const styleSuffix = style === 'italic' ? 'italic' : ''
-  const weightAndStyle = weight + styleSuffix
-  return `${basename}-${weightAndStyle}${ext}`.toLowerCase()
-}
-
-/**
- * List all font families and their files from _fonts/
- * Also list font configs from src/fonts/*.ts
- */
-export async function handleFontsList(): Promise<Response> {
   try {
-    const fontsDir = getWorkspacePath('_fonts')
-    const configDir = getWorkspacePath('src', 'fonts')
+    const items: FileItem[] = []
 
-    const families: FontFamily[] = []
-    const configs: FontConfig[] = []
+    // Determine the actual filesystem path
+    let fsPath: string
+    let allowedPaths = ['_fonts', 'src/fonts', 'src']
 
-    // Scan _fonts/ directory for font families
-    try {
-      const entries = await fs.readdir(fontsDir, { withFileTypes: true })
+    // Validate path is within allowed areas
+    const isAllowed = allowedPaths.some(
+      allowed => requestedPath === allowed || requestedPath.startsWith(allowed + '/')
+    )
 
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const familyName = entry.name.toLowerCase()
-          const familyPath = path.join(fontsDir, entry.name)
+    if (!isAllowed) {
+      return jsonResponse({ items: [], error: 'Path not allowed' }, { status: 400 })
+    }
 
-          // Get all font files in this family folder
-          const files = await fs.readdir(familyPath)
-          const fontFiles: FontFile[] = []
-          const weightsSet = new Set<string>()
-
-          for (const file of files) {
-            if (file.match(/\.(ttf|woff2?)$/i)) {
-              const parsed = parseFontFilename(file)
-              fontFiles.push({
-                name: file,
-                weight: parsed.weight,
-                style: parsed.style,
-                path: `_fonts/${entry.name}/${file}`,
-              })
-              weightsSet.add(parsed.weight)
-            }
-          }
-
-          if (fontFiles.length > 0) {
-            families.push({
-              name: familyName,
-              files: fontFiles.sort((a, b) => {
-                // Sort by weight order
-                const weightOrder = VALID_WEIGHTS.indexOf(a.weight) - VALID_WEIGHTS.indexOf(b.weight)
-                if (weightOrder !== 0) return weightOrder
-                // Then by style (normal before italic)
-                return a.style === 'normal' ? -1 : 1
-              }),
-              fileCount: fontFiles.length,
-              weights: Array.from(weightsSet).sort(
-                (a, b) => VALID_WEIGHTS.indexOf(a) - VALID_WEIGHTS.indexOf(b)
-              ),
-            })
-          }
+    // Special handling for 'src' - only show 'fonts' folder
+    if (requestedPath === 'src') {
+      // Check if src/fonts exists
+      const fontsFolderPath = getWorkspacePath('src', 'fonts')
+      try {
+        const stat = await fs.stat(fontsFolderPath)
+        if (stat.isDirectory()) {
+          items.push({
+            name: 'fonts',
+            path: 'src/fonts',
+            type: 'folder',
+          })
         }
+      } catch {
+        // src/fonts doesn't exist - return empty but allow creating it
+      }
+
+      return jsonResponse({ items, canCreate: true })
+    }
+
+    fsPath = getWorkspacePath(requestedPath)
+
+    // Check if directory exists
+    try {
+      const stat = await fs.stat(fsPath)
+      if (!stat.isDirectory()) {
+        return jsonResponse({ items: [] })
       }
     } catch {
-      // _fonts/ doesn't exist yet, that's fine
+      // Directory doesn't exist
+      return jsonResponse({ items: [], canCreate: true })
     }
 
-    // Scan src/fonts/*.ts for config files
-    try {
-      const configFiles = await fs.readdir(configDir)
+    // Read directory contents
+    const entries = await fs.readdir(fsPath, { withFileTypes: true })
 
-      for (const file of configFiles) {
-        if (file.endsWith('.ts') && !file.startsWith('_')) {
-          const configPath = path.join(configDir, file)
-          const content = await fs.readFile(configPath, 'utf-8')
+    for (const entry of entries) {
+      const itemPath = `${requestedPath}/${entry.name}`
 
-          // Extract the export name (e.g., "bodyFont" from "export const bodyFont")
-          const exportMatch = content.match(/export\s+const\s+(\w+)\s*=/)
-          const exportName = exportMatch ? exportMatch[1] : file.replace('.ts', '') + 'Font'
+      if (entry.isDirectory()) {
+        // Count files in folder
+        let fileCount = 0
+        try {
+          const subEntries = await fs.readdir(path.join(fsPath, entry.name))
+          fileCount = subEntries.filter(f => 
+            f.match(/\.(ttf|woff2?|otf|ts|tsx|js)$/i)
+          ).length
+        } catch {
+          // Ignore errors counting
+        }
 
-          // Extract the font family from the path pattern
-          // Looking for: path: '../../_fonts/{family}/'
-          const pathMatch = content.match(/path:\s*['"]\.\.\/\.\.\/\_fonts\/([^\/]+)\//)
-          const family = pathMatch ? pathMatch[1].toLowerCase() : 'unknown'
+        items.push({
+          name: entry.name,
+          path: itemPath,
+          type: 'folder',
+          fileCount,
+        })
+      } else {
+        // Only show font files and ts/js files
+        const ext = path.extname(entry.name).toLowerCase()
+        const allowedExts = ['.ttf', '.woff', '.woff2', '.otf', '.ts', '.tsx', '.js']
 
-          // Type is the filename without extension
-          const type = file.replace('.ts', '')
+        if (allowedExts.includes(ext)) {
+          // Get file size
+          let size = 0
+          try {
+            const fileStat = await fs.stat(path.join(fsPath, entry.name))
+            size = fileStat.size
+          } catch {
+            // Ignore
+          }
 
-          configs.push({
-            type,
-            family,
-            path: `src/fonts/${file}`,
-            exportName,
+          items.push({
+            name: entry.name,
+            path: itemPath,
+            type: 'file',
+            size,
           })
         }
       }
-    } catch {
-      // src/fonts/ doesn't exist yet, that's fine
     }
 
-    // Sort families alphabetically
-    families.sort((a, b) => a.name.localeCompare(b.name))
+    // Sort: folders first, then alphabetically
+    items.sort((a, b) => {
+      if (a.type === 'folder' && b.type !== 'folder') return -1
+      if (a.type !== 'folder' && b.type === 'folder') return 1
+      return a.name.localeCompare(b.name)
+    })
 
-    return jsonResponse<FontsListResponse>({ families, configs })
+    return jsonResponse({ items })
   } catch (error) {
     console.error('Error listing fonts:', error)
     return jsonResponse({ error: 'Failed to list fonts' }, { status: 500 })
@@ -222,90 +125,131 @@ export async function handleFontsList(): Promise<Response> {
 }
 
 /**
- * Upload TTF font files with naming convention enforcement
+ * Upload TTF font files
  */
 export async function handleFontsUpload(request: Request): Promise<Response> {
   try {
     const formData = await request.formData()
-    const files = formData.getAll('files') as File[]
-    const renamesJson = formData.get('renames') as string | null
+    const file = formData.get('file') as File | null
+    const targetPath = formData.get('path') as string || '_fonts'
 
-    if (!files || files.length === 0) {
-      return jsonResponse({ error: 'No files provided' }, { status: 400 })
+    if (!file) {
+      return jsonResponse({ error: 'No file provided' }, { status: 400 })
     }
 
-    // Parse renames if provided: { originalName: { basename, weight, style } }
-    let renames: Record<string, { basename: string; weight: string; style: string }> = {}
-    if (renamesJson) {
-      try {
-        renames = JSON.parse(renamesJson)
-      } catch {
-        // Invalid JSON, ignore
+    // Only accept TTF files
+    if (!file.name.toLowerCase().endsWith('.ttf')) {
+      return jsonResponse({ error: 'Only TTF files are supported' }, { status: 400 })
+    }
+
+    // Validate path
+    if (!targetPath.startsWith('_fonts')) {
+      return jsonResponse({ error: 'Can only upload to _fonts/' }, { status: 400 })
+    }
+
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+
+    // Ensure directory exists
+    const uploadDir = getWorkspacePath(targetPath)
+    await fs.mkdir(uploadDir, { recursive: true })
+
+    // Save file
+    const filePath = path.join(uploadDir, file.name.toLowerCase())
+    await fs.writeFile(filePath, buffer)
+
+    return jsonResponse({
+      success: true,
+      path: `${targetPath}/${file.name.toLowerCase()}`,
+    })
+  } catch (error) {
+    console.error('Error uploading font:', error)
+    return jsonResponse({ error: 'Failed to upload font' }, { status: 500 })
+  }
+}
+
+/**
+ * Create a folder in _fonts or src/fonts
+ */
+export async function handleFontsCreateFolder(request: Request): Promise<Response> {
+  try {
+    const { path: targetPath, name } = await request.json()
+
+    if (!targetPath || !name) {
+      return jsonResponse({ error: 'Path and name are required' }, { status: 400 })
+    }
+
+    // Validate path
+    const allowedPaths = ['_fonts', 'src/fonts', 'src']
+    const isAllowed = allowedPaths.some(
+      allowed => targetPath === allowed || targetPath.startsWith(allowed + '/')
+    )
+
+    if (!isAllowed) {
+      return jsonResponse({ error: 'Path not allowed' }, { status: 400 })
+    }
+
+    const folderPath = getWorkspacePath(targetPath, name.toLowerCase())
+    await fs.mkdir(folderPath, { recursive: true })
+
+    return jsonResponse({
+      success: true,
+      path: `${targetPath}/${name.toLowerCase()}`,
+    })
+  } catch (error) {
+    console.error('Error creating folder:', error)
+    return jsonResponse({ error: 'Failed to create folder' }, { status: 500 })
+  }
+}
+
+/**
+ * Delete files or folders from _fonts or src/fonts
+ */
+export async function handleFontsDelete(request: Request): Promise<Response> {
+  try {
+    const { paths } = await request.json()
+
+    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+      return jsonResponse({ error: 'Paths are required' }, { status: 400 })
+    }
+
+    // Validate all paths
+    const allowedPaths = ['_fonts', 'src/fonts']
+    for (const p of paths) {
+      const isAllowed = allowedPaths.some(
+        allowed => p.startsWith(allowed + '/')
+      )
+      if (!isAllowed) {
+        return jsonResponse({ error: `Path not allowed: ${p}` }, { status: 400 })
       }
     }
 
-    const fontsDir = getWorkspacePath('_fonts')
-    const uploaded: { original: string; saved: string; path: string }[] = []
-    const errors: { file: string; error: string }[] = []
+    const deleted: string[] = []
+    const errors: string[] = []
 
-    for (const file of files) {
+    for (const p of paths) {
       try {
-        // Only accept TTF files
-        if (!file.name.toLowerCase().endsWith('.ttf')) {
-          errors.push({ file: file.name, error: 'Only TTF files are supported' })
-          continue
-        }
+        const fullPath = getWorkspacePath(p)
+        const stat = await fs.stat(fullPath)
 
-        const bytes = await file.arrayBuffer()
-        const buffer = Buffer.from(bytes)
-
-        // Get naming info - either from renames or parse from filename
-        let basename: string
-        let weight: string
-        let style: string
-
-        if (renames[file.name]) {
-          basename = renames[file.name].basename.toLowerCase()
-          weight = renames[file.name].weight.toLowerCase()
-          style = renames[file.name].style.toLowerCase()
+        if (stat.isDirectory()) {
+          await fs.rm(fullPath, { recursive: true })
         } else {
-          const parsed = parseFontFilename(file.name)
-          basename = parsed.basename
-          weight = parsed.weight
-          style = parsed.style
+          await fs.unlink(fullPath)
         }
-
-        // Generate proper filename
-        const newFilename = generateFontFilename(basename, weight, style, '.ttf')
-
-        // Create family folder if needed
-        const familyDir = path.join(fontsDir, basename)
-        await fs.mkdir(familyDir, { recursive: true })
-
-        // Save file
-        const filePath = path.join(familyDir, newFilename)
-        await fs.writeFile(filePath, buffer)
-
-        uploaded.push({
-          original: file.name,
-          saved: newFilename,
-          path: `_fonts/${basename}/${newFilename}`,
-        })
+        deleted.push(p)
       } catch (err) {
-        errors.push({
-          file: file.name,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        })
+        errors.push(`Failed to delete ${p}: ${err instanceof Error ? err.message : 'Unknown error'}`)
       }
     }
 
     return jsonResponse({
       success: true,
-      uploaded,
+      deleted,
       errors: errors.length > 0 ? errors : undefined,
     })
   } catch (error) {
-    console.error('Error uploading fonts:', error)
-    return jsonResponse({ error: 'Failed to upload fonts' }, { status: 500 })
+    console.error('Error deleting:', error)
+    return jsonResponse({ error: 'Failed to delete' }, { status: 500 })
   }
 }

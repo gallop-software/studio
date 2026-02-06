@@ -2,43 +2,15 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { css } from '@emotion/react'
+import { css, keyframes } from '@emotion/react'
 import { colors, fontSize } from './tokens'
+import type { FileItem } from '../types'
 
-// Standard button height for consistency
 const btnHeight = '36px'
 
-interface FontFile {
-  name: string
-  weight: string
-  style: string
-  path: string
-}
-
-interface FontFamily {
-  name: string
-  files: FontFile[]
-  fileCount: number
-  weights: string[]
-}
-
-interface FontConfig {
-  type: string
-  family: string
-  path: string
-  exportName: string
-}
-
-interface FontsData {
-  families: FontFamily[]
-  configs: FontConfig[]
-}
-
-interface FontsSectionProps {
-  onOpenUploadModal: (files?: File[]) => void
-  isDragging: boolean
-  refreshKey: number
-}
+const spin = keyframes`
+  to { transform: rotate(360deg); }
+`
 
 const styles = {
   container: css`
@@ -56,8 +28,6 @@ const styles = {
     padding: 12px 16px;
     background-color: ${colors.surface};
     border-bottom: 1px solid ${colors.border};
-    overflow: visible;
-    min-width: 0;
     
     @media (min-width: 768px) {
       padding: 12px 24px;
@@ -92,7 +62,6 @@ const styles = {
     cursor: pointer;
     transition: all 0.15s ease;
     color: ${colors.text};
-    letter-spacing: -0.01em;
     
     &:hover:not(:disabled) {
       background-color: ${colors.surfaceHover};
@@ -114,184 +83,150 @@ const styles = {
       border-color: ${colors.primaryHover};
     }
   `,
+  btnDanger: css`
+    background: ${colors.danger};
+    border-color: ${colors.danger};
+    color: white;
+    
+    &:hover:not(:disabled) {
+      background: ${colors.dangerHover};
+      border-color: ${colors.dangerHover};
+    }
+  `,
   btnIcon: css`
     width: 16px;
     height: 16px;
   `,
   content: css`
     flex: 1;
-    display: flex;
-    overflow: hidden;
+    overflow: auto;
     padding: 20px 24px;
-    gap: 24px;
   `,
-  leftPanel: css`
-    flex: 2;
+  loading: css`
     display: flex;
-    flex-direction: column;
-    overflow: auto;
-  `,
-  rightPanel: css`
+    align-items: center;
+    justify-content: center;
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: auto;
-    min-width: 280px;
-    max-width: 350px;
-    background: ${colors.surface};
-    border: 1px solid ${colors.border};
-    border-radius: 8px;
+    min-height: 300px;
   `,
-  panelHeader: css`
-    padding: 12px 16px;
-    font-size: ${fontSize.sm};
-    font-weight: 600;
-    color: ${colors.textSecondary};
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 1px solid ${colors.border};
+  spinner: css`
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 3px solid ${colors.border};
+    border-top-color: ${colors.primary};
+    animation: ${spin} 0.8s linear infinite;
   `,
-  panelContent: css`
-    padding: 12px;
-    overflow: auto;
-  `,
-  sectionTitle: css`
-    font-size: ${fontSize.sm};
-    font-weight: 600;
-    color: ${colors.textSecondary};
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin: 0 0 12px;
-  `,
-  familiesGrid: css`
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 12px;
-  `,
-  familyCard: css`
-    background: ${colors.surface};
-    border: 1px solid ${colors.border};
-    border-radius: 8px;
-    padding: 16px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    
-    &:hover {
-      border-color: ${colors.borderHover};
-      box-shadow: 0 2px 8px ${colors.shadow};
-    }
-  `,
-  familyCardExpanded: css`
-    grid-column: 1 / -1;
-  `,
-  familyName: css`
-    font-size: ${fontSize.base};
-    font-weight: 600;
-    color: ${colors.text};
-    margin: 0 0 4px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  `,
-  familyCount: css`
-    font-size: ${fontSize.sm};
-    color: ${colors.textSecondary};
-    margin: 0 0 12px;
-  `,
-  weightsRow: css`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  `,
-  weightChip: css`
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    background: ${colors.background};
-    border-radius: 4px;
-    font-size: ${fontSize.xs};
-    color: ${colors.textSecondary};
-    font-weight: 500;
-  `,
-  filesGrid: css`
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 8px;
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid ${colors.border};
-  `,
-  fileItem: css`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-    background: ${colors.background};
-    border-radius: 4px;
-    font-size: ${fontSize.sm};
-    color: ${colors.text};
-  `,
-  fileIcon: css`
-    width: 14px;
-    height: 14px;
-    color: ${colors.textSecondary};
-    flex-shrink: 0;
-  `,
-  fileName: css`
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  `,
-  configRow: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 12px;
-    border-radius: 6px;
-    transition: background 0.15s ease;
-    
-    &:hover {
-      background: ${colors.background};
-    }
-  `,
-  configType: css`
-    font-size: ${fontSize.base};
-    font-weight: 500;
-    color: ${colors.text};
-  `,
-  configFamily: css`
-    font-size: ${fontSize.sm};
-    color: ${colors.textSecondary};
-    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  `,
-  configArrow: css`
-    color: ${colors.textMuted};
-    margin: 0 8px;
-  `,
-  emptyState: css`
+  empty: css`
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 40px;
+    flex: 1;
+    min-height: 300px;
     color: ${colors.textSecondary};
-    text-align: center;
   `,
   emptyIcon: css`
     width: 48px;
     height: 48px;
-    color: ${colors.textMuted};
     margin-bottom: 16px;
+    opacity: 0.5;
   `,
-  emptyTitle: css`
-    font-size: ${fontSize.lg};
-    font-weight: 600;
-    color: ${colors.text};
-    margin: 0 0 8px;
-  `,
-  emptyDescription: css`
+  emptyText: css`
     font-size: ${fontSize.base};
+    margin: 0 0 4px 0;
+    
+    &:last-child {
+      color: ${colors.textMuted};
+      font-size: ${fontSize.sm};
+    }
+  `,
+  grid: css`
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    
+    @media (min-width: 480px) { grid-template-columns: repeat(2, 1fr); }
+    @media (min-width: 768px) { grid-template-columns: repeat(3, 1fr); }
+    @media (min-width: 1024px) { grid-template-columns: repeat(4, 1fr); }
+    @media (min-width: 1280px) { grid-template-columns: repeat(5, 1fr); }
+  `,
+  item: css`
+    position: relative;
+    border-radius: 8px;
+    border: 1px solid ${colors.border};
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    background-color: ${colors.surface};
+    user-select: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    
+    &:hover {
+      border-color: #d0d5dd;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+    }
+  `,
+  itemSelected: css`
+    border-color: ${colors.primary};
+    box-shadow: 0 0 0 1px ${colors.primary};
+  `,
+  checkboxWrapper: css`
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 10;
+    padding: 8px;
+    cursor: pointer;
+  `,
+  checkbox: css`
+    width: 18px;
+    height: 18px;
+    accent-color: ${colors.primary};
+    cursor: pointer;
+  `,
+  itemContent: css`
+    position: relative;
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: ${colors.background};
+  `,
+  folderIcon: css`
+    width: 56px;
+    height: 56px;
+    color: #f9935e;
+  `,
+  parentIcon: css`
+    width: 56px;
+    height: 56px;
+    color: ${colors.textMuted};
+  `,
+  fileIcon: css`
+    width: 40px;
+    height: 40px;
+    color: ${colors.textMuted};
+  `,
+  label: css`
+    padding: 10px 12px;
+    background-color: ${colors.surface};
+    border-top: 1px solid ${colors.borderLight};
+  `,
+  labelName: css`
+    font-size: ${fontSize.sm};
+    font-weight: 500;
+    color: ${colors.text};
     margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
+  labelMeta: css`
+    font-size: ${fontSize.xs};
+    color: ${colors.textMuted};
+    margin: 2px 0 0 0;
   `,
   dropOverlay: css`
     position: absolute;
@@ -321,13 +256,356 @@ const styles = {
     width: 48px;
     height: 48px;
   `,
-  loading: css`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-    color: ${colors.textSecondary};
+  createBtn: css`
+    margin-top: 16px;
+    padding: 10px 24px;
+    font-size: ${fontSize.base};
+    font-weight: 500;
+    background: ${colors.primary};
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    
+    &:hover {
+      background: ${colors.primaryHover};
+    }
   `,
+}
+
+interface FontsSectionProps {
+  currentPath: string
+  setCurrentPath: (path: string) => void
+  refreshKey: number
+  triggerRefresh: () => void
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerRefresh }: FontsSectionProps) {
+  const [items, setItems] = useState<FileItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  const [canCreate, setCanCreate] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const fetchItems = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch(`/api/studio/fonts/list?path=${encodeURIComponent(currentPath)}`)
+      if (response.ok) {
+        const data = await response.json()
+        setItems(data.items || [])
+        setCanCreate(data.canCreate === true)
+      }
+    } catch (error) {
+      console.error('Failed to fetch fonts:', error)
+      setItems([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [currentPath])
+
+  useEffect(() => {
+    fetchItems()
+    setSelectedItems(new Set())
+  }, [fetchItems, refreshKey])
+
+  const isAtRoot = currentPath === '_fonts'
+  const isInSrc = currentPath === 'src' || currentPath.startsWith('src/')
+
+  const handleItemClick = useCallback((item: FileItem, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelectedItems(prev => {
+      const next = new Set(prev)
+      if (next.has(item.path)) {
+        next.delete(item.path)
+      } else {
+        next.add(item.path)
+      }
+      return next
+    })
+  }, [])
+
+  const handleOpen = useCallback((item: FileItem) => {
+    if (item.type === 'folder') {
+      setCurrentPath(item.path)
+      setSelectedItems(new Set())
+    }
+  }, [setCurrentPath])
+
+  const handleNavigateUp = useCallback(() => {
+    const parts = currentPath.split('/')
+    parts.pop()
+    const newPath = parts.join('/') || '_fonts'
+    setCurrentPath(newPath)
+    setSelectedItems(new Set())
+  }, [currentPath, setCurrentPath])
+
+  const handleDelete = useCallback(async () => {
+    if (selectedItems.size === 0) return
+    
+    const confirmed = window.confirm(`Delete ${selectedItems.size} item(s)?`)
+    if (!confirmed) return
+
+    try {
+      const response = await fetch('/api/studio/fonts/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: Array.from(selectedItems) }),
+      })
+      if (response.ok) {
+        setSelectedItems(new Set())
+        triggerRefresh()
+      }
+    } catch (error) {
+      console.error('Delete failed:', error)
+    }
+  }, [selectedItems, triggerRefresh])
+
+  const handleCreateFolder = useCallback(async () => {
+    const name = window.prompt('Folder name:')
+    if (!name) return
+
+    try {
+      const response = await fetch('/api/studio/fonts/create-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: currentPath, name }),
+      })
+      if (response.ok) {
+        triggerRefresh()
+      }
+    } catch (error) {
+      console.error('Create folder failed:', error)
+    }
+  }, [currentPath, triggerRefresh])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // Only allow drops in _fonts paths
+    if (currentPath.startsWith('_fonts')) {
+      setIsDragging(true)
+    }
+  }, [currentPath])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    if (!currentPath.startsWith('_fonts')) return
+
+    const files = Array.from(e.dataTransfer.files).filter(
+      f => f.name.toLowerCase().endsWith('.ttf')
+    )
+    
+    if (files.length === 0) return
+
+    for (const file of files) {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('path', currentPath)
+
+      try {
+        await fetch('/api/studio/fonts/upload', {
+          method: 'POST',
+          body: formData,
+        })
+      } catch (error) {
+        console.error('Upload failed:', error)
+      }
+    }
+    
+    triggerRefresh()
+  }, [currentPath, triggerRefresh])
+
+  const fileInputRef = useCallback((input: HTMLInputElement | null) => {
+    if (input) {
+      input.addEventListener('change', async (e) => {
+        const files = (e.target as HTMLInputElement).files
+        if (!files || files.length === 0) return
+
+        for (const file of Array.from(files)) {
+          if (!file.name.toLowerCase().endsWith('.ttf')) continue
+          
+          const formData = new FormData()
+          formData.append('file', file)
+          formData.append('path', currentPath)
+
+          try {
+            await fetch('/api/studio/fonts/upload', {
+              method: 'POST',
+              body: formData,
+            })
+          } catch (error) {
+            console.error('Upload failed:', error)
+          }
+        }
+        
+        triggerRefresh()
+        input.value = ''
+      })
+    }
+  }, [currentPath, triggerRefresh])
+
+  if (isLoading) {
+    return (
+      <div css={styles.container}>
+        <div css={styles.toolbar} />
+        <div css={styles.loading}>
+          <div css={styles.spinner} />
+        </div>
+      </div>
+    )
+  }
+
+  const showUploadButton = currentPath.startsWith('_fonts')
+
+  return (
+    <div css={styles.container}>
+      <div css={styles.toolbar}>
+        <div css={styles.toolbarLeft}>
+          {showUploadButton && (
+            <>
+              <button
+                css={[styles.btn, styles.btnPrimary]}
+                onClick={() => document.getElementById('font-file-input')?.click()}
+              >
+                <PlusIcon />
+                Add New
+              </button>
+              <input
+                id="font-file-input"
+                type="file"
+                accept=".ttf"
+                multiple
+                style={{ display: 'none' }}
+                ref={fileInputRef}
+              />
+            </>
+          )}
+          <button css={styles.btn} onClick={handleCreateFolder}>
+            <FolderPlusIcon />
+            New Folder
+          </button>
+          {selectedItems.size > 0 && (
+            <button css={[styles.btn, styles.btnDanger]} onClick={handleDelete}>
+              <TrashIcon />
+              Delete ({selectedItems.size})
+            </button>
+          )}
+        </div>
+        <div css={styles.toolbarRight}>
+          <span style={{ color: colors.textSecondary, fontSize: fontSize.sm }}>
+            {items.length} item{items.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      </div>
+
+      <div
+        css={styles.content}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        style={{ position: 'relative' }}
+      >
+        {isDragging && (
+          <div css={styles.dropOverlay}>
+            <div css={styles.dropMessage}>
+              <UploadIcon />
+              <span>Drop TTF files to upload</span>
+            </div>
+          </div>
+        )}
+
+        {items.length === 0 && !canCreate ? (
+          <div css={styles.empty}>
+            <FolderIcon css={styles.emptyIcon} />
+            <p css={styles.emptyText}>No files yet</p>
+            <p css={styles.emptyText}>
+              {showUploadButton ? 'Drop TTF files here or click "Add New"' : 'This folder is empty'}
+            </p>
+          </div>
+        ) : items.length === 0 && canCreate ? (
+          <div css={styles.empty}>
+            <FolderIcon css={styles.emptyIcon} />
+            <p css={styles.emptyText}>Folder doesn't exist</p>
+            <button css={styles.createBtn} onClick={handleCreateFolder}>
+              Create Folder
+            </button>
+          </div>
+        ) : (
+          <div css={styles.grid}>
+            {/* Parent folder navigation */}
+            {!isAtRoot && (
+              <div css={styles.item} onClick={handleNavigateUp} onDoubleClick={handleNavigateUp}>
+                <div css={styles.itemContent}>
+                  <ParentFolderIcon />
+                </div>
+                <div css={styles.label}>
+                  <p css={styles.labelName}>..</p>
+                  <p css={styles.labelMeta}>Parent folder</p>
+                </div>
+              </div>
+            )}
+
+            {items.map(item => {
+              const isSelected = selectedItems.has(item.path)
+              
+              return (
+                <div
+                  key={item.path}
+                  css={[styles.item, isSelected && styles.itemSelected]}
+                  onClick={(e) => handleItemClick(item, e)}
+                  onDoubleClick={() => handleOpen(item)}
+                >
+                  <div
+                    css={styles.checkboxWrapper}
+                    onClick={(e) => { e.stopPropagation(); handleItemClick(item, e) }}
+                  >
+                    <input
+                      type="checkbox"
+                      css={styles.checkbox}
+                      checked={isSelected}
+                      onChange={() => {}}
+                    />
+                  </div>
+                  <div css={styles.itemContent}>
+                    {item.type === 'folder' ? (
+                      <FolderIcon />
+                    ) : (
+                      <FileIcon />
+                    )}
+                  </div>
+                  <div css={styles.label}>
+                    <p css={styles.labelName}>{item.name}</p>
+                    <p css={styles.labelMeta}>
+                      {item.type === 'folder'
+                        ? `${item.fileCount || 0} files`
+                        : item.size ? formatSize(item.size) : ''}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function PlusIcon() {
@@ -338,185 +616,52 @@ function PlusIcon() {
   )
 }
 
-function FontIcon() {
+function FolderPlusIcon() {
   return (
-    <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  )
+}
+
+function UploadIcon() {
+  return (
+    <svg css={styles.dropIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
     </svg>
   )
 }
 
 function FolderIcon() {
   return (
-    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+    <svg css={styles.folderIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
     </svg>
   )
 }
 
-function ChevronIcon({ isOpen }: { isOpen: boolean }) {
+function ParentFolderIcon() {
   return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      style={{
-        transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-        transition: 'transform 0.15s ease',
-      }}
-    >
-      <polyline points="6 9 12 15 18 9" />
+    <svg css={styles.parentIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11v4m0-4l-2 2m2-2l2 2" />
     </svg>
   )
 }
 
-export function FontsSection({ onOpenUploadModal, isDragging, refreshKey }: FontsSectionProps) {
-  const [fontsData, setFontsData] = useState<FontsData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [expandedFamily, setExpandedFamily] = useState<string | null>(null)
-
-  const fetchFonts = useCallback(async () => {
-    try {
-      setIsLoading(true)
-      const response = await fetch('/api/studio/fonts/list')
-      if (response.ok) {
-        const data = await response.json()
-        setFontsData(data)
-      }
-    } catch (error) {
-      console.error('Failed to fetch fonts:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchFonts()
-  }, [fetchFonts, refreshKey])
-
-  const toggleFamily = useCallback((name: string) => {
-    setExpandedFamily(prev => prev === name ? null : name)
-  }, [])
-
-  if (isLoading) {
-    return (
-      <div css={styles.container}>
-        <div css={styles.loading}>Loading fonts...</div>
-      </div>
-    )
-  }
-
-  const hasNoFonts = !fontsData || (fontsData.families.length === 0 && fontsData.configs.length === 0)
-
+function FileIcon() {
   return (
-    <div css={styles.container}>
-      <div css={styles.toolbar}>
-        <div css={styles.toolbarLeft}>
-          <button css={[styles.btn, styles.btnPrimary]} onClick={() => onOpenUploadModal()}>
-            <PlusIcon />
-            Add New
-          </button>
-        </div>
-        <div css={styles.toolbarRight}>
-          {fontsData && (
-            <span style={{ color: colors.textSecondary, fontSize: fontSize.sm }}>
-              {fontsData.families.length} font {fontsData.families.length === 1 ? 'family' : 'families'}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div css={styles.content} style={{ position: 'relative' }}>
-        {isDragging && (
-          <div css={styles.dropOverlay}>
-            <div css={styles.dropMessage}>
-              <svg css={styles.dropIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-              <span>Drop TTF files to upload</span>
-            </div>
-          </div>
-        )}
-
-        {hasNoFonts ? (
-          <div css={styles.emptyState}>
-            <svg css={styles.emptyIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16m-7 6h7" />
-            </svg>
-            <h2 css={styles.emptyTitle}>No fonts yet</h2>
-            <p css={styles.emptyDescription}>
-              Drag and drop TTF files here or click "Add New" to upload fonts.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div css={styles.leftPanel}>
-              <h3 css={styles.sectionTitle}>Font Families (_fonts/)</h3>
-              <div css={styles.familiesGrid}>
-                {fontsData?.families.map((family) => {
-                  const isExpanded = expandedFamily === family.name
-                  return (
-                    <div
-                      key={family.name}
-                      css={[styles.familyCard, isExpanded && styles.familyCardExpanded]}
-                      onClick={() => toggleFamily(family.name)}
-                    >
-                      <h4 css={styles.familyName}>
-                        <FolderIcon />
-                        {family.name}
-                        <ChevronIcon isOpen={isExpanded} />
-                      </h4>
-                      <p css={styles.familyCount}>
-                        {family.fileCount} {family.fileCount === 1 ? 'file' : 'files'}
-                      </p>
-                      <div css={styles.weightsRow}>
-                        {family.weights.map((weight) => (
-                          <span key={weight} css={styles.weightChip}>
-                            {weight}
-                          </span>
-                        ))}
-                      </div>
-                      {isExpanded && (
-                        <div css={styles.filesGrid}>
-                          {family.files.map((file) => (
-                            <div key={file.path} css={styles.fileItem}>
-                              <FontIcon />
-                              <span css={styles.fileName}>{file.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div css={styles.rightPanel}>
-              <div css={styles.panelHeader}>Font Configs (src/fonts/)</div>
-              <div css={styles.panelContent}>
-                {fontsData?.configs.length === 0 ? (
-                  <p style={{ color: colors.textMuted, fontSize: fontSize.sm, margin: 0 }}>
-                    No font configs found
-                  </p>
-                ) : (
-                  fontsData?.configs.map((config) => (
-                    <div key={config.path} css={styles.configRow}>
-                      <span css={styles.configType}>{config.type}</span>
-                      <span css={styles.configArrow}>→</span>
-                      <span css={styles.configFamily}>{config.family}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+    <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
   )
 }
 

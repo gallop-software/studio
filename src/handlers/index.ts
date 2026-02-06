@@ -48,4 +48,4 @@ export { handleGenerateFavicon } from './favicon'
 export { handleEditImage } from './edit-image'
 
 // Font handlers
-export { handleFontsList, handleFontsUpload } from './fonts'
+export { handleFontsList, handleFontsUpload, handleFontsCreateFolder, handleFontsDelete } from './fonts'
