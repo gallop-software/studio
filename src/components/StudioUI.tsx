@@ -106,14 +106,13 @@ const styles = {
     font-size: 19px !important;
     font-weight: 600;
     letter-spacing: -0.02em;
-    color: ${colors.textSecondary};
+    color: ${colors.text};
     cursor: pointer;
     transition: all 0.15s ease;
     text-align: left;
     
     &:hover {
       background: ${colors.surfaceHover};
-      color: ${colors.text};
     }
   `,
   dropdownItemActive: css`
@@ -570,15 +569,13 @@ export function StudioUI({
               )}
             </div>
           </div>
-          {activeSection === 'media' && (
-            <div css={styles.headerCenter}>
-              <Breadcrumbs
-                currentPath={currentPath}
-                onNavigate={setCurrentPath}
-                projectName={workspacePath ? workspacePath.split('/').pop() : undefined}
-              />
-            </div>
-          )}
+          <div css={styles.headerCenter}>
+            <Breadcrumbs
+              currentPath={currentPath}
+              onNavigate={setCurrentPath}
+              projectName={workspacePath ? workspacePath.split('/').pop() : undefined}
+            />
+          </div>
           <div css={styles.headerActions}>
             {siteUrl && (
               <a
