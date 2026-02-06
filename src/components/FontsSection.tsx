@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { colors, fontSize } from './tokens'
+import { InputModal } from './StudioModal'
 import type { FileItem } from '../types'
 
 const btnHeight = '36px'
@@ -84,13 +85,11 @@ const styles = {
     }
   `,
   btnDanger: css`
-    background: ${colors.danger};
-    border-color: ${colors.danger};
-    color: white;
+    color: ${colors.danger};
     
     &:hover:not(:disabled) {
-      background: ${colors.dangerHover};
-      border-color: ${colors.dangerHover};
+      background-color: ${colors.dangerLight};
+      border-color: ${colors.danger};
     }
   `,
   btnIcon: css`
@@ -140,6 +139,33 @@ const styles = {
       color: ${colors.textMuted};
       font-size: ${fontSize.sm};
     }
+  `,
+  selectAllRow: css`
+    display: flex;
+    align-items: center;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: ${colors.surface};
+    border-radius: 8px;
+    border: 1px solid ${colors.border};
+  `,
+  selectAllLabel: css`
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: ${fontSize.base};
+    font-weight: 500;
+    color: ${colors.textSecondary};
+    cursor: pointer;
+    
+    &:hover {
+      color: ${colors.text};
+    }
+  `,
+  selectAllCheckbox: css`
+    width: 16px;
+    height: 16px;
+    accent-color: ${colors.primary};
   `,
   grid: css`
     display: grid;
@@ -317,6 +343,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [canCreate, setCanCreate] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [showRenameFolderModal, setShowRenameFolderModal] = useState(false)
 
   const fetchItems = useCallback(async () => {
     try {
@@ -370,6 +397,43 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     setCurrentPath(newPath)
     setSelectedItems(new Set())
   }, [currentPath, setCurrentPath])
+
+  // Select all logic
+  const allItemsSelected = items.length > 0 && selectedItems.size === items.length
+  const someItemsSelected = selectedItems.size > 0
+
+  const handleSelectAll = useCallback(() => {
+    if (allItemsSelected) {
+      setSelectedItems(new Set())
+    } else {
+      setSelectedItems(new Set(items.map(item => item.path)))
+    }
+  }, [allItemsSelected, items])
+
+  // Check if single folder selected for rename
+  const selectedPaths = Array.from(selectedItems)
+  const singleFolderSelected = selectedPaths.length === 1 && items.find(i => i.path === selectedPaths[0])?.type === 'folder'
+  const selectedFolderPath = singleFolderSelected ? selectedPaths[0] : null
+  const selectedFolderName = selectedFolderPath ? selectedFolderPath.split('/').pop() || '' : ''
+
+  const handleRenameFolder = useCallback(async (newName: string) => {
+    if (!selectedFolderPath) return
+    setShowRenameFolderModal(false)
+
+    try {
+      const response = await fetch('/api/studio/fonts/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPath: selectedFolderPath, newName }),
+      })
+      if (response.ok) {
+        setSelectedItems(new Set())
+        triggerRefresh()
+      }
+    } catch (error) {
+      console.error('Rename failed:', error)
+    }
+  }, [selectedFolderPath, triggerRefresh])
 
   const handleDelete = useCallback(async () => {
     if (selectedItems.size === 0) return
@@ -521,16 +585,27 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
               />
             </>
           )}
-          <button css={styles.btn} onClick={handleCreateFolder}>
-            <FolderPlusIcon />
-            New Folder
+          <button
+            css={styles.btn}
+            onClick={() => {
+              if (singleFolderSelected) {
+                setShowRenameFolderModal(true)
+              } else {
+                handleCreateFolder()
+              }
+            }}
+          >
+            {singleFolderSelected ? <RenameIcon /> : <FolderPlusIcon />}
+            {singleFolderSelected ? 'Rename' : 'New Folder'}
           </button>
-          {selectedItems.size > 0 && (
-            <button css={[styles.btn, styles.btnDanger]} onClick={handleDelete}>
-              <TrashIcon />
-              Delete ({selectedItems.size})
-            </button>
-          )}
+          <button
+            css={[styles.btn, styles.btnDanger]}
+            onClick={handleDelete}
+            disabled={selectedItems.size === 0}
+          >
+            <TrashIcon />
+            Delete
+          </button>
         </div>
         <div css={styles.toolbarRight}>
           <span style={{ color: colors.textSecondary, fontSize: fontSize.sm }}>
@@ -572,9 +647,26 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
             </button>
           </div>
         ) : (
-          <div css={styles.grid}>
-            {/* Parent folder navigation */}
-            {!isAtRoot && (
+          <>
+            {items.length > 0 && (
+              <div css={styles.selectAllRow}>
+                <label css={styles.selectAllLabel}>
+                  <input
+                    type="checkbox"
+                    css={styles.selectAllCheckbox}
+                    checked={allItemsSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someItemsSelected && !allItemsSelected
+                    }}
+                    onChange={handleSelectAll}
+                  />
+                  Select all ({items.length})
+                </label>
+              </div>
+            )}
+            <div css={styles.grid}>
+              {/* Parent folder navigation */}
+              {!isAtRoot && (
               <div css={styles.item} onClick={handleNavigateUp} onDoubleClick={handleNavigateUp}>
                 <div css={styles.itemContent}>
                   <ParentFolderIcon />
@@ -636,9 +728,22 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
                 </div>
               )
             })}
-          </div>
+            </div>
+          </>
         )}
       </div>
+
+      {showRenameFolderModal && selectedFolderPath && (
+        <InputModal
+          title="Rename Folder"
+          message="Enter a new name for the folder:"
+          placeholder={selectedFolderName}
+          defaultValue={selectedFolderName}
+          confirmLabel="Rename"
+          onConfirm={handleRenameFolder}
+          onCancel={() => setShowRenameFolderModal(false)}
+        />
+      )}
     </div>
   )
 }
@@ -663,6 +768,14 @@ function TrashIcon() {
   return (
     <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  )
+}
+
+function RenameIcon() {
+  return (
+    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
     </svg>
   )
 }

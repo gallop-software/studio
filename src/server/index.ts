@@ -46,7 +46,7 @@ import {
   handleGetFeaturedImageOptions,
 } from "../handlers/featured-image";
 import { handleEditImage } from "../handlers/edit-image";
-import { handleFontsList, handleFontsUpload, handleFontsCreateFolder, handleFontsDelete } from "../handlers/fonts";
+import { handleFontsList, handleFontsUpload, handleFontsCreateFolder, handleFontsDelete, handleFontsRename } from "../handlers/fonts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -167,6 +167,7 @@ export async function startServer(options: ServerOptions) {
   app.post("/api/studio/fonts/upload", wrapRawHandler(handleFontsUpload));
   app.post("/api/studio/fonts/create-folder", wrapHandler(handleFontsCreateFolder));
   app.post("/api/studio/fonts/delete", wrapHandler(handleFontsDelete));
+  app.post("/api/studio/fonts/rename", wrapHandler(handleFontsRename));
 
   // API Routes - POST endpoints
   // Upload uses raw body wrapper to preserve FormData

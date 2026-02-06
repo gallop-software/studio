@@ -220,3 +220,60 @@ export async function handleFontsDelete(request: Request): Promise<Response> {
     return jsonResponse({ error: 'Failed to delete' }, { status: 500 })
   }
 }
+
+/**
+ * Rename a folder in _fonts
+ */
+export async function handleFontsRename(request: Request): Promise<Response> {
+  try {
+    const { oldPath, newName } = await request.json()
+
+    if (!oldPath || !newName) {
+      return jsonResponse({ error: 'oldPath and newName are required' }, { status: 400 })
+    }
+
+    // Only allow renaming within _fonts/
+    if (!oldPath.startsWith('_fonts/')) {
+      return jsonResponse({ error: 'Can only rename items in _fonts/' }, { status: 400 })
+    }
+
+    // Validate newName (no slashes, etc.)
+    if (newName.includes('/') || newName.includes('\\')) {
+      return jsonResponse({ error: 'Invalid folder name' }, { status: 400 })
+    }
+
+    const oldFullPath = getWorkspacePath(oldPath)
+    
+    // Get the parent directory and construct new path
+    const parentDir = path.dirname(oldPath)
+    const newPath = `${parentDir}/${newName.toLowerCase()}`
+    const newFullPath = getWorkspacePath(newPath)
+
+    // Check if old path exists
+    try {
+      await fs.stat(oldFullPath)
+    } catch {
+      return jsonResponse({ error: 'Path not found' }, { status: 404 })
+    }
+
+    // Check if new path already exists
+    try {
+      await fs.stat(newFullPath)
+      return jsonResponse({ error: 'A folder with that name already exists' }, { status: 400 })
+    } catch {
+      // Good, it doesn't exist
+    }
+
+    // Rename
+    await fs.rename(oldFullPath, newFullPath)
+
+    return jsonResponse({
+      success: true,
+      oldPath,
+      newPath,
+    })
+  } catch (error) {
+    console.error('Error renaming:', error)
+    return jsonResponse({ error: 'Failed to rename' }, { status: 500 })
+  }
+}

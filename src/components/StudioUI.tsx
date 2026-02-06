@@ -99,7 +99,9 @@ const styles = {
     z-index: 100;
   `,
   dropdownItem: css`
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     width: 100%;
     padding: 10px 12px;
     background: transparent;
@@ -118,11 +120,14 @@ const styles = {
     }
   `,
   dropdownItemActive: css`
-    color: ${colors.primary};
-    
-    &:hover {
-      background: rgba(99, 91, 255, 0.1);
-      color: ${colors.primaryHover};
+    &::after {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: ${colors.primary};
+      border-radius: 50%;
+      margin-left: 8px;
     }
   `,
   headerLeft: css`
