@@ -94,7 +94,6 @@ const styles = {
     border: 1px solid ${colors.border};
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    min-width: 180px;
     padding: 4px;
     z-index: 100;
   `,
@@ -107,6 +106,9 @@ const styles = {
     background: transparent;
     border: none;
     border-radius: 6px;
+    white-space: nowrap;
+    position: relative;
+    top: 1px;
     font-size: 19px !important;
     font-weight: 600;
     letter-spacing: -0.02em;
@@ -127,7 +129,6 @@ const styles = {
       height: 8px;
       background: ${colors.primary};
       border-radius: 50%;
-      margin-left: 8px;
     }
   `,
   headerLeft: css`
