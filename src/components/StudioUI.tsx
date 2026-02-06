@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 'use client'
 
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import { css } from '@emotion/react'
 import { StudioContext } from './StudioContext'
 import { StudioToolbar } from './StudioToolbar'
@@ -50,6 +50,78 @@ const styles = {
     margin: 0;
     letter-spacing: -0.02em;
     flex-shrink: 0;
+  `,
+  titleDropdown: css`
+    position: relative;
+  `,
+  titleButton: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: ${fontSize.lg};
+    font-weight: 600;
+    color: ${colors.text};
+    background: transparent;
+    border: none;
+    padding: 4px 8px;
+    margin: -4px -8px;
+    border-radius: 6px;
+    cursor: pointer;
+    letter-spacing: -0.02em;
+    transition: background 0.15s ease;
+    
+    &:hover {
+      background: ${colors.surfaceHover};
+    }
+  `,
+  titleChevron: css`
+    width: 16px;
+    height: 16px;
+    color: ${colors.textSecondary};
+    transition: transform 0.15s ease;
+  `,
+  titleChevronOpen: css`
+    transform: rotate(180deg);
+  `,
+  dropdownMenu: css`
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    min-width: 180px;
+    padding: 4px;
+    z-index: 100;
+  `,
+  dropdownItem: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    font-size: ${fontSize.base};
+    color: ${colors.text};
+    cursor: pointer;
+    transition: background 0.15s ease;
+    text-align: left;
+    
+    &:hover {
+      background: ${colors.surfaceHover};
+    }
+  `,
+  dropdownItemActive: css`
+    color: ${colors.primary};
+    font-weight: 500;
+  `,
+  dropdownCheck: css`
+    width: 16px;
+    height: 16px;
+    color: ${colors.primary};
   `,
   headerLeft: css`
     display: flex;
@@ -209,6 +281,9 @@ export function StudioUI({
   const [error, setError] = useState<{ title: string; message: string } | null>(null)
   const [fileItems, setFileItems] = useState<FileItem[]>([])
   const [isDragging, setIsDragging] = useState(false)
+  const [activeSection, setActiveSection] = useState<'media' | 'fonts'>('media')
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
@@ -388,6 +463,30 @@ export function StudioUI({
     }
   }, [handleKeyDown, isVisible])
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false)
+      }
+    }
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isDropdownOpen])
+
+  const toggleDropdown = useCallback(() => {
+    setIsDropdownOpen((prev) => !prev)
+  }, [])
+
+  const selectSection = useCallback((section: 'media' | 'fonts') => {
+    setActiveSection(section)
+    setIsDropdownOpen(false)
+  }, [])
+
   const contextValue = {
     isOpen: true,
     openStudio: () => { },
@@ -447,15 +546,40 @@ export function StudioUI({
       <div css={styles.container}>
         <div css={styles.header}>
           <div css={styles.headerLeft}>
-            <h1 css={styles.title}>gallop.studio</h1>
+            <div css={styles.titleDropdown} ref={dropdownRef}>
+              <button css={styles.titleButton} onClick={toggleDropdown}>
+                <span>gallop.studio</span>
+                <ChevronDownIcon isOpen={isDropdownOpen} />
+              </button>
+              {isDropdownOpen && (
+                <div css={styles.dropdownMenu}>
+                  <button
+                    css={[styles.dropdownItem, activeSection === 'media' && styles.dropdownItemActive]}
+                    onClick={() => selectSection('media')}
+                  >
+                    <span>Media Manager</span>
+                    {activeSection === 'media' && <CheckIcon />}
+                  </button>
+                  <button
+                    css={[styles.dropdownItem, activeSection === 'fonts' && styles.dropdownItemActive]}
+                    onClick={() => selectSection('fonts')}
+                  >
+                    <span>Fonts</span>
+                    {activeSection === 'fonts' && <CheckIcon />}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-          <div css={styles.headerCenter}>
-            <Breadcrumbs
-              currentPath={currentPath}
-              onNavigate={setCurrentPath}
-              projectName={workspacePath ? workspacePath.split('/').pop() : undefined}
-            />
-          </div>
+          {activeSection === 'media' && (
+            <div css={styles.headerCenter}>
+              <Breadcrumbs
+                currentPath={currentPath}
+                onNavigate={setCurrentPath}
+                projectName={workspacePath ? workspacePath.split('/').pop() : undefined}
+              />
+            </div>
+          )}
           <div css={styles.headerActions}>
             {siteUrl && (
               <a
@@ -480,83 +604,89 @@ export function StudioUI({
           </div>
         </div>
 
-        <StudioToolbar />
+        {activeSection === 'media' ? (
+          <>
+            <StudioToolbar />
 
-        <div
-          css={styles.content}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {isDragging && (
-            <div css={styles.dropOverlay}>
-              <div css={styles.dropMessage}>
-                <svg css={styles.dropIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                <span>Drop files to upload</span>
+            <div
+              css={styles.content}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              {isDragging && (
+                <div css={styles.dropOverlay}>
+                  <div css={styles.dropMessage}>
+                    <svg css={styles.dropIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <span>Drop files to upload</span>
+                  </div>
+                </div>
+              )}
+              <div css={styles.fileBrowser}>
+                {viewMode === 'grid' ? <StudioFileGrid /> : <StudioFileList />}
               </div>
             </div>
-          )}
-          <div css={styles.fileBrowser}>
-            {viewMode === 'grid' ? <StudioFileGrid /> : <StudioFileList />}
-          </div>
-        </div>
 
-        {/* Detail view as modal overlay */}
-        {focusedItem && <StudioDetailView />}
+            {/* Detail view as modal overlay */}
+            {focusedItem && <StudioDetailView />}
 
-        {/* Error modal */}
-        <ErrorModal />
+            {/* Error modal */}
+            <ErrorModal />
 
-        {/* Shared action modals */}
-        {actions.actionState.showDeleteConfirm && (
-          <ConfirmModal
-            title="Delete Files"
-            message={`Are you sure you want to delete ${actions.actionState.actionPaths.length} item${actions.actionState.actionPaths.length !== 1 ? 's' : ''}? This action cannot be undone.`}
-            confirmLabel="Delete"
-            variant="danger"
-            onConfirm={actions.confirmDelete}
-            onCancel={actions.cancelAction}
-          />
-        )}
+            {/* Shared action modals */}
+            {actions.actionState.showDeleteConfirm && (
+              <ConfirmModal
+                title="Delete Files"
+                message={`Are you sure you want to delete ${actions.actionState.actionPaths.length} item${actions.actionState.actionPaths.length !== 1 ? 's' : ''}? This action cannot be undone.`}
+                confirmLabel="Delete"
+                variant="danger"
+                onConfirm={actions.confirmDelete}
+                onCancel={actions.cancelAction}
+              />
+            )}
 
-        {actions.actionState.showSyncConfirm && (
-          <ConfirmModal
-            title="Push to CDN"
-            message={`Push ${actions.actionState.syncImageCount} image${actions.actionState.syncImageCount !== 1 ? 's' : ''} to Cloudflare R2?${actions.actionState.syncHasRemote ? ' Remote images will be downloaded first.' : ''}${actions.actionState.syncHasLocal ? ' After pushing, local files will be deleted.' : ''}`}
-            confirmLabel="Push"
-            onConfirm={actions.confirmSync}
-            onCancel={actions.cancelAction}
-          />
-        )}
+            {actions.actionState.showSyncConfirm && (
+              <ConfirmModal
+                title="Push to CDN"
+                message={`Push ${actions.actionState.syncImageCount} image${actions.actionState.syncImageCount !== 1 ? 's' : ''} to Cloudflare R2?${actions.actionState.syncHasRemote ? ' Remote images will be downloaded first.' : ''}${actions.actionState.syncHasLocal ? ' After pushing, local files will be deleted.' : ''}`}
+                confirmLabel="Push"
+                onConfirm={actions.confirmSync}
+                onCancel={actions.cancelAction}
+              />
+            )}
 
-        {actions.actionState.showProcessConfirm && (
-          <ProcessConfirmModal
-            imageCount={actions.actionState.actionPaths.length}
-            mode={actions.actionState.processMode}
-            onConfirm={actions.confirmProcess}
-            onCancel={actions.cancelAction}
-          />
-        )}
+            {actions.actionState.showProcessConfirm && (
+              <ProcessConfirmModal
+                imageCount={actions.actionState.actionPaths.length}
+                mode={actions.actionState.processMode}
+                onConfirm={actions.confirmProcess}
+                onCancel={actions.cancelAction}
+              />
+            )}
 
-        {actions.actionState.showMoveModal && (
-          <StudioFolderPicker
-            selectedItems={new Set(actions.actionState.actionPaths)}
-            currentPath={currentPath}
-            onMove={(destination) => actions.confirmMove(destination)}
-            onCancel={actions.cancelAction}
-          />
-        )}
+            {actions.actionState.showMoveModal && (
+              <StudioFolderPicker
+                selectedItems={new Set(actions.actionState.actionPaths)}
+                currentPath={currentPath}
+                onMove={(destination) => actions.confirmMove(destination)}
+                onCancel={actions.cancelAction}
+              />
+            )}
 
-        {actions.actionState.showProgress && (
-          <ProgressModal
-            title={actions.actionState.progressTitle}
-            progress={actions.actionState.progressState}
-            onStop={actions.stopProcessing}
-            onDeleteOrphans={actions.deleteOrphans}
-            onClose={actions.closeProgress}
-          />
+            {actions.actionState.showProgress && (
+              <ProgressModal
+                title={actions.actionState.progressTitle}
+                progress={actions.actionState.progressState}
+                onStop={actions.stopProcessing}
+                onDeleteOrphans={actions.deleteOrphans}
+                onClose={actions.closeProgress}
+              />
+            )}
+          </>
+        ) : (
+          <FontsSection />
         )}
       </div>
     </StudioContext.Provider>
@@ -740,6 +870,69 @@ function CloseIcon() {
       <line x1="18" y1="6" x2="6" y2="18" />
       <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
+  )
+}
+
+function ChevronDownIcon({ isOpen }: { isOpen: boolean }) {
+  return (
+    <svg
+      css={[styles.titleChevron, isOpen && styles.titleChevronOpen]}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      css={styles.dropdownCheck}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  )
+}
+
+const fontsSectionStyles = {
+  container: css`
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: ${colors.textSecondary};
+  `,
+  title: css`
+    font-size: ${fontSize.xl};
+    font-weight: 600;
+    color: ${colors.text};
+    margin: 0 0 8px;
+  `,
+  description: css`
+    font-size: ${fontSize.base};
+    margin: 0;
+  `,
+}
+
+function FontsSection() {
+  return (
+    <div css={fontsSectionStyles.container}>
+      <h2 css={fontsSectionStyles.title}>Fonts</h2>
+      <p css={fontsSectionStyles.description}>Font management coming soon.</p>
+    </div>
   )
 }
 
