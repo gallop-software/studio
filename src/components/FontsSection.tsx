@@ -4,8 +4,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { css, keyframes } from '@emotion/react'
 import { colors, fontSize } from './tokens'
-import { InputModal, ConfirmModal } from './StudioModal'
+import { InputModal, ConfirmModal, AlertModal, ProgressModal } from './StudioModal'
+import { FontsAssignModal } from './FontsAssignModal'
+import { FontsSettings } from './FontsSettings'
 import type { FileItem } from '../types'
+import type { ProgressState } from './StudioContext'
 
 const btnHeight = '36px'
 
@@ -504,6 +507,43 @@ const styles = {
       border-color: ${colors.primary};
     }
   `,
+  // Folder status badges
+  badge: css`
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  `,
+  badgeGray: css`
+    background-color: #9ca3af;
+  `,
+  badgeBlue: css`
+    background-color: #3b82f6;
+  `,
+  badgeGreen: css`
+    background-color: #10b981;
+  `,
+  badgeWrapper: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  `,
+  badgeTooltip: css`
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    background: ${colors.text};
+    color: ${colors.surface};
+    font-size: ${fontSize.xs};
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 100;
+  `,
 }
 
 interface FontsSectionProps {
@@ -519,6 +559,13 @@ function formatSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
+// Folder status cache
+interface FolderStatus {
+  needsGeneration: boolean
+  hasWoff2: boolean
+  assignments: string[]
+}
+
 export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerRefresh }: FontsSectionProps) {
   const [items, setItems] = useState<FileItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -531,6 +578,14 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [refreshing, setRefreshing] = useState(false)
+  
+  // New state for assign workflow
+  const [showAssignModal, setShowAssignModal] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showProgress, setShowProgress] = useState(false)
+  const [progress, setProgress] = useState<ProgressState>({ status: 'idle', current: 0, total: 0, percent: 0 })
+  const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null)
+  const [folderStatuses, setFolderStatuses] = useState<Record<string, FolderStatus>>({})
 
   const fetchItems = useCallback(async () => {
     try {
@@ -553,6 +608,43 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     fetchItems()
     setSelectedItems(new Set())
   }, [fetchItems, refreshKey])
+
+  // Scan folder statuses for badges
+  const scanFolderStatuses = useCallback(async (folders: FileItem[]) => {
+    const statuses: Record<string, FolderStatus> = {}
+    
+    for (const folder of folders) {
+      if (folder.type !== 'folder') continue
+      
+      try {
+        const res = await fetch('/api/studio/fonts/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder: folder.path }),
+        })
+        
+        if (res.ok) {
+          const data = await res.json()
+          statuses[folder.path] = {
+            needsGeneration: data.needsGeneration,
+            hasWoff2: data.woff2Files?.length > 0,
+            assignments: data.assignments || [],
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+    
+    setFolderStatuses(statuses)
+  }, [])
+
+  useEffect(() => {
+    const folders = items.filter(i => i.type === 'folder')
+    if (folders.length > 0 && currentPath.startsWith('_fonts')) {
+      scanFolderStatuses(folders)
+    }
+  }, [items, currentPath, scanFolderStatuses])
 
   const isAtRoot = currentPath === '_fonts'
   const isInSrc = currentPath === 'src' || currentPath.startsWith('src/')
@@ -613,6 +705,95 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const singleFileSelected = selectedPaths.length === 1 && items.find(i => i.path === selectedPaths[0])?.type === 'file'
   const selectedFilePath = singleFileSelected ? selectedPaths[0] : null
   const selectedFileName = selectedFilePath ? selectedFilePath.split('/').pop() || '' : ''
+
+  // Handle Assign Web Font button click
+  const handleAssignClick = useCallback(() => {
+    if (!singleFolderSelected) return
+    setShowAssignModal(true)
+  }, [singleFolderSelected])
+
+  // Handle assign confirmation - starts the streaming process
+  const handleAssignConfirm = useCallback(async (assignments: string[]) => {
+    setShowAssignModal(false)
+    setShowProgress(true)
+    setProgress({ status: 'progress', current: 0, total: 1, percent: 0, message: 'Starting...' })
+
+    try {
+      const res = await fetch('/api/studio/fonts/assign-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: selectedFolderPath, assignments }),
+      })
+
+      if (!res.ok || !res.body) {
+        setProgress({ status: 'error', current: 0, total: 0, percent: 0, message: 'Failed to start assignment' })
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const text = decoder.decode(value, { stream: true })
+        const lines = text.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              
+              if (data.status === 'progress') {
+                setProgress({
+                  status: 'progress',
+                  current: data.current || 0,
+                  total: data.total || 1,
+                  percent: data.total ? Math.round((data.current / data.total) * 100) : 0,
+                  message: data.message,
+                  currentFile: data.currentFile,
+                })
+              } else if (data.status === 'complete') {
+                setProgress({
+                  status: 'complete',
+                  current: data.created?.length || 0,
+                  total: data.created?.length || 0,
+                  percent: 100,
+                  message: data.message,
+                  processed: data.created?.length || 0,
+                })
+                triggerRefresh()
+              } else if (data.status === 'error') {
+                setProgress({
+                  status: 'error',
+                  current: 0,
+                  total: 0,
+                  percent: 0,
+                  message: data.message,
+                })
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    } catch (err) {
+      setProgress({
+        status: 'error',
+        current: 0,
+        total: 0,
+        percent: 0,
+        message: String(err),
+      })
+    }
+  }, [selectedFolderPath, triggerRefresh])
+
+  const handleProgressClose = useCallback(() => {
+    setShowProgress(false)
+    setProgress({ status: 'idle', current: 0, total: 0, percent: 0 })
+  }, [])
 
   const handleRenameFolder = useCallback(async (newName: string) => {
     if (!selectedFolderPath) return
@@ -830,6 +1011,15 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
             <TrashIcon />
             Delete
           </button>
+          <button
+            css={styles.btn}
+            onClick={handleAssignClick}
+            disabled={!singleFolderSelected}
+            title={singleFolderSelected ? 'Assign web font' : 'Select a folder to assign'}
+          >
+            <FontIcon />
+            Assign Web Font
+          </button>
         </div>
         <div css={styles.toolbarRight}>
           <button
@@ -857,6 +1047,14 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
               <ListIcon />
             </button>
           </div>
+
+          <button
+            css={styles.btn}
+            onClick={() => setShowSettings(true)}
+            title="Font assignments settings"
+          >
+            <SettingsIcon />
+          </button>
         </div>
       </div>
 
@@ -964,7 +1162,30 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
                     )}
                   </div>
                   <div css={styles.label}>
-                    <p css={styles.labelName}>{item.name}</p>
+                    <p css={styles.labelName}>
+                      <span css={styles.badgeWrapper}>
+                        {item.type === 'folder' && folderStatuses[item.path] && (
+                          <span
+                            css={[
+                              styles.badge,
+                              folderStatuses[item.path].assignments.length > 0
+                                ? styles.badgeGreen
+                                : folderStatuses[item.path].hasWoff2
+                                  ? styles.badgeBlue
+                                  : styles.badgeGray,
+                            ]}
+                            title={
+                              folderStatuses[item.path].assignments.length > 0
+                                ? `Assigned to: ${folderStatuses[item.path].assignments.join(', ')}`
+                                : folderStatuses[item.path].hasWoff2
+                                  ? 'woff2 ready'
+                                  : 'TTF only'
+                            }
+                          />
+                        )}
+                        {item.name}
+                      </span>
+                    </p>
                     <p css={styles.labelMeta}>
                       {item.type === 'folder'
                         ? `${item.fileCount || 0} files`
@@ -1051,7 +1272,28 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
                               </svg>
                             </div>
                           )}
-                          <span css={styles.name} title={item.name}>{item.name}</span>
+                          <span css={styles.badgeWrapper}>
+                            {item.type === 'folder' && folderStatuses[item.path] && (
+                              <span
+                                css={[
+                                  styles.badge,
+                                  folderStatuses[item.path].assignments.length > 0
+                                    ? styles.badgeGreen
+                                    : folderStatuses[item.path].hasWoff2
+                                      ? styles.badgeBlue
+                                      : styles.badgeGray,
+                                ]}
+                                title={
+                                  folderStatuses[item.path].assignments.length > 0
+                                    ? `Assigned to: ${folderStatuses[item.path].assignments.join(', ')}`
+                                    : folderStatuses[item.path].hasWoff2
+                                      ? 'woff2 ready'
+                                      : 'TTF only'
+                                }
+                              />
+                            )}
+                            <span css={styles.name} title={item.name}>{item.name}</span>
+                          </span>
                           <div css={styles.actionsCell}>
                             <button
                               css={styles.listOpenBtn}
@@ -1122,6 +1364,37 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           variant="danger"
           onConfirm={handleDeleteConfirm}
           onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
+
+      {showAssignModal && selectedFolderPath && (
+        <FontsAssignModal
+          folderPath={selectedFolderPath}
+          onConfirm={handleAssignConfirm}
+          onCancel={() => setShowAssignModal(false)}
+        />
+      )}
+
+      {showProgress && (
+        <ProgressModal
+          title="Assigning Web Font"
+          progress={progress}
+          onClose={handleProgressClose}
+        />
+      )}
+
+      {showSettings && (
+        <FontsSettings
+          onClose={() => setShowSettings(false)}
+          onRefresh={triggerRefresh}
+        />
+      )}
+
+      {alertModal && (
+        <AlertModal
+          title={alertModal.title}
+          message={alertModal.message}
+          onClose={() => setAlertModal(null)}
         />
       )}
     </div>
@@ -1212,6 +1485,23 @@ function ListIcon() {
   return (
     <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+    </svg>
+  )
+}
+
+function FontIcon() {
+  return (
+    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+    </svg>
+  )
+}
+
+function SettingsIcon() {
+  return (
+    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   )
 }

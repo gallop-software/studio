@@ -1,6 +1,6 @@
 {
   "name": "@gallop.software/studio",
-  "version": "2.3.151",
+  "version": "2.3.153",
   "description": "Standalone media manager - upload, process, and sync images to CDN",
   "type": "module",
   "bin": {
@@ -50,7 +50,8 @@
     "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.5",
     "react-image-crop": "^11.0.10",
-    "sharp": "^0.33.5"
+    "sharp": "^0.33.5",
+    "ttf2woff2": "^6.0.1"
   },
   "devDependencies": {
     "@emotion/babel-plugin": "^11.13.5",
