@@ -6,7 +6,7 @@ import type { FileItem } from '../types'
 
 /**
  * List files and folders for fonts paths
- * Works like the regular list handler but for _fonts/ and src/fonts/
+ * Works like the regular list handler but only for _fonts/
  */
 export async function handleFontsList(request: Request): Promise<Response> {
   const searchParams = new URL(request.url).searchParams
@@ -15,40 +15,14 @@ export async function handleFontsList(request: Request): Promise<Response> {
   try {
     const items: FileItem[] = []
 
-    // Determine the actual filesystem path
-    let fsPath: string
-    let allowedPaths = ['_fonts', 'src/fonts', 'src']
-
-    // Validate path is within allowed areas
-    const isAllowed = allowedPaths.some(
-      allowed => requestedPath === allowed || requestedPath.startsWith(allowed + '/')
-    )
+    // Only allow paths within _fonts/
+    const isAllowed = requestedPath === '_fonts' || requestedPath.startsWith('_fonts/')
 
     if (!isAllowed) {
       return jsonResponse({ items: [], error: 'Path not allowed' }, { status: 400 })
     }
 
-    // Special handling for 'src' - only show 'fonts' folder
-    if (requestedPath === 'src') {
-      // Check if src/fonts exists
-      const fontsFolderPath = getWorkspacePath('src', 'fonts')
-      try {
-        const stat = await fs.stat(fontsFolderPath)
-        if (stat.isDirectory()) {
-          items.push({
-            name: 'fonts',
-            path: 'src/fonts',
-            type: 'folder',
-          })
-        }
-      } catch {
-        // src/fonts doesn't exist - return empty but allow creating it
-      }
-
-      return jsonResponse({ items, canCreate: true })
-    }
-
-    fsPath = getWorkspacePath(requestedPath)
+    const fsPath = getWorkspacePath(requestedPath)
 
     // Check if directory exists
     try {
@@ -169,7 +143,7 @@ export async function handleFontsUpload(request: Request): Promise<Response> {
 }
 
 /**
- * Create a folder in _fonts or src/fonts
+ * Create a folder in _fonts
  */
 export async function handleFontsCreateFolder(request: Request): Promise<Response> {
   try {
@@ -179,11 +153,8 @@ export async function handleFontsCreateFolder(request: Request): Promise<Respons
       return jsonResponse({ error: 'Path and name are required' }, { status: 400 })
     }
 
-    // Validate path
-    const allowedPaths = ['_fonts', 'src/fonts', 'src']
-    const isAllowed = allowedPaths.some(
-      allowed => targetPath === allowed || targetPath.startsWith(allowed + '/')
-    )
+    // Only allow paths within _fonts/
+    const isAllowed = targetPath === '_fonts' || targetPath.startsWith('_fonts/')
 
     if (!isAllowed) {
       return jsonResponse({ error: 'Path not allowed' }, { status: 400 })
@@ -203,7 +174,7 @@ export async function handleFontsCreateFolder(request: Request): Promise<Respons
 }
 
 /**
- * Delete files or folders from _fonts or src/fonts
+ * Delete files or folders from _fonts
  */
 export async function handleFontsDelete(request: Request): Promise<Response> {
   try {
@@ -213,13 +184,9 @@ export async function handleFontsDelete(request: Request): Promise<Response> {
       return jsonResponse({ error: 'Paths are required' }, { status: 400 })
     }
 
-    // Validate all paths
-    const allowedPaths = ['_fonts', 'src/fonts']
+    // Validate all paths - only allow within _fonts/
     for (const p of paths) {
-      const isAllowed = allowedPaths.some(
-        allowed => p.startsWith(allowed + '/')
-      )
-      if (!isAllowed) {
+      if (!p.startsWith('_fonts/')) {
         return jsonResponse({ error: `Path not allowed: ${p}` }, { status: 400 })
       }
     }
