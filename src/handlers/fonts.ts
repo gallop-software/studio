@@ -597,9 +597,6 @@ export async function handleFontsRenameStream(request: Request): Promise<Respons
         try {
           send({ status: 'progress', message: `Renaming folder to ${newFolderName}...`, current: 0, total: 1 })
           
-          // Delay for visibility
-          await new Promise(resolve => setTimeout(resolve, 1000))
-          
           // Rename the folder first
           await fs.rename(oldFullPath, newFullPath)
 
@@ -619,9 +616,6 @@ export async function handleFontsRenameStream(request: Request): Promise<Respons
               const newFileName = newFolderName + suffix.toLowerCase()
               
               send({ status: 'progress', message: `Renaming ${entry} → ${newFileName}...`, current: renamed + 1, total: filesToRename.length })
-              
-              // Delay for visibility
-              await new Promise(resolve => setTimeout(resolve, 1000))
               
               const oldFilePath = path.join(newFullPath, entry)
               const newFilePath = path.join(newFullPath, newFileName)
@@ -869,9 +863,6 @@ export async function handleFontsAssign(request: Request): Promise<Response> {
               
               send({ status: 'progress', message: `Compressing ${ttfFile}...`, current: i + 1, total: ttfFiles.length, currentFile: ttfFile })
               
-              // Small delay for UI visibility
-              await new Promise(resolve => setTimeout(resolve, 1000))
-              
               try {
                 const ttfPath = path.join(folderPath, ttfFile)
                 const input = readFileSync(ttfPath)
@@ -915,9 +906,6 @@ export async function handleFontsAssign(request: Request): Promise<Response> {
           for (let i = 0; i < assignments.length; i++) {
             const assignmentName = assignments[i]
             send({ status: 'progress', message: `Writing ${assignmentName}.ts...`, current: i + 1, total: assignments.length })
-            
-            // Small delay for UI visibility
-            await new Promise(resolve => setTimeout(resolve, 1000))
             
             try {
               const fileName = `${assignmentName}.ts`
