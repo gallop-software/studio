@@ -283,9 +283,30 @@ export function StudioUI({
   const [error, setError] = useState<{ title: string; message: string } | null>(null)
   const [fileItems, setFileItems] = useState<FileItem[]>([])
   const [isDragging, setIsDragging] = useState(false)
-  const [activeSection, setActiveSection] = useState<'media' | 'fonts'>('media')
+  const [activeSection, setActiveSection] = useState<'media' | 'fonts'>(() => {
+    // Read initial section from URL hash
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.slice(1)
+      if (hash === 'fonts') return 'fonts'
+    }
+    return 'media'
+  })
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Sync activeSection with URL hash
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1)
+      if (hash === 'fonts') {
+        setActiveSection('fonts')
+      } else {
+        setActiveSection('media')
+      }
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
   
   // Font section state
   const [fontsPath, setFontsPath] = useState('_fonts')
@@ -491,6 +512,8 @@ export function StudioUI({
   const selectSection = useCallback((section: 'media' | 'fonts') => {
     setActiveSection(section)
     setIsDropdownOpen(false)
+    // Update URL hash
+    window.location.hash = section === 'media' ? '' : section
   }, [])
 
   // Font section handlers
