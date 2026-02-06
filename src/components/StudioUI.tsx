@@ -129,6 +129,8 @@ const styles = {
       height: 8px;
       background: ${colors.primary};
       border-radius: 50%;
+      position: relative;
+      top: 1px;
     }
   `,
   headerLeft: css`
