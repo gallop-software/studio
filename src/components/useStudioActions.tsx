@@ -344,6 +344,65 @@ export function useStudioActions({
     }
   }, [actionState.progressState.orphanedFiles, triggerRefresh, showError, setProgressState])
 
+  // Upload files with progress modal
+  const uploadFiles = useCallback(async (files: File[], targetPath: string) => {
+    if (files.length === 0) return
+
+    setProgressTitle('Uploading Files')
+    setShowProgress(true)
+    setProgressState({
+      current: 0,
+      total: files.length,
+      percent: 0,
+      status: 'processing',
+      message: 'Uploading...',
+    })
+
+    let uploaded = 0
+    const errors: string[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('path', targetPath)
+
+      try {
+        const response = await fetch('/api/studio/upload', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (response.ok) {
+          uploaded++
+        } else {
+          errors.push(file.name)
+        }
+      } catch (error) {
+        console.error('Upload error:', error)
+        errors.push(file.name)
+      }
+
+      setProgressState({
+        current: i + 1,
+        total: files.length,
+        percent: Math.round(((i + 1) / files.length) * 100),
+        status: 'processing',
+        message: `Uploaded ${file.name}`,
+      })
+    }
+
+    setProgressState({
+      current: files.length,
+      total: files.length,
+      percent: 100,
+      status: errors.length > 0 ? 'error' : 'complete',
+      message: `Uploaded ${uploaded} file${uploaded !== 1 ? 's' : ''}${errors.length > 0 ? `, ${errors.length} failed` : ''}`,
+    })
+
+    triggerRefresh()
+  }, [setShowProgress, setProgressTitle, setProgressState, triggerRefresh])
+
   return {
     actionState,
     setActionState,
@@ -361,5 +420,6 @@ export function useStudioActions({
     confirmSync,
     confirmProcess,
     deleteOrphans,
+    uploadFiles,
   }
 }

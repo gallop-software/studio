@@ -386,22 +386,8 @@ export function StudioUI({
       return
     }
 
-    for (const file of files) {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('path', currentPath)
-
-      try {
-        await fetch('/api/studio/upload', {
-          method: 'POST',
-          body: formData,
-        })
-      } catch (error) {
-        console.error('Upload error:', error)
-      }
-    }
-    triggerRefresh()
-  }, [currentPath, triggerRefresh])
+    actions.uploadFiles(files, currentPath)
+  }, [currentPath, actions])
 
   const navigateUp = useCallback(() => {
     if (currentPath === 'public') return

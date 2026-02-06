@@ -1129,20 +1129,51 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     
     if (files.length === 0) return
 
-    for (const file of files) {
+    setProgressTitle('Uploading Files')
+    setShowProgress(true)
+    setProgress({ status: 'progress', current: 0, total: files.length, percent: 0, message: 'Uploading...' })
+
+    let uploaded = 0
+    const errors: string[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
       const formData = new FormData()
       formData.append('file', file)
       formData.append('path', currentPath)
 
       try {
-        await fetch('/api/studio/fonts/upload', {
+        const response = await fetch('/api/studio/fonts/upload', {
           method: 'POST',
           body: formData,
         })
+
+        if (response.ok) {
+          uploaded++
+        } else {
+          errors.push(file.name)
+        }
       } catch (error) {
         console.error('Upload failed:', error)
+        errors.push(file.name)
       }
+
+      setProgress({
+        status: 'progress',
+        current: i + 1,
+        total: files.length,
+        percent: Math.round(((i + 1) / files.length) * 100),
+        message: `Uploaded ${file.name}`,
+      })
     }
+
+    setProgress({
+      status: errors.length > 0 ? 'error' : 'complete',
+      current: files.length,
+      total: files.length,
+      percent: 100,
+      message: `Uploaded ${uploaded} file${uploaded !== 1 ? 's' : ''}${errors.length > 0 ? `, ${errors.length} failed` : ''}`,
+    })
     
     triggerRefresh()
   }, [currentPath, triggerRefresh])
