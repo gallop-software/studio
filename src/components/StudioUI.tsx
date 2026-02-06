@@ -373,22 +373,6 @@ export function StudioUI({
     setIsDragging(false)
   }, [])
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length === 0) return
-
-    // Don't allow drops in the images folder
-    if (currentPath === 'public/images' || currentPath.startsWith('public/images/')) {
-      return
-    }
-
-    actions.uploadFiles(files, currentPath)
-  }, [currentPath, actions])
-
   const navigateUp = useCallback(() => {
     if (currentPath === 'public') return
     const parts = currentPath.split('/')
@@ -454,6 +438,22 @@ export function StudioUI({
     setFocusedItem: setFocusedItemCallback,
     showError,
   })
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length === 0) return
+
+    // Don't allow drops in the images folder
+    if (currentPath === 'public/images' || currentPath.startsWith('public/images/')) {
+      return
+    }
+
+    actions.uploadFiles(files, currentPath)
+  }, [currentPath, actions])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
