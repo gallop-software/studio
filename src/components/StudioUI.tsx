@@ -13,6 +13,8 @@ import { ConfirmModal, ProgressModal } from './StudioModal'
 import { StudioFolderPicker } from './StudioFolderPicker'
 import { useStudioActions } from './useStudioActions'
 import { colors, fontSize, baseReset } from './tokens'
+import { FontsSection } from './FontsSection'
+import { FontUploadModal } from './FontUploadModal'
 import type { FileItem, LeanMeta } from '../types'
 
 interface StudioUIProps {
@@ -285,6 +287,12 @@ export function StudioUI({
   const [activeSection, setActiveSection] = useState<'media' | 'fonts'>('media')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  
+  // Font section state
+  const [isFontsDragging, setIsFontsDragging] = useState(false)
+  const [showFontUploadModal, setShowFontUploadModal] = useState(false)
+  const [fontUploadFiles, setFontUploadFiles] = useState<File[]>([])
+  const [fontsRefreshKey, setFontsRefreshKey] = useState(0)
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
@@ -488,6 +496,42 @@ export function StudioUI({
     setIsDropdownOpen(false)
   }, [])
 
+  // Font section handlers
+  const handleFontsDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsFontsDragging(true)
+  }, [])
+
+  const handleFontsDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsFontsDragging(false)
+  }, [])
+
+  const handleFontsDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsFontsDragging(false)
+
+    const files = Array.from(e.dataTransfer.files).filter(
+      f => f.name.toLowerCase().endsWith('.ttf')
+    )
+    if (files.length > 0) {
+      setFontUploadFiles(files)
+      setShowFontUploadModal(true)
+    }
+  }, [])
+
+  const handleOpenFontUploadModal = useCallback((files?: File[]) => {
+    setFontUploadFiles(files || [])
+    setShowFontUploadModal(true)
+  }, [])
+
+  const handleFontUploadComplete = useCallback(() => {
+    setFontsRefreshKey(k => k + 1)
+  }, [])
+
   const contextValue = {
     isOpen: true,
     openStudio: () => { },
@@ -683,7 +727,27 @@ export function StudioUI({
             )}
           </>
         ) : (
-          <FontsSection />
+          <div
+            style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+            onDragOver={handleFontsDragOver}
+            onDragLeave={handleFontsDragLeave}
+            onDrop={handleFontsDrop}
+          >
+            <FontsSection
+              onOpenUploadModal={handleOpenFontUploadModal}
+              isDragging={isFontsDragging}
+              refreshKey={fontsRefreshKey}
+            />
+          </div>
+        )}
+
+        {/* Font Upload Modal */}
+        {showFontUploadModal && (
+          <FontUploadModal
+            onClose={() => setShowFontUploadModal(false)}
+            onUploadComplete={handleFontUploadComplete}
+            initialFiles={fontUploadFiles}
+          />
         )}
       </div>
     </StudioContext.Provider>
@@ -886,36 +950,5 @@ function ChevronDownIcon({ isOpen }: { isOpen: boolean }) {
   )
 }
 
-
-const fontsSectionStyles = {
-  container: css`
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px;
-    color: ${colors.textSecondary};
-  `,
-  title: css`
-    font-size: ${fontSize.xl};
-    font-weight: 600;
-    color: ${colors.text};
-    margin: 0 0 8px;
-  `,
-  description: css`
-    font-size: ${fontSize.base};
-    margin: 0;
-  `,
-}
-
-function FontsSection() {
-  return (
-    <div css={fontsSectionStyles.container}>
-      <h2 css={fontsSectionStyles.title}>Fonts</h2>
-      <p css={fontsSectionStyles.description}>Font management coming soon.</p>
-    </div>
-  )
-}
 
 export default StudioUI

@@ -46,3 +46,6 @@ export { handleGenerateFavicon } from './favicon'
 
 // Edit image handler
 export { handleEditImage } from './edit-image'
+
+// Font handlers
+export { handleFontsList, handleFontsUpload } from './fonts'

@@ -46,6 +46,7 @@ import {
   handleGetFeaturedImageOptions,
 } from "../handlers/featured-image";
 import { handleEditImage } from "../handlers/edit-image";
+import { handleFontsList, handleFontsUpload } from "../handlers/fonts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -128,16 +129,17 @@ export async function startServer(options: ServerOptions) {
     process.env.STUDIO_DEV_SITE_URL = process.env.NEXT_PUBLIC_PRODUCTION_URL;
   }
 
-  // Middleware - skip JSON parsing for upload route (needs raw body for FormData)
+  // Middleware - skip JSON parsing for upload routes (needs raw body for FormData)
+  const rawBodyPaths = ["/api/studio/upload", "/api/studio/fonts/upload"];
   app.use((req, res, next) => {
-    if (req.path === "/api/studio/upload") {
+    if (rawBodyPaths.includes(req.path)) {
       next();
     } else {
       express.json({ limit: "50mb" })(req, res, next);
     }
   });
   app.use((req, res, next) => {
-    if (req.path === "/api/studio/upload") {
+    if (rawBodyPaths.includes(req.path)) {
       next();
     } else {
       express.urlencoded({ extended: true, limit: "50mb" })(req, res, next);
@@ -159,6 +161,10 @@ export async function startServer(options: ServerOptions) {
     "/api/studio/featured-image-options",
     wrapHandler(handleGetFeaturedImageOptions)
   );
+
+  // Font management routes
+  app.get("/api/studio/fonts/list", wrapHandler(handleFontsList));
+  app.post("/api/studio/fonts/upload", wrapRawHandler(handleFontsUpload));
 
   // API Routes - POST endpoints
   // Upload uses raw body wrapper to preserve FormData
