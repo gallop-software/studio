@@ -101,7 +101,7 @@ const styles = {
   dropdownItem: css`
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 8px;
     width: 100%;
     padding: 10px 12px;
     background: transparent;
