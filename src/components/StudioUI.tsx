@@ -75,10 +75,11 @@ const styles = {
     }
   `,
   titleChevron: css`
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     color: ${colors.textSecondary};
     transition: transform 0.15s ease;
+    margin-top: 2px;
   `,
   titleChevronOpen: css`
     transform: rotate(180deg);
