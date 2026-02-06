@@ -86,7 +86,7 @@ const styles = {
   `,
   dropdownMenu: css`
     position: absolute;
-    top: calc(100% + 4px);
+    top: calc(100% + 8px);
     left: 0;
     background: ${colors.surface};
     border: 1px solid ${colors.border};
@@ -97,31 +97,26 @@ const styles = {
     z-index: 100;
   `,
   dropdownItem: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    display: block;
     width: 100%;
     padding: 10px 12px;
     background: transparent;
     border: none;
     border-radius: 6px;
-    font-size: ${fontSize.base};
-    color: ${colors.text};
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: ${colors.textSecondary};
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: all 0.15s ease;
     text-align: left;
     
     &:hover {
       background: ${colors.surfaceHover};
+      color: ${colors.text};
     }
   `,
   dropdownItemActive: css`
-    color: ${colors.primary};
-    font-weight: 500;
-  `,
-  dropdownCheck: css`
-    width: 16px;
-    height: 16px;
     color: ${colors.primary};
   `,
   headerLeft: css`
@@ -558,15 +553,13 @@ export function StudioUI({
                     css={[styles.dropdownItem, activeSection === 'media' && styles.dropdownItemActive]}
                     onClick={() => selectSection('media')}
                   >
-                    <span>Media Manager</span>
-                    {activeSection === 'media' && <CheckIcon />}
+                    media.manager
                   </button>
                   <button
                     css={[styles.dropdownItem, activeSection === 'fonts' && styles.dropdownItemActive]}
                     onClick={() => selectSection('fonts')}
                   >
-                    <span>Fonts</span>
-                    {activeSection === 'fonts' && <CheckIcon />}
+                    font.manager
                   </button>
                 </div>
               )}
@@ -890,21 +883,6 @@ function ChevronDownIcon({ isOpen }: { isOpen: boolean }) {
   )
 }
 
-function CheckIcon() {
-  return (
-    <svg
-      css={styles.dropdownCheck}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  )
-}
 
 const fontsSectionStyles = {
   container: css`
