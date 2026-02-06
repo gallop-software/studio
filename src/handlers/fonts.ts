@@ -341,9 +341,6 @@ export async function handleFontsDeleteStream(request: Request): Promise<Respons
           const fileName = p.split('/').pop() || p
           
           send({ status: 'progress', message: `Deleting ${fileName}...`, current: i + 1, total: paths.length })
-          
-          // Delay for visibility
-          await new Promise(resolve => setTimeout(resolve, 1000))
 
           try {
             const fullPath = getWorkspacePath(p)
