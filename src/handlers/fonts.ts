@@ -805,13 +805,21 @@ export async function handleFontsDeleteAssignment(request: Request): Promise<Res
 /**
  * Assign web fonts - generates woff2 if needed and writes src/fonts/*.ts files
  * This is a streaming endpoint for progress updates
+ * 
+ * Supports two modes:
+ * - folder: path to a folder in _fonts/ (scans for woff2/ttf, generates if needed)
+ * - files: array of woff2 file paths (uses these directly, no generation)
  */
 export async function handleFontsAssign(request: Request): Promise<Response> {
   try {
-    const { folder, assignments } = await request.json()
+    const { folder, files, assignments } = await request.json()
     
-    if (!folder || !folder.startsWith('_fonts/')) {
-      return jsonResponse({ error: 'Invalid folder path' }, { status: 400 })
+    // Validate: need either folder or files
+    const isFileMode = files && Array.isArray(files) && files.length > 0
+    const isFolderMode = folder && folder.startsWith('_fonts/')
+    
+    if (!isFileMode && !isFolderMode) {
+      return jsonResponse({ error: 'Either folder or files must be provided' }, { status: 400 })
     }
     
     if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
@@ -825,8 +833,14 @@ export async function handleFontsAssign(request: Request): Promise<Response> {
       }
     }
     
-    const folderPath = getWorkspacePath(folder)
-    const folderName = path.basename(folder)
+    // Validate file paths if in file mode
+    if (isFileMode) {
+      for (const filePath of files) {
+        if (!filePath.startsWith('_fonts/') || !filePath.toLowerCase().endsWith('.woff2')) {
+          return jsonResponse({ error: `Invalid file path: ${filePath}. Must be a woff2 file in _fonts/` }, { status: 400 })
+        }
+      }
+    }
     
     // Set up SSE streaming
     const encoder = new TextEncoder()
@@ -837,60 +851,84 @@ export async function handleFontsAssign(request: Request): Promise<Response> {
         }
         
         try {
-          // Step 1: Check for font files
-          const entries = await fs.readdir(folderPath)
-          const ttfFiles = entries.filter(f => f.toLowerCase().endsWith('.ttf'))
-          let woff2Files = entries.filter(f => f.toLowerCase().endsWith('.woff2'))
+          let fontMap: Array<{ path: string; weight: string; style: string }>
           
-          if (ttfFiles.length === 0 && woff2Files.length === 0) {
-            send({ status: 'error', message: 'No font files found in folder' })
-            controller.close()
-            return
-          }
-          
-          // Step 2: Generate woff2 if needed
-          if (woff2Files.length === 0 && ttfFiles.length > 0) {
-            send({ status: 'progress', message: 'Generating woff2 files...', current: 0, total: ttfFiles.length })
+          if (isFileMode) {
+            // File mode: use provided woff2 files directly
+            send({ status: 'progress', message: `Processing ${files.length} selected file${files.length > 1 ? 's' : ''}...`, current: 0, total: files.length })
             
-            // Dynamic import of ttf2woff2
-            const ttf2woff2Module = await import('ttf2woff2')
-            const ttf2woff2 = ttf2woff2Module.default
+            fontMap = files.map((filePath: string) => {
+              // filePath is like "_fonts/foldername/file.woff2"
+              // We need just "foldername/file.woff2" for the src path
+              const relativePath = filePath.replace(/^_fonts\//, '')
+              const baseName = path.basename(filePath, '.woff2')
+              const { weight, style } = parseFontMetadata(baseName)
+              return {
+                path: relativePath,
+                weight,
+                style,
+              }
+            })
+          } else {
+            // Folder mode: scan folder and generate woff2 if needed
+            const folderPath = getWorkspacePath(folder)
+            const folderName = path.basename(folder)
             
-            for (let i = 0; i < ttfFiles.length; i++) {
-              const ttfFile = ttfFiles[i]
-              const baseName = path.basename(ttfFile, '.ttf')
-              const woff2Name = baseName + '.woff2'
+            // Step 1: Check for font files
+            const entries = await fs.readdir(folderPath)
+            const ttfFiles = entries.filter(f => f.toLowerCase().endsWith('.ttf'))
+            let woff2Files = entries.filter(f => f.toLowerCase().endsWith('.woff2'))
+            
+            if (ttfFiles.length === 0 && woff2Files.length === 0) {
+              send({ status: 'error', message: 'No font files found in folder' })
+              controller.close()
+              return
+            }
+            
+            // Step 2: Generate woff2 if needed
+            if (woff2Files.length === 0 && ttfFiles.length > 0) {
+              send({ status: 'progress', message: 'Generating woff2 files...', current: 0, total: ttfFiles.length })
               
-              send({ status: 'progress', message: `Compressing ${ttfFile}...`, current: i + 1, total: ttfFiles.length, currentFile: ttfFile })
+              // Dynamic import of ttf2woff2
+              const ttf2woff2Module = await import('ttf2woff2')
+              const ttf2woff2 = ttf2woff2Module.default
               
-              try {
-                const ttfPath = path.join(folderPath, ttfFile)
-                const input = readFileSync(ttfPath)
-                const woff2Data = ttf2woff2(input)
-                writeFileSync(path.join(folderPath, woff2Name), woff2Data)
-                woff2Files.push(woff2Name)
-              } catch (err) {
-                send({ status: 'progress', message: `Failed to compress ${ttfFile}`, error: String(err) })
+              for (let i = 0; i < ttfFiles.length; i++) {
+                const ttfFile = ttfFiles[i]
+                const baseName = path.basename(ttfFile, '.ttf')
+                const woff2Name = baseName + '.woff2'
+                
+                send({ status: 'progress', message: `Compressing ${ttfFile}...`, current: i + 1, total: ttfFiles.length, currentFile: ttfFile })
+                
+                try {
+                  const ttfPath = path.join(folderPath, ttfFile)
+                  const input = readFileSync(ttfPath)
+                  const woff2Data = ttf2woff2(input)
+                  writeFileSync(path.join(folderPath, woff2Name), woff2Data)
+                  woff2Files.push(woff2Name)
+                } catch (err) {
+                  send({ status: 'progress', message: `Failed to compress ${ttfFile}`, error: String(err) })
+                }
               }
             }
-          }
-          
-          if (woff2Files.length === 0) {
-            send({ status: 'error', message: 'No woff2 files available' })
-            controller.close()
-            return
-          }
-          
-          // Step 3: Build font map from woff2 files
-          const fontMap = woff2Files.map(file => {
-            const baseName = path.basename(file, '.woff2')
-            const { weight, style } = parseFontMetadata(baseName)
-            return {
-              path: `${folderName}/${file}`,
-              weight,
-              style,
+            
+            if (woff2Files.length === 0) {
+              send({ status: 'error', message: 'No woff2 files available' })
+              controller.close()
+              return
             }
-          })
+            
+            // Step 3: Build font map from woff2 files
+            fontMap = woff2Files.map(file => {
+              const baseName = path.basename(file, '.woff2')
+              const { weight, style } = parseFontMetadata(baseName)
+              return {
+                path: `${folderName}/${file}`,
+                weight,
+                style,
+              }
+            })
+          }
           
           // Step 4: Write assignment files
           const srcFontsPath = getWorkspacePath('src/fonts')

@@ -811,24 +811,37 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const selectedFilePath = singleFileSelected ? selectedPaths[0] : null
   const selectedFileName = selectedFilePath ? selectedFilePath.split('/').pop() || '' : ''
 
+  // Check if woff2 files are selected for assignment
+  const selectedWoff2Files = selectedPaths.filter(path => {
+    const item = items.find(i => i.path === path)
+    return item?.type === 'file' && item.name.toLowerCase().endsWith('.woff2')
+  })
+  const hasSelectedWoff2Files = selectedWoff2Files.length > 0
+  const canAssign = singleFolderSelected || hasSelectedWoff2Files
+
   // Handle Assign Web Font button click
   const handleAssignClick = useCallback(() => {
-    if (!singleFolderSelected) return
+    if (!canAssign) return
     setShowAssignModal(true)
-  }, [singleFolderSelected])
+  }, [canAssign])
 
   // Handle assign confirmation - starts the streaming process
   const handleAssignConfirm = useCallback(async (assignments: string[]) => {
     setShowAssignModal(false)
     setProgressTitle('Assigning Web Font')
     setShowProgress(true)
-    setProgress({ status: 'progress', current: 0, total: 1, percent: 0, message: 'Starting...' })
+    setProgress({ status: 'processing', current: 0, total: 1, percent: 0, message: 'Starting...' })
 
     try {
+      // Pass either folder or files based on selection type
+      const requestBody = singleFolderSelected
+        ? { folder: selectedFolderPath, assignments }
+        : { files: selectedWoff2Files, assignments }
+      
       const res = await fetch('/api/studio/fonts/assign-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: selectedFolderPath, assignments }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!res.ok || !res.body) {
@@ -853,7 +866,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
               
               if (data.status === 'progress') {
                 setProgress({
-                  status: 'progress',
+                  status: 'processing',
                   current: data.current || 0,
                   total: data.total || 1,
                   percent: data.total ? Math.round((data.current / data.total) * 100) : 0,
@@ -906,7 +919,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     setShowRenameFolderModal(false)
     setProgressTitle('Renaming Folder')
     setShowProgress(true)
-    setProgress({ status: 'progress', current: 0, total: 1, percent: 0, message: 'Starting...' })
+    setProgress({ status: 'processing', current: 0, total: 1, percent: 0, message: 'Starting...' })
 
     try {
       const res = await fetch('/api/studio/fonts/rename-stream', {
@@ -937,7 +950,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
               
               if (data.status === 'progress') {
                 setProgress({
-                  status: 'progress',
+                  status: 'processing',
                   current: data.current || 0,
                   total: data.total || 1,
                   percent: data.total ? Math.round((data.current / data.total) * 100) : 0,
@@ -1007,7 +1020,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     setShowDeleteConfirm(false)
     setProgressTitle('Deleting Files')
     setShowProgress(true)
-    setProgress({ status: 'progress', current: 0, total: selectedItems.size, percent: 0, message: 'Starting...' })
+    setProgress({ status: 'processing', current: 0, total: selectedItems.size, percent: 0, message: 'Starting...' })
     
     try {
       const res = await fetch('/api/studio/fonts/delete-stream', {
@@ -1038,7 +1051,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
               
               if (data.status === 'progress') {
                 setProgress({
-                  status: 'progress',
+                  status: 'processing',
                   current: data.current || 0,
                   total: data.total || 1,
                   percent: data.total ? Math.round((data.current / data.total) * 100) : 0,
@@ -1131,7 +1144,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
 
     setProgressTitle('Uploading Files')
     setShowProgress(true)
-    setProgress({ status: 'progress', current: 0, total: files.length, percent: 0, message: 'Uploading...' })
+    setProgress({ status: 'processing', current: 0, total: files.length, percent: 0, message: 'Uploading...' })
 
     let uploaded = 0
     const errors: string[] = []
@@ -1159,7 +1172,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
       }
 
       setProgress({
-        status: 'progress',
+        status: 'processing',
         current: i + 1,
         total: files.length,
         percent: Math.round(((i + 1) / files.length) * 100),
@@ -1230,8 +1243,10 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           <button
             css={styles.btn}
             onClick={handleAssignClick}
-            disabled={!singleFolderSelected}
-            title={singleFolderSelected ? 'Assign web font' : 'Select a folder to assign'}
+            disabled={!canAssign}
+            title={canAssign 
+              ? (hasSelectedWoff2Files ? `Assign ${selectedWoff2Files.length} woff2 file${selectedWoff2Files.length > 1 ? 's' : ''}` : 'Assign web font')
+              : 'Select a folder or woff2 files to assign'}
           >
             <FontIcon />
             Assign Web Font
@@ -1300,7 +1315,9 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
 
         {items.length === 0 && canCreate ? (
           <div css={styles.empty}>
-            <FolderIcon css={styles.emptyIcon} />
+            <span css={styles.emptyIcon}>
+              <FolderIcon />
+            </span>
             <p css={styles.emptyText}>Folder doesn't exist</p>
             <button css={styles.createBtn} onClick={handleNewFolderClick}>
               Create Folder
@@ -1659,9 +1676,10 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
         />
       )}
 
-      {showAssignModal && selectedFolderPath && (
+      {showAssignModal && canAssign && (
         <FontsAssignModal
-          folderPath={selectedFolderPath}
+          folderPath={singleFolderSelected ? selectedFolderPath! : undefined}
+          selectedFiles={hasSelectedWoff2Files ? selectedWoff2Files : undefined}
           onConfirm={handleAssignConfirm}
           onCancel={() => setShowAssignModal(false)}
         />

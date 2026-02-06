@@ -299,12 +299,13 @@ interface Assignment {
 }
 
 interface FontsAssignModalProps {
-  folderPath: string
+  folderPath?: string
+  selectedFiles?: string[]
   onConfirm: (assignments: string[]) => void
   onCancel: () => void
 }
 
-export function FontsAssignModal({ folderPath, onConfirm, onCancel }: FontsAssignModalProps) {
+export function FontsAssignModal({ folderPath, selectedFiles, onConfirm, onCancel }: FontsAssignModalProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [existingAssignments, setExistingAssignments] = useState<Assignment[]>([])
@@ -312,29 +313,41 @@ export function FontsAssignModal({ folderPath, onConfirm, onCancel }: FontsAssig
   const [newAssignment, setNewAssignment] = useState('')
   const [error, setError] = useState('')
   
+  // Mode: folder-based or file-based assignment
+  const isFileMode = Boolean(selectedFiles && selectedFiles.length > 0)
+  
   useEffect(() => {
     async function loadData() {
       try {
-        // Fetch scan result and existing assignments in parallel
-        const [scanRes, assignmentsRes] = await Promise.all([
-          fetch('/api/studio/fonts/scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ folder: folderPath }),
-          }),
-          fetch('/api/studio/fonts/assignments'),
-        ])
-        
-        if (scanRes.ok) {
-          const data = await scanRes.json()
-          setScanResult(data)
-          // Pre-select assignments that already use this folder
-          setSelectedAssignments(new Set(data.assignments || []))
-        }
-        
-        if (assignmentsRes.ok) {
-          const data = await assignmentsRes.json()
-          setExistingAssignments(data.assignments || [])
+        if (isFileMode) {
+          // File mode: just fetch existing assignments, no scan needed
+          const assignmentsRes = await fetch('/api/studio/fonts/assignments')
+          if (assignmentsRes.ok) {
+            const data = await assignmentsRes.json()
+            setExistingAssignments(data.assignments || [])
+          }
+        } else if (folderPath) {
+          // Folder mode: fetch scan result and existing assignments in parallel
+          const [scanRes, assignmentsRes] = await Promise.all([
+            fetch('/api/studio/fonts/scan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folder: folderPath }),
+            }),
+            fetch('/api/studio/fonts/assignments'),
+          ])
+          
+          if (scanRes.ok) {
+            const data = await scanRes.json()
+            setScanResult(data)
+            // Pre-select assignments that already use this folder
+            setSelectedAssignments(new Set(data.assignments || []))
+          }
+          
+          if (assignmentsRes.ok) {
+            const data = await assignmentsRes.json()
+            setExistingAssignments(data.assignments || [])
+          }
         }
       } catch (err) {
         console.error('Failed to load data:', err)
@@ -344,7 +357,7 @@ export function FontsAssignModal({ folderPath, onConfirm, onCancel }: FontsAssig
     }
     
     loadData()
-  }, [folderPath])
+  }, [folderPath, isFileMode])
   
   const handleToggle = (name: string) => {
     setSelectedAssignments(prev => {
@@ -393,7 +406,7 @@ export function FontsAssignModal({ folderPath, onConfirm, onCancel }: FontsAssig
     )
   }
   
-  const hasNoFonts = scanResult && scanResult.ttfFiles.length === 0 && scanResult.woff2Files.length === 0
+  const hasNoFonts = !isFileMode && scanResult !== null && scanResult.ttfFiles.length === 0 && scanResult.woff2Files.length === 0
   
   return (
     <div css={styles.overlay} onClick={onCancel}>
@@ -403,64 +416,87 @@ export function FontsAssignModal({ folderPath, onConfirm, onCancel }: FontsAssig
         </div>
         
         <div css={styles.body}>
-          {/* Folder Info */}
-          <div css={styles.section}>
-            <p css={styles.sectionLabel}>Font Folder</p>
-            <div css={styles.folderName}>
-              <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
-                <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
-              </svg>
-              {scanResult?.folderName || folderPath.split('/').pop()}
-            </div>
-            
-            {scanResult && (
-              <div css={[styles.statusBadge, scanResult.needsGeneration ? styles.statusNeedsGen : styles.statusReady]}>
-                {scanResult.needsGeneration ? (
-                  <>
-                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    woff2 files will be generated ({scanResult.ttfFiles.length} TTF files)
-                  </>
-                ) : (
-                  <>
-                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    woff2 files ready ({scanResult.woff2Files.length} files)
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-          
-          {/* Detected Fonts Preview */}
-          {scanResult && scanResult.detectedFonts.length > 0 && (
+          {isFileMode ? (
+            /* File Mode - Show selected woff2 files */
             <div css={styles.section}>
-              <p css={styles.sectionLabel}>Detected Fonts</p>
-              <div css={styles.fontList}>
-                {scanResult.detectedFonts.map((font, i) => (
-                  <span key={i} css={styles.fontChip}>
-                    {font.weightName}{font.style === 'italic' ? ' Italic' : ''}
-                  </span>
-                ))}
+              <p css={styles.sectionLabel}>Selected Files ({selectedFiles!.length})</p>
+              <div css={[styles.statusBadge, styles.statusReady]}>
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                {selectedFiles!.length} woff2 file{selectedFiles!.length > 1 ? 's' : ''} selected
               </div>
-            </div>
-          )}
-          
-          {/* If needs generation, show TTF list */}
-          {scanResult && scanResult.needsGeneration && (
-            <div css={styles.section}>
-              <p css={styles.sectionLabel}>TTF Files to Convert</p>
               <div css={styles.fontList}>
-                {scanResult.ttfFiles.slice(0, 8).map((file, i) => (
-                  <span key={i} css={styles.fontChip}>{file}</span>
+                {selectedFiles!.slice(0, 10).map((filePath, i) => (
+                  <span key={i} css={styles.fontChip}>{filePath.split('/').pop()}</span>
                 ))}
-                {scanResult.ttfFiles.length > 8 && (
-                  <span css={styles.fontChip}>+{scanResult.ttfFiles.length - 8} more</span>
+                {selectedFiles!.length > 10 && (
+                  <span css={styles.fontChip}>+{selectedFiles!.length - 10} more</span>
                 )}
               </div>
             </div>
+          ) : (
+            /* Folder Mode - Show folder info */
+            <>
+              <div css={styles.section}>
+                <p css={styles.sectionLabel}>Font Folder</p>
+                <div css={styles.folderName}>
+                  <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
+                  </svg>
+                  {scanResult?.folderName || folderPath?.split('/').pop()}
+                </div>
+                
+                {scanResult && (
+                  <div css={[styles.statusBadge, scanResult.needsGeneration ? styles.statusNeedsGen : styles.statusReady]}>
+                    {scanResult.needsGeneration ? (
+                      <>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        woff2 files will be generated ({scanResult.ttfFiles.length} TTF files)
+                      </>
+                    ) : (
+                      <>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        woff2 files ready ({scanResult.woff2Files.length} files)
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Detected Fonts Preview */}
+              {scanResult && scanResult.detectedFonts.length > 0 && (
+                <div css={styles.section}>
+                  <p css={styles.sectionLabel}>Detected Fonts</p>
+                  <div css={styles.fontList}>
+                    {scanResult.detectedFonts.map((font, i) => (
+                      <span key={i} css={styles.fontChip}>
+                        {font.weightName}{font.style === 'italic' ? ' Italic' : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* If needs generation, show TTF list */}
+              {scanResult && scanResult.needsGeneration && (
+                <div css={styles.section}>
+                  <p css={styles.sectionLabel}>TTF Files to Convert</p>
+                  <div css={styles.fontList}>
+                    {scanResult.ttfFiles.slice(0, 8).map((file, i) => (
+                      <span key={i} css={styles.fontChip}>{file}</span>
+                    ))}
+                    {scanResult.ttfFiles.length > 8 && (
+                      <span css={styles.fontChip}>+{scanResult.ttfFiles.length - 8} more</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
           
           {/* Assignment Checkboxes */}

@@ -600,8 +600,8 @@ export function StudioUI({
           </div>
           <div css={styles.headerCenter}>
             <Breadcrumbs
-              currentPath={currentPath}
-              onNavigate={setCurrentPath}
+              currentPath={activeSection === 'fonts' ? fontsPath : currentPath}
+              onNavigate={activeSection === 'fonts' ? setFontsPath : setCurrentPath}
               projectName={workspacePath ? workspacePath.split('/').pop() : undefined}
             />
           </div>
@@ -839,11 +839,21 @@ function ProcessConfirmModal({ imageCount, mode, onConfirm, onCancel }: ProcessC
 function Breadcrumbs({ currentPath, onNavigate, projectName }: { currentPath: string; onNavigate: (path: string) => void; projectName?: string }) {
   const parts = currentPath.split('/').filter(Boolean)
 
-  // Build paths for each breadcrumb, replacing "public" with project name
-  const breadcrumbs = parts.map((part, index) => ({
-    name: index === 0 && part === 'public' && projectName ? projectName : part,
-    path: parts.slice(0, index + 1).join('/'),
-  }))
+  // Build paths for each breadcrumb, replacing "public" with project name and "_fonts" with "fonts"
+  const breadcrumbs = parts.map((part, index) => {
+    let name = part
+    if (index === 0) {
+      if (part === 'public' && projectName) {
+        name = projectName
+      } else if (part === '_fonts') {
+        name = 'fonts'
+      }
+    }
+    return {
+      name,
+      path: parts.slice(0, index + 1).join('/'),
+    }
+  })
 
   return (
     <div css={styles.breadcrumbs}>

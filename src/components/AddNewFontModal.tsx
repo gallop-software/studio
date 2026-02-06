@@ -234,7 +234,7 @@ export function AddNewFontModal({
       current: 0,
       total: selectedFiles.length,
       percent: 0,
-      status: 'progress',
+      status: 'processing',
       message: 'Uploading...',
     })
 
@@ -258,7 +258,7 @@ export function AddNewFontModal({
         current: i,
         total: selectedFiles.length,
         percent: Math.round((i / selectedFiles.length) * 100),
-        status: 'progress',
+        status: 'processing',
         message: `Uploading ${file.name}...`,
       })
 
