@@ -288,6 +288,7 @@ export function StudioUI({
     if (typeof window !== 'undefined') {
       const hash = window.location.hash.slice(1)
       if (hash === 'fonts') return 'fonts'
+      if (hash === 'media') return 'media'
     }
     return 'media'
   })
@@ -300,7 +301,7 @@ export function StudioUI({
       const hash = window.location.hash.slice(1)
       if (hash === 'fonts') {
         setActiveSection('fonts')
-      } else {
+      } else if (hash === 'media') {
         setActiveSection('media')
       }
     }
@@ -513,7 +514,7 @@ export function StudioUI({
     setActiveSection(section)
     setIsDropdownOpen(false)
     // Update URL hash
-    window.location.hash = section === 'media' ? '' : section
+    window.location.hash = section
   }, [])
 
   // Font section handlers
