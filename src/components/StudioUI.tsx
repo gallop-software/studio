@@ -58,7 +58,7 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: ${fontSize.lg};
+    font-size: 19px;
     font-weight: 600;
     color: ${colors.text};
     background: transparent;
