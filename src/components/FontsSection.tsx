@@ -907,7 +907,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
         message: String(err),
       })
     }
-  }, [selectedFolderPath, triggerRefresh])
+  }, [selectedFolderPath, singleFolderSelected, selectedWoff2Files, triggerRefresh])
 
   const handleProgressClose = useCallback(() => {
     setShowProgress(false)
