@@ -1,16 +1,30 @@
 # @gallop.software/studio
 
-Standalone media manager for Gallop templates. Upload, process, and sync images to Cloudflare R2 CDN.
+Standalone media manager for Gallop templates. Upload, process, and sync images to Cloudflare R2 CDN. Manage fonts with visual tools.
 
 ## Features
 
+### Media & Files
+
 - **Standalone dev server** - runs on its own port, doesn't affect your app
-- **Upload images** with automatic thumbnail generation
+- **Upload any file type** with drag-and-drop support and progress tracking
+- **Automatic thumbnail generation** for images
 - **Browse folders** with grid and list views
-- **Multi-select** for batch operations
+- **Multi-select** for batch operations (delete, move, download)
 - **Push to CDN** (Cloudflare R2) with automatic local cleanup
 - **Cache purge** for custom CDN domains
 - **Blurhash** generation for image placeholders
+- **Image editing** - crop, resize, rotate, and adjust quality
+
+### Font Management
+
+- **Visual font browser** - browse and organize font files in `_fonts/` folder
+- **Upload TTF fonts** - drag-and-drop with automatic folder organization
+- **Compress to WOFF2** - automatic TTF to WOFF2 conversion
+- **Assign to config files** - generate `src/fonts/*.ts` configuration files
+- **Font weight detection** - automatically detect weights and styles from filenames
+- **Folder status badges** - visual indicators for TTF-only, WOFF2-ready, and assigned folders
+- **Batch operations** - rename folders, delete files, with streaming progress
 
 ## Installation
 
@@ -73,6 +87,50 @@ Studio opens in your browser on an available port (default 3001).
 2. Go to R2 → Manage R2 API Tokens → Create API Token
 3. Copy the Access Key ID and Secret Access Key
 4. Enable public access or set up a custom domain
+
+## Font Management
+
+Studio includes a visual interface for managing web fonts. Access it from the dropdown menu in the header.
+
+### Font Workflow
+
+1. **Upload TTF fonts** - Drag and drop TTF files into a folder (auto-creates folder from filename prefix)
+2. **Select folder** - Click to select a font folder
+3. **Assign Web Font** - Click to compress TTF→WOFF2 and generate `src/fonts/*.ts` config
+4. **Use in layout** - Import the generated font config in your `src/app/layout.tsx`
+
+### Font Folder Structure
+
+```
+_fonts/
+├── barlow/
+│   ├── barlow-regular.ttf
+│   ├── barlow-regular.woff2
+│   ├── barlow-bold.ttf
+│   ├── barlow-bold.woff2
+│   └── ...
+├── montserrat/
+│   └── ...
+└── ...
+```
+
+### Font Config Files
+
+Generated config files in `src/fonts/`:
+
+```typescript
+// src/fonts/body.ts
+import localFont from 'next/font/local'
+
+export const body = localFont({
+  src: [
+    { path: '../../_fonts/barlow/barlow-regular.woff2', weight: '400', style: 'normal' },
+    { path: '../../_fonts/barlow/barlow-bold.woff2', weight: '700', style: 'normal' },
+  ],
+  variable: '--font-body',
+  display: 'swap',
+})
+```
 
 ## Metadata
 
