@@ -543,7 +543,7 @@ export async function handleReprocess(request: Request) {
             : undefined;
 
         // Determine if this is our R2 or a remote CDN
-        const isInOurR2 = existingCdnUrl === publicUrl;
+        const isInOurR2 = publicUrl !== undefined && existingCdnUrl === publicUrl;
         const isRemote = existingCdnIndex !== undefined && !isInOurR2;
 
         const originalPath = getPublicPath(imageKey);
@@ -720,7 +720,7 @@ export async function handleUnprocessStream(request: Request) {
               existingCdnIndex !== undefined
                 ? cdnUrls[existingCdnIndex]
                 : undefined;
-            const isInOurR2 = existingCdnUrl === publicUrl;
+            const isInOurR2 = publicUrl !== undefined && existingCdnUrl === publicUrl;
 
             // Delete local thumbnails
             await deleteLocalThumbnails(imageKey);
@@ -893,7 +893,7 @@ export async function handleReprocessStream(request: Request) {
                 : undefined;
 
             // Determine if this is our R2 or a remote CDN
-            const isInOurR2 = existingCdnUrl === publicUrl;
+            const isInOurR2 = publicUrl !== undefined && existingCdnUrl === publicUrl;
             const isRemote = existingCdnIndex !== undefined && !isInOurR2;
 
             const originalPath = getPublicPath(imageKey);
@@ -1080,7 +1080,7 @@ export async function handleProcessAllStream() {
               : undefined;
 
           // Determine if this is our R2 or a remote CDN
-          const isInOurR2 = existingCdnUrl === publicUrl;
+          const isInOurR2 = publicUrl !== undefined && existingCdnUrl === publicUrl;
           const isRemote = existingCdnIndex !== undefined && !isInOurR2;
 
           try {
