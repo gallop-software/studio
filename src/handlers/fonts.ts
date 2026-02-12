@@ -1,57 +1,80 @@
 import { promises as fs } from 'fs'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import path from 'path'
 import { getWorkspacePath } from '../config'
 import { jsonResponse } from './utils/response'
+import { slugifyFolderName } from './utils/files'
+import { isFileNotFound } from './utils/errors'
+import { isOperationCancelled, clearCancelledOperation } from './utils/cancellation'
 import type { FileItem } from '../types'
 
-// Weight name to number mapping
-const weightMap: Record<string, string> = {
+// Weight name to number mapping (including common aliases)
+export const weightMap: Record<string, string> = {
   thin: '100',
+  hairline: '100',
   extralight: '200',
+  ultralight: '200',
   light: '300',
   regular: '400',
+  book: '400',
   medium: '500',
   semibold: '600',
+  demibold: '600',
   bold: '700',
   extrabold: '800',
+  ultrabold: '800',
   black: '900',
+  heavy: '900',
 }
 
 /**
  * Parse font weight and style from filename
  */
-function parseFontMetadata(filename: string): { weight: string; style: string; isVariable: boolean } {
+export function parseFontMetadata(filename: string): { weight: string; style: string; isVariable: boolean } {
   const name = filename.toLowerCase()
-  
+
   let weight = '400'
   let style = 'normal'
   const isVariable = name.includes('variable')
-  
+
   if (isVariable) {
     weight = '100 900'
   } else {
-    // Order matters - check longer strings first
-    if (name.includes('extralight')) weight = weightMap.extralight
-    else if (name.includes('extrabold')) weight = weightMap.extrabold
-    else if (name.includes('semibold')) weight = weightMap.semibold
-    else if (name.includes('thin')) weight = weightMap.thin
-    else if (name.includes('light')) weight = weightMap.light
-    else if (name.includes('black')) weight = weightMap.black
-    else if (name.includes('bold')) weight = weightMap.bold
-    else if (name.includes('medium')) weight = weightMap.medium
-    else if (name.includes('regular')) weight = weightMap.regular
+    // Check for numeric weight in filename (e.g. font-500.woff2, font-w500.woff2)
+    const numericMatch = name.match(/[-_]w?(\d{3})(?:[-_.]|$)/)
+    if (numericMatch) {
+      const num = parseInt(numericMatch[1])
+      if (num >= 100 && num <= 900 && num % 100 === 0) {
+        weight = String(num)
+      }
+    } else {
+      // Order matters - check longer strings first
+      if (name.includes('ultralight')) weight = weightMap.ultralight
+      else if (name.includes('extralight')) weight = weightMap.extralight
+      else if (name.includes('ultrabold')) weight = weightMap.ultrabold
+      else if (name.includes('extrabold')) weight = weightMap.extrabold
+      else if (name.includes('demibold')) weight = weightMap.demibold
+      else if (name.includes('semibold')) weight = weightMap.semibold
+      else if (name.includes('hairline')) weight = weightMap.hairline
+      else if (name.includes('thin')) weight = weightMap.thin
+      else if (name.includes('light')) weight = weightMap.light
+      else if (name.includes('heavy')) weight = weightMap.heavy
+      else if (name.includes('black')) weight = weightMap.black
+      else if (name.includes('bold')) weight = weightMap.bold
+      else if (name.includes('medium')) weight = weightMap.medium
+      else if (name.includes('book')) weight = weightMap.book
+      else if (name.includes('regular')) weight = weightMap.regular
+    }
   }
-  
+
   if (name.includes('italic')) style = 'italic'
-  
+
   return { weight, style, isVariable }
 }
 
 /**
  * Get human-readable weight name
  */
-function getWeightName(weight: string): string {
+export function getWeightName(weight: string): string {
   if (weight === '100 900') return 'Variable'
   const names: Record<string, string> = {
     '100': 'Thin',
@@ -66,6 +89,120 @@ function getWeightName(weight: string): string {
   }
   return names[weight] || weight
 }
+
+// ---- Internal helpers ----
+
+/** Get all files in a directory recursively */
+async function getFilesInDir(dirPath: string, basePath: string): Promise<string[]> {
+  const files: string[] = []
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name)
+      const relativePath = path.join(basePath, entry.name)
+      if (entry.isDirectory()) {
+        files.push(...await getFilesInDir(fullPath, relativePath))
+      } else {
+        files.push(relativePath)
+      }
+    }
+  } catch (err) {
+    if (!isFileNotFound(err)) console.error(`Error reading directory ${dirPath}:`, err)
+  }
+  return files
+}
+
+/** Expand font paths (which may include folders) into individual file paths */
+async function expandFontPaths(paths: string[]): Promise<{ files: Array<{ path: string; parentFolder?: string }>; folders: string[] }> {
+  const files: Array<{ path: string; parentFolder?: string }> = []
+  const folders: string[] = []
+
+  for (const p of paths) {
+    const fullPath = getWorkspacePath(p)
+    try {
+      const stat = await fs.stat(fullPath)
+      if (stat.isDirectory()) {
+        folders.push(p)
+        const filesInDir = await getFilesInDir(fullPath, p)
+        for (const f of filesInDir) {
+          files.push({ path: f, parentFolder: p })
+        }
+      } else {
+        files.push({ path: p })
+      }
+    } catch (err) {
+      if (!isFileNotFound(err)) console.error(`Error accessing ${p}:`, err)
+    }
+  }
+
+  return { files, folders }
+}
+
+/** Rename files inside a folder to match new folder name convention */
+async function renameFolderContents(
+  folderFullPath: string,
+  oldFolderName: string,
+  newFolderName: string,
+  onProgress?: (entry: string, newFileName: string, current: number, total: number) => void
+): Promise<number> {
+  const entries = await fs.readdir(folderFullPath)
+  const filesToRename = entries.filter(entry => {
+    const entryLower = entry.toLowerCase()
+    return entryLower.startsWith(oldFolderName + '-') || entryLower.startsWith(oldFolderName + '_')
+  })
+
+  let renamed = 0
+  for (const entry of filesToRename) {
+    const suffix = entry.substring(oldFolderName.length)
+    const newFileName = newFolderName + suffix.toLowerCase()
+
+    onProgress?.(entry, newFileName, renamed + 1, filesToRename.length)
+
+    const oldFilePath = path.join(folderFullPath, entry)
+    const newFilePath = path.join(folderFullPath, newFileName)
+
+    await fs.rename(oldFilePath, newFilePath)
+    renamed++
+  }
+
+  return renamed
+}
+
+/** Validate rename inputs, resolve paths, check existence. Returns null on error (response already sent). */
+async function validateRename(oldPath: string, newName: string): Promise<{
+  oldFullPath: string
+  newFullPath: string
+  newPath: string
+  oldFolderName: string
+  newFolderName: string
+  isDirectory: boolean
+} | null> {
+  const oldFullPath = getWorkspacePath(oldPath)
+  const parentDir = path.dirname(oldPath)
+  const oldFolderName = path.basename(oldPath).toLowerCase()
+  const newFolderName = newName.toLowerCase()
+  const newPath = `${parentDir}/${newFolderName}`
+  const newFullPath = getWorkspacePath(newPath)
+
+  let isDirectory = false
+  try {
+    const stat = await fs.stat(oldFullPath)
+    isDirectory = stat.isDirectory()
+  } catch {
+    return null // caller handles 404
+  }
+
+  try {
+    await fs.stat(newFullPath)
+    return null // already exists, caller handles 400
+  } catch {
+    // Good, it doesn't exist
+  }
+
+  return { oldFullPath, newFullPath, newPath, oldFolderName, newFolderName, isDirectory }
+}
+
+// ---- Handlers ----
 
 /**
  * List files and folders for fonts paths
@@ -109,11 +246,11 @@ export async function handleFontsList(request: Request): Promise<Response> {
         let fileCount = 0
         try {
           const subEntries = await fs.readdir(path.join(fsPath, entry.name))
-          fileCount = subEntries.filter(f => 
+          fileCount = subEntries.filter(f =>
             f.match(/\.(ttf|woff2?|otf|ts|tsx|js)$/i)
           ).length
-        } catch {
-          // Ignore errors counting
+        } catch (err) {
+          if (!isFileNotFound(err)) console.error(`Error counting files in ${entry.name}:`, err)
         }
 
         items.push({
@@ -133,8 +270,8 @@ export async function handleFontsList(request: Request): Promise<Response> {
           try {
             const fileStat = await fs.stat(path.join(fsPath, entry.name))
             size = fileStat.size
-          } catch {
-            // Ignore
+          } catch (err) {
+            if (!isFileNotFound(err)) console.error(`Error reading stat for ${entry.name}:`, err)
           }
 
           items.push({
@@ -175,9 +312,10 @@ export async function handleFontsUpload(request: Request): Promise<Response> {
       return jsonResponse({ error: 'No file provided' }, { status: 400 })
     }
 
-    // Only accept TTF files
-    if (!file.name.toLowerCase().endsWith('.ttf')) {
-      return jsonResponse({ error: 'Only TTF files are supported' }, { status: 400 })
+    // Only accept TTF and OTF files
+    const ext = file.name.toLowerCase()
+    if (!ext.endsWith('.ttf') && !ext.endsWith('.otf')) {
+      return jsonResponse({ error: 'Only TTF and OTF files are supported' }, { status: 400 })
     }
 
     // Validate path
@@ -191,14 +329,15 @@ export async function handleFontsUpload(request: Request): Promise<Response> {
     // Extract folder name from filename (part before the first "-")
     const fileName = file.name.toLowerCase()
     const dashIndex = fileName.indexOf('-')
-    let folderName: string
-    
+    let rawFolderName: string
+
     if (dashIndex > 0) {
-      folderName = fileName.substring(0, dashIndex)
+      rawFolderName = fileName.substring(0, dashIndex)
     } else {
       // No dash found, use filename without extension as folder name
-      folderName = fileName.replace('.ttf', '')
+      rawFolderName = fileName.replace(/\.(ttf|otf)$/, '')
     }
+    const folderName = slugifyFolderName(rawFolderName)
 
     // Determine target folder - if we're at _fonts root, create subfolder
     // If we're already in a subfolder, use that
@@ -246,12 +385,13 @@ export async function handleFontsCreateFolder(request: Request): Promise<Respons
       return jsonResponse({ error: 'Path not allowed' }, { status: 400 })
     }
 
-    const folderPath = getWorkspacePath(targetPath, name.toLowerCase())
+    const safeName = slugifyFolderName(name)
+    const folderPath = getWorkspacePath(targetPath, safeName)
     await fs.mkdir(folderPath, { recursive: true })
 
     return jsonResponse({
       success: true,
-      path: `${targetPath}/${name.toLowerCase()}`,
+      path: `${targetPath}/${safeName}`,
     })
   } catch (error) {
     console.error('Error creating folder:', error)
@@ -270,29 +410,30 @@ export async function handleFontsDelete(request: Request): Promise<Response> {
       return jsonResponse({ error: 'Paths are required' }, { status: 400 })
     }
 
-    // Validate all paths - only allow within _fonts/
     for (const p of paths) {
       if (!p.startsWith('_fonts/')) {
         return jsonResponse({ error: `Path not allowed: ${p}` }, { status: 400 })
       }
     }
 
+    const { files, folders } = await expandFontPaths(paths)
     const deleted: string[] = []
     const errors: string[] = []
 
-    for (const p of paths) {
+    for (const file of files) {
       try {
-        const fullPath = getWorkspacePath(p)
-        const stat = await fs.stat(fullPath)
-
-        if (stat.isDirectory()) {
-          await fs.rm(fullPath, { recursive: true })
-        } else {
-          await fs.unlink(fullPath)
-        }
-        deleted.push(p)
+        await fs.unlink(getWorkspacePath(file.path))
+        deleted.push(file.path)
       } catch (err) {
-        errors.push(`Failed to delete ${p}: ${err instanceof Error ? err.message : 'Unknown error'}`)
+        errors.push(`Failed to delete ${file.path}: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      }
+    }
+
+    for (const folder of folders) {
+      try {
+        await fs.rm(getWorkspacePath(folder), { recursive: true })
+      } catch (err) {
+        if (!isFileNotFound(err)) console.error(`Error removing folder ${folder}:`, err)
       }
     }
 
@@ -312,58 +453,20 @@ export async function handleFontsDelete(request: Request): Promise<Response> {
  */
 export async function handleFontsDeleteStream(request: Request): Promise<Response> {
   try {
-    const { paths } = await request.json()
+    const { paths, operationId } = await request.json()
 
     if (!paths || !Array.isArray(paths) || paths.length === 0) {
       return jsonResponse({ error: 'Paths are required' }, { status: 400 })
     }
 
-    // Validate all paths - only allow within _fonts/
     for (const p of paths) {
       if (!p.startsWith('_fonts/')) {
         return jsonResponse({ error: `Path not allowed: ${p}` }, { status: 400 })
       }
     }
 
-    // Helper to count files in a directory recursively
-    async function countFilesInDir(dirPath: string): Promise<number> {
-      let count = 0
-      try {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true })
-        for (const entry of entries) {
-          if (entry.isDirectory()) {
-            count += await countFilesInDir(path.join(dirPath, entry.name))
-          } else {
-            count++
-          }
-        }
-      } catch {
-        // Directory might not exist
-      }
-      return count
-    }
+    const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
 
-    // Helper to get all files in a directory recursively
-    async function getFilesInDir(dirPath: string, basePath: string): Promise<string[]> {
-      const files: string[] = []
-      try {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true })
-        for (const entry of entries) {
-          const fullPath = path.join(dirPath, entry.name)
-          const relativePath = path.join(basePath, entry.name)
-          if (entry.isDirectory()) {
-            files.push(...await getFilesInDir(fullPath, relativePath))
-          } else {
-            files.push(relativePath)
-          }
-        }
-      } catch {
-        // Directory might not exist
-      }
-      return files
-    }
-
-    // Set up SSE streaming
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
@@ -371,65 +474,54 @@ export async function handleFontsDeleteStream(request: Request): Promise<Respons
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
         }
 
-        // First, expand folders to get total file count
-        const allFiles: { path: string; isFolder: boolean; parentFolder?: string }[] = []
-        const foldersToDelete: string[] = []
-
-        for (const p of paths) {
-          const fullPath = getWorkspacePath(p)
-          try {
-            const stat = await fs.stat(fullPath)
-            if (stat.isDirectory()) {
-              foldersToDelete.push(p)
-              const filesInDir = await getFilesInDir(fullPath, p)
-              for (const f of filesInDir) {
-                allFiles.push({ path: f, isFolder: false, parentFolder: p })
-              }
-            } else {
-              allFiles.push({ path: p, isFolder: false })
-            }
-          } catch {
-            // File/folder doesn't exist, skip
-          }
-        }
-
+        const { files: allFiles, folders } = await expandFontPaths(paths)
         const total = allFiles.length
         const deleted: string[] = []
         const errors: string[] = []
-        let current = 0
 
-        // Delete individual files first (for progress)
-        for (const file of allFiles) {
-          current++
+        send({ type: 'start', total })
+
+        for (let i = 0; i < allFiles.length; i++) {
+          if (isCancelled()) {
+            if (operationId) clearCancelledOperation(operationId)
+            send({
+              type: 'complete',
+              deleted: deleted.length,
+              errors: errors.length,
+              message: `Stopped. Deleted ${deleted.length} file${deleted.length !== 1 ? 's' : ''}.`,
+              cancelled: true,
+            })
+            controller.close()
+            return
+          }
+
+          const file = allFiles[i]
           const fileName = file.path.split('/').pop() || file.path
-          
-          send({ status: 'progress', message: `Deleting ${fileName}...`, current, total })
+
+          send({ type: 'progress', message: `Deleting ${fileName}...`, current: i + 1, total, currentFile: fileName })
 
           try {
-            const fullPath = getWorkspacePath(file.path)
-            await fs.unlink(fullPath)
+            await fs.unlink(getWorkspacePath(file.path))
             deleted.push(file.path)
           } catch (err) {
-            // File might already be deleted or not exist
             errors.push(`Failed to delete ${file.path}: ${err instanceof Error ? err.message : 'Unknown error'}`)
           }
         }
 
-        // Now delete the empty folders
-        for (const folder of foldersToDelete) {
+        for (const folder of folders) {
           try {
-            const fullPath = getWorkspacePath(folder)
-            await fs.rm(fullPath, { recursive: true })
-          } catch {
-            // Folder might already be deleted
+            await fs.rm(getWorkspacePath(folder), { recursive: true })
+          } catch (err) {
+            if (!isFileNotFound(err)) console.error(`Error removing folder ${folder}:`, err)
           }
         }
 
+        if (operationId) clearCancelledOperation(operationId)
         send({
-          status: 'complete',
+          type: 'complete',
+          deleted: deleted.length,
+          errors: errors.length,
           message: `Deleted ${deleted.length} file${deleted.length !== 1 ? 's' : ''}`,
-          deleted,
-          errors: errors.length > 0 ? errors : undefined,
         })
 
         controller.close()
@@ -460,78 +552,37 @@ export async function handleFontsRename(request: Request): Promise<Response> {
     if (!oldPath || !newName) {
       return jsonResponse({ error: 'oldPath and newName are required' }, { status: 400 })
     }
-
-    // Only allow renaming within _fonts/
     if (!oldPath.startsWith('_fonts/')) {
       return jsonResponse({ error: 'Can only rename items in _fonts/' }, { status: 400 })
     }
-
-    // Validate newName (no slashes, etc.)
     if (newName.includes('/') || newName.includes('\\')) {
       return jsonResponse({ error: 'Invalid folder name' }, { status: 400 })
     }
 
-    const oldFullPath = getWorkspacePath(oldPath)
-    
-    // Get the parent directory and construct new path
-    const parentDir = path.dirname(oldPath)
-    const oldFolderName = path.basename(oldPath).toLowerCase()
-    const newFolderName = newName.toLowerCase()
-    const newPath = `${parentDir}/${newFolderName}`
-    const newFullPath = getWorkspacePath(newPath)
-
-    // Check if old path exists and is a directory
-    let isDirectory = false
-    try {
-      const stat = await fs.stat(oldFullPath)
-      isDirectory = stat.isDirectory()
-    } catch {
-      return jsonResponse({ error: 'Path not found' }, { status: 404 })
-    }
-
-    // Check if new path already exists
-    try {
-      await fs.stat(newFullPath)
-      return jsonResponse({ error: 'A folder with that name already exists' }, { status: 400 })
-    } catch {
-      // Good, it doesn't exist
-    }
-
-    // Rename the folder first
-    await fs.rename(oldFullPath, newFullPath)
-
-    // If it's a directory, also rename files inside to match the new folder name
-    if (isDirectory) {
+    const result = await validateRename(oldPath, newName)
+    if (!result) {
+      // Check which error: path not found or already exists
       try {
-        const entries = await fs.readdir(newFullPath)
-        
-        for (const entry of entries) {
-          const entryLower = entry.toLowerCase()
-          
-          // Check if file starts with old folder name followed by - or _
-          if (entryLower.startsWith(oldFolderName + '-') || entryLower.startsWith(oldFolderName + '_')) {
-            // Determine the separator used
-            const separator = entryLower.startsWith(oldFolderName + '-') ? '-' : '_'
-            const suffix = entry.substring(oldFolderName.length) // includes the separator and everything after
-            const newFileName = newFolderName + suffix.toLowerCase()
-            
-            const oldFilePath = path.join(newFullPath, entry)
-            const newFilePath = path.join(newFullPath, newFileName)
-            
-            await fs.rename(oldFilePath, newFilePath)
-          }
-        }
-      } catch (err) {
-        console.error('Error renaming files inside folder:', err)
-        // Don't fail the whole operation, folder was already renamed
+        await fs.stat(getWorkspacePath(oldPath))
+        return jsonResponse({ error: 'A folder with that name already exists' }, { status: 400 })
+      } catch {
+        return jsonResponse({ error: 'Path not found' }, { status: 404 })
       }
     }
 
-    return jsonResponse({
-      success: true,
-      oldPath,
-      newPath,
-    })
+    const { oldFullPath, newFullPath, newPath, oldFolderName, newFolderName, isDirectory } = result
+
+    await fs.rename(oldFullPath, newFullPath)
+
+    if (isDirectory) {
+      try {
+        await renameFolderContents(newFullPath, oldFolderName, newFolderName)
+      } catch (err) {
+        console.error('Error renaming files inside folder:', err)
+      }
+    }
+
+    return jsonResponse({ success: true, oldPath, newPath })
   } catch (error) {
     console.error('Error renaming:', error)
     return jsonResponse({ error: 'Failed to rename' }, { status: 500 })
@@ -549,44 +600,25 @@ export async function handleFontsRenameStream(request: Request): Promise<Respons
     if (!oldPath || !newName) {
       return jsonResponse({ error: 'oldPath and newName are required' }, { status: 400 })
     }
-
-    // Only allow renaming within _fonts/
     if (!oldPath.startsWith('_fonts/')) {
       return jsonResponse({ error: 'Can only rename items in _fonts/' }, { status: 400 })
     }
-
-    // Validate newName (no slashes, etc.)
     if (newName.includes('/') || newName.includes('\\')) {
       return jsonResponse({ error: 'Invalid folder name' }, { status: 400 })
     }
 
-    const oldFullPath = getWorkspacePath(oldPath)
-    
-    // Get the parent directory and construct new path
-    const parentDir = path.dirname(oldPath)
-    const oldFolderName = path.basename(oldPath).toLowerCase()
-    const newFolderName = newName.toLowerCase()
-    const newPath = `${parentDir}/${newFolderName}`
-    const newFullPath = getWorkspacePath(newPath)
-
-    // Check if old path exists and is a directory
-    let isDirectory = false
-    try {
-      const stat = await fs.stat(oldFullPath)
-      isDirectory = stat.isDirectory()
-    } catch {
-      return jsonResponse({ error: 'Path not found' }, { status: 404 })
+    const result = await validateRename(oldPath, newName)
+    if (!result) {
+      try {
+        await fs.stat(getWorkspacePath(oldPath))
+        return jsonResponse({ error: 'A folder with that name already exists' }, { status: 400 })
+      } catch {
+        return jsonResponse({ error: 'Path not found' }, { status: 404 })
+      }
     }
 
-    // Check if new path already exists
-    try {
-      await fs.stat(newFullPath)
-      return jsonResponse({ error: 'A folder with that name already exists' }, { status: 400 })
-    } catch {
-      // Good, it doesn't exist
-    }
+    const { oldFullPath, newFullPath, newPath, oldFolderName, newFolderName, isDirectory } = result
 
-    // Set up SSE streaming
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
@@ -595,44 +627,18 @@ export async function handleFontsRenameStream(request: Request): Promise<Respons
         }
 
         try {
-          send({ status: 'progress', message: `Renaming folder to ${newFolderName}...`, current: 0, total: 1 })
-          
-          // Rename the folder first
+          send({ type: 'progress', message: `Renaming folder to ${newFolderName}...`, current: 0, total: 1 })
           await fs.rename(oldFullPath, newFullPath)
 
-          // If it's a directory, also rename files inside to match the new folder name
           if (isDirectory) {
-            const entries = await fs.readdir(newFullPath)
-            const filesToRename = entries.filter(entry => {
-              const entryLower = entry.toLowerCase()
-              return entryLower.startsWith(oldFolderName + '-') || entryLower.startsWith(oldFolderName + '_')
+            await renameFolderContents(newFullPath, oldFolderName, newFolderName, (entry, newFileName, current, total) => {
+              send({ type: 'progress', message: `Renaming ${entry} → ${newFileName}...`, current, total })
             })
-            
-            let renamed = 0
-            for (const entry of filesToRename) {
-              const entryLower = entry.toLowerCase()
-              const separator = entryLower.startsWith(oldFolderName + '-') ? '-' : '_'
-              const suffix = entry.substring(oldFolderName.length)
-              const newFileName = newFolderName + suffix.toLowerCase()
-              
-              send({ status: 'progress', message: `Renaming ${entry} → ${newFileName}...`, current: renamed + 1, total: filesToRename.length })
-              
-              const oldFilePath = path.join(newFullPath, entry)
-              const newFilePath = path.join(newFullPath, newFileName)
-              
-              await fs.rename(oldFilePath, newFilePath)
-              renamed++
-            }
           }
 
-          send({
-            status: 'complete',
-            message: `Renamed to ${newFolderName}`,
-            oldPath,
-            newPath,
-          })
+          send({ type: 'complete', message: `Renamed to ${newFolderName}`, renamed: 1, oldPath, newPath })
         } catch (err) {
-          send({ status: 'error', message: String(err) })
+          send({ type: 'error', message: String(err) })
         }
 
         controller.close()
@@ -682,10 +688,14 @@ export async function handleFontsScan(request: Request): Promise<Response> {
     const woff2Files: string[] = []
     const detectedFonts: Array<{ file: string; weight: string; weightName: string; style: string }> = []
     
+    const otfFiles: string[] = []
+
     for (const entry of entries) {
       const ext = path.extname(entry).toLowerCase()
       if (ext === '.ttf') {
         ttfFiles.push(entry)
+      } else if (ext === '.otf') {
+        otfFiles.push(entry)
       } else if (ext === '.woff2') {
         woff2Files.push(entry)
         const baseName = path.basename(entry, '.woff2')
@@ -698,9 +708,9 @@ export async function handleFontsScan(request: Request): Promise<Response> {
         })
       }
     }
-    
-    // Check if woff2 generation is needed
-    const needsGeneration = ttfFiles.length > 0 && woff2Files.length === 0
+
+    // Check if woff2 generation is needed (from TTF or OTF sources)
+    const needsGeneration = (ttfFiles.length > 0 || otfFiles.length > 0) && woff2Files.length === 0
     
     // Check which src/fonts/*.ts files reference this folder
     const srcFontsPath = getWorkspacePath('src/fonts')
@@ -718,14 +728,15 @@ export async function handleFontsScan(request: Request): Promise<Response> {
           }
         }
       }
-    } catch {
-      // src/fonts doesn't exist yet, that's ok
+    } catch (err) {
+      if (!isFileNotFound(err)) console.error('Error scanning src/fonts:', err)
     }
-    
+
     return jsonResponse({
       folder,
       folderName,
       ttfFiles,
+      otfFiles,
       woff2Files,
       detectedFonts,
       needsGeneration,
@@ -761,10 +772,10 @@ export async function handleFontsListAssignments(): Promise<Response> {
           assignments.push({ name, folder })
         }
       }
-    } catch {
-      // src/fonts doesn't exist yet
+    } catch (err) {
+      if (!isFileNotFound(err)) console.error('Error listing font assignments:', err)
     }
-    
+
     return jsonResponse({ assignments })
   } catch (error) {
     console.error('Error listing assignments:', error)
@@ -812,8 +823,8 @@ export async function handleFontsDeleteAssignment(request: Request): Promise<Res
  */
 export async function handleFontsAssign(request: Request): Promise<Response> {
   try {
-    const { folder, files, assignments } = await request.json()
-    
+    const { folder, files, assignments, operationId } = await request.json()
+
     // Validate: need either folder or files
     const isFileMode = files && Array.isArray(files) && files.length > 0
     const isFolderMode = folder && folder.startsWith('_fonts/')
@@ -850,135 +861,151 @@ export async function handleFontsAssign(request: Request): Promise<Response> {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
         }
         
+        const isCancelled = () => operationId ? isOperationCancelled(operationId) : false
+
         try {
           let fontMap: Array<{ path: string; weight: string; style: string }>
-          
+
           if (isFileMode) {
             // File mode: use provided woff2 files directly
-            send({ status: 'progress', message: `Processing ${files.length} selected file${files.length > 1 ? 's' : ''}...`, current: 0, total: files.length })
-            
+            send({ type: 'progress', message: `Processing ${files.length} selected file${files.length > 1 ? 's' : ''}...`, current: 0, total: files.length })
+
             fontMap = files.map((filePath: string) => {
-              // filePath is like "_fonts/foldername/file.woff2"
-              // We need just "foldername/file.woff2" for the src path
               const relativePath = filePath.replace(/^_fonts\//, '')
               const baseName = path.basename(filePath, '.woff2')
               const { weight, style } = parseFontMetadata(baseName)
-              return {
-                path: relativePath,
-                weight,
-                style,
-              }
+              return { path: relativePath, weight, style }
             })
           } else {
             // Folder mode: scan folder and generate woff2 if needed
             const folderPath = getWorkspacePath(folder)
             const folderName = path.basename(folder)
-            
-            // Step 1: Check for font files
+
             const entries = await fs.readdir(folderPath)
-            const ttfFiles = entries.filter(f => f.toLowerCase().endsWith('.ttf'))
+            const sourceFiles = entries.filter(f => {
+              const lower = f.toLowerCase()
+              return lower.endsWith('.ttf') || lower.endsWith('.otf')
+            })
             let woff2Files = entries.filter(f => f.toLowerCase().endsWith('.woff2'))
-            
-            if (ttfFiles.length === 0 && woff2Files.length === 0) {
-              send({ status: 'error', message: 'No font files found in folder' })
+
+            if (sourceFiles.length === 0 && woff2Files.length === 0) {
+              send({ type: 'error', message: 'No font files found in folder' })
               controller.close()
               return
             }
-            
-            // Step 2: Generate woff2 if needed
-            if (woff2Files.length === 0 && ttfFiles.length > 0) {
-              send({ status: 'progress', message: 'Generating woff2 files...', current: 0, total: ttfFiles.length })
-              
-              // Dynamic import of ttf2woff2
+
+            // Generate woff2 if needed
+            if (woff2Files.length === 0 && sourceFiles.length > 0) {
+              send({ type: 'progress', message: 'Generating woff2 files...', current: 0, total: sourceFiles.length })
+
               const ttf2woff2Module = await import('ttf2woff2')
               const ttf2woff2 = ttf2woff2Module.default
-              
-              for (let i = 0; i < ttfFiles.length; i++) {
-                const ttfFile = ttfFiles[i]
-                const baseName = path.basename(ttfFile, '.ttf')
+
+              for (let i = 0; i < sourceFiles.length; i++) {
+                if (isCancelled()) {
+                  if (operationId) clearCancelledOperation(operationId)
+                  send({ type: 'complete', processed: 0, message: 'Stopped.', cancelled: true })
+                  controller.close()
+                  return
+                }
+
+                const sourceFile = sourceFiles[i]
+                const sourceExt = path.extname(sourceFile)
+                const baseName = path.basename(sourceFile, sourceExt)
                 const woff2Name = baseName + '.woff2'
-                
-                send({ status: 'progress', message: `Compressing ${ttfFile}...`, current: i + 1, total: ttfFiles.length, currentFile: ttfFile })
-                
+
+                send({ type: 'progress', message: `Compressing ${sourceFile}...`, current: i + 1, total: sourceFiles.length, currentFile: sourceFile })
+
                 try {
-                  const ttfPath = path.join(folderPath, ttfFile)
-                  const input = readFileSync(ttfPath)
+                  const sourcePath = path.join(folderPath, sourceFile)
+                  const input = await fs.readFile(sourcePath)
                   const woff2Data = ttf2woff2(input)
-                  writeFileSync(path.join(folderPath, woff2Name), woff2Data)
+                  await fs.writeFile(path.join(folderPath, woff2Name), woff2Data)
                   woff2Files.push(woff2Name)
                 } catch (err) {
-                  send({ status: 'progress', message: `Failed to compress ${ttfFile}`, error: String(err) })
+                  send({ type: 'progress', message: `Failed to compress ${sourceFile}`, error: String(err) })
                 }
               }
             }
-            
+
             if (woff2Files.length === 0) {
-              send({ status: 'error', message: 'No woff2 files available' })
+              send({ type: 'error', message: 'No woff2 files available' })
               controller.close()
               return
             }
-            
-            // Step 3: Build font map from woff2 files
+
             fontMap = woff2Files.map(file => {
               const baseName = path.basename(file, '.woff2')
               const { weight, style } = parseFontMetadata(baseName)
-              return {
-                path: `${folderName}/${file}`,
-                weight,
-                style,
-              }
+              return { path: `${folderName}/${file}`, weight, style }
             })
           }
-          
-          // Step 4: Write assignment files
+
+          // Sort fontMap by weight (ascending), then style (normal before italic)
+          fontMap.sort((a, b) => {
+            const wa = parseInt(a.weight) || 400
+            const wb = parseInt(b.weight) || 400
+            if (wa !== wb) return wa - wb
+            return a.style === 'normal' ? -1 : 1
+          })
+
+          // Write assignment files
           const srcFontsPath = getWorkspacePath('src/fonts')
-          
-          // Ensure src/fonts directory exists
-          if (!existsSync(srcFontsPath)) {
-            mkdirSync(srcFontsPath, { recursive: true })
-          }
-          
+          await fs.mkdir(srcFontsPath, { recursive: true })
+
           const created: string[] = []
           const errors: string[] = []
-          
+
           for (let i = 0; i < assignments.length; i++) {
             const assignmentName = assignments[i]
-            send({ status: 'progress', message: `Writing ${assignmentName}.ts...`, current: i + 1, total: assignments.length })
-            
+            const fileName = `${assignmentName}.ts`
+            const filePath = path.join(srcFontsPath, fileName)
+
+            // Check if file already exists (for overwrite info)
+            let overwritten = false
             try {
-              const fileName = `${assignmentName}.ts`
-              const filePath = path.join(srcFontsPath, fileName)
+              await fs.stat(filePath)
+              overwritten = true
+            } catch {
+              // File doesn't exist, that's fine
+            }
+
+            const action = overwritten ? 'Overwriting' : 'Writing'
+            send({ type: 'progress', message: `${action} ${fileName}...`, current: i + 1, total: assignments.length, currentFile: fileName })
+
+            try {
               const variableName = `${assignmentName}Font`
-              
-              // Generate the font src array
+
               const srcArray = fontMap
                 .map(font => `    { path: '../../_fonts/${font.path}', weight: '${font.weight}', style: '${font.style}' },`)
                 .join('\n')
-              
+
               const template = `import localFont from 'next/font/local'
 
 export const ${variableName} = localFont({
   src: [
 ${srcArray}
   ],
+  display: 'swap',
 })
 `
-              
-              writeFileSync(filePath, template, 'utf8')
+
+              await fs.writeFile(filePath, template, 'utf8')
               created.push(assignmentName)
             } catch (err) {
-              errors.push(`Failed to write ${assignmentName}.ts: ${err}`)
+              errors.push(`Failed to write ${fileName}: ${err}`)
             }
           }
-          
+
+          if (operationId) clearCancelledOperation(operationId)
           send({
-            status: 'complete',
+            type: 'complete',
             message: `Created ${created.length} font assignment${created.length !== 1 ? 's' : ''}`,
-            created,
-            errors: errors.length > 0 ? errors : undefined,
+            processed: created.length,
+            errors: errors.length,
           })
         } catch (err) {
-          send({ status: 'error', message: String(err) })
+          send({ type: 'error', message: String(err) })
         }
         
         controller.close()

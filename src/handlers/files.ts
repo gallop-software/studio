@@ -26,7 +26,7 @@ import {
   createSSEStream,
 } from "./utils/response";
 import { deleteEmptyFolders } from "./utils/folders";
-import { isOperationCancelled, clearCancelledOperation } from "./images";
+import { isOperationCancelled, clearCancelledOperation } from "./utils/cancellation";
 
 export async function handleUpload(request: Request) {
   try {

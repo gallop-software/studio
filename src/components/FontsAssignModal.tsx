@@ -312,7 +312,8 @@ export function FontsAssignModal({ folderPath, selectedFiles, onConfirm, onCance
   const [selectedAssignments, setSelectedAssignments] = useState<Set<string>>(new Set())
   const [newAssignment, setNewAssignment] = useState('')
   const [error, setError] = useState('')
-  
+  const [isDirty, setIsDirty] = useState(false)
+
   // Mode: folder-based or file-based assignment
   const isFileMode = Boolean(selectedFiles && selectedFiles.length > 0)
   
@@ -360,6 +361,7 @@ export function FontsAssignModal({ folderPath, selectedFiles, onConfirm, onCance
   }, [folderPath, isFileMode])
   
   const handleToggle = (name: string) => {
+    setIsDirty(true)
     setSelectedAssignments(prev => {
       const next = new Set(prev)
       if (next.has(name)) {
@@ -383,11 +385,19 @@ export function FontsAssignModal({ folderPath, selectedFiles, onConfirm, onCance
     }
     
     // Add to selected
+    setIsDirty(true)
     setSelectedAssignments(prev => new Set([...prev, name]))
     setNewAssignment('')
     setError('')
   }
   
+  const handleClose = () => {
+    if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) {
+      return
+    }
+    onCancel()
+  }
+
   const handleSubmit = () => {
     const assignments = Array.from(selectedAssignments)
     if (assignments.length === 0) return
@@ -409,7 +419,7 @@ export function FontsAssignModal({ folderPath, selectedFiles, onConfirm, onCance
   const hasNoFonts = !isFileMode && scanResult !== null && scanResult.ttfFiles.length === 0 && scanResult.woff2Files.length === 0
   
   return (
-    <div css={styles.overlay} onClick={onCancel}>
+    <div css={styles.overlay} onClick={handleClose}>
       <div css={styles.modal} onClick={e => e.stopPropagation()}>
         <div css={styles.header}>
           <h3 css={styles.title}>Assign Web Font</h3>
@@ -574,7 +584,7 @@ export function FontsAssignModal({ folderPath, selectedFiles, onConfirm, onCance
         </div>
         
         <div css={styles.footer}>
-          <button css={[styles.btn, styles.btnCancel]} onClick={onCancel}>
+          <button css={[styles.btn, styles.btnCancel]} onClick={handleClose}>
             Cancel
           </button>
           <button

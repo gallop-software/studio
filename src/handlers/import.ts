@@ -6,7 +6,7 @@ import {
   getMetaEntry,
   setMetaEntry,
 } from "./utils";
-import { isOperationCancelled, clearCancelledOperation } from "./images";
+import { isOperationCancelled, clearCancelledOperation } from "./utils/cancellation";
 import type { Dimensions } from "../types";
 
 /**

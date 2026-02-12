@@ -8,10 +8,13 @@ import { InputModal, ConfirmModal, AlertModal, ProgressModal } from './StudioMod
 import { FontsAssignModal } from './FontsAssignModal'
 import { FontsSettings } from './FontsSettings'
 import { AddNewFontModal } from './AddNewFontModal'
+import { useStreamingOperation } from './useStreamingOperation'
+import { FontsToolbar } from './FontsToolbar'
+import { FontsGrid } from './FontsGrid'
+import { FontsList } from './FontsList'
 import type { FileItem } from '../types'
 import type { ProgressState } from './StudioContext'
-
-const btnHeight = '36px'
+import type { FolderStatus } from './FontsGrid'
 
 const spin = keyframes`
   to { transform: rotate(360deg); }
@@ -33,93 +36,10 @@ const styles = {
     padding: 12px 16px;
     background-color: ${colors.surface};
     border-bottom: 1px solid ${colors.border};
-    
+
     @media (min-width: 768px) {
       padding: 12px 24px;
     }
-  `,
-  toolbarLeft: css`
-    display: flex;
-    flex-wrap: nowrap;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 8px;
-  `,
-  toolbarRight: css`
-    display: flex;
-    flex-wrap: nowrap;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 8px;
-  `,
-  selectionCount: css`
-    font-size: ${fontSize.base};
-    color: ${colors.textSecondary};
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-right: 8px;
-  `,
-  clearBtn: css`
-    color: ${colors.primary};
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: ${fontSize.base};
-    font-weight: 500;
-    padding: 0;
-    
-    &:hover {
-      text-decoration: underline;
-    }
-  `,
-  btn: css`
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    height: ${btnHeight};
-    padding: 0 14px;
-    border-radius: 6px;
-    font-size: ${fontSize.base};
-    font-weight: 500;
-    background: ${colors.surface};
-    border: 1px solid ${colors.border};
-    cursor: pointer;
-    transition: all 0.15s ease;
-    color: ${colors.text};
-    
-    &:hover:not(:disabled) {
-      background-color: ${colors.surfaceHover};
-      border-color: ${colors.borderHover};
-    }
-    
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.5;
-    }
-  `,
-  btnPrimary: css`
-    background: ${colors.primary};
-    border-color: ${colors.primary};
-    color: white;
-    
-    &:hover:not(:disabled) {
-      background: ${colors.primaryHover};
-      border-color: ${colors.primaryHover};
-    }
-  `,
-  btnDanger: css`
-    color: ${colors.danger};
-    
-    &:hover:not(:disabled) {
-      background-color: ${colors.dangerLight};
-      border-color: ${colors.danger};
-    }
-  `,
-  btnIcon: css`
-    width: 16px;
-    height: 16px;
   `,
   content: css`
     flex: 1;
@@ -159,155 +79,11 @@ const styles = {
   emptyText: css`
     font-size: ${fontSize.base};
     margin: 0 0 4px 0;
-    
+
     &:last-child {
       color: ${colors.textMuted};
       font-size: ${fontSize.sm};
     }
-  `,
-  selectAllRow: css`
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    margin-bottom: 16px;
-    padding: 12px 16px;
-    background: ${colors.surface};
-    border-radius: 8px;
-    border: 1px solid ${colors.border};
-  `,
-  selectAllLabel: css`
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: ${fontSize.base};
-    font-weight: 500;
-    color: ${colors.textSecondary};
-    cursor: pointer;
-    
-    &:hover {
-      color: ${colors.text};
-    }
-  `,
-  selectAllCheckbox: css`
-    width: 16px;
-    height: 16px;
-    accent-color: ${colors.primary};
-  `,
-  grid: css`
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
-    
-    @media (min-width: 480px) { grid-template-columns: repeat(2, 1fr); }
-    @media (min-width: 768px) { grid-template-columns: repeat(3, 1fr); }
-    @media (min-width: 1024px) { grid-template-columns: repeat(4, 1fr); }
-    @media (min-width: 1280px) { grid-template-columns: repeat(5, 1fr); }
-  `,
-  item: css`
-    position: relative;
-    border-radius: 8px;
-    border: 1px solid ${colors.border};
-    overflow: hidden;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    background-color: ${colors.surface};
-    user-select: none;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    
-    &:hover {
-      border-color: #d0d5dd;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
-    }
-  `,
-  itemSelected: css`
-    border-color: ${colors.primary};
-    box-shadow: 0 0 0 1px ${colors.primary};
-    
-    &:hover {
-      border-color: ${colors.primary};
-      box-shadow: 0 0 0 1px ${colors.primary};
-    }
-  `,
-  checkboxWrapper: css`
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 10;
-    padding: 8px;
-    cursor: pointer;
-  `,
-  checkbox: css`
-    width: 18px;
-    height: 18px;
-    accent-color: ${colors.primary};
-    cursor: pointer;
-  `,
-  itemContent: css`
-    position: relative;
-    aspect-ratio: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    background: ${colors.background};
-  `,
-  folderIcon: css`
-    width: 56px;
-    height: 56px;
-    color: #f9935e;
-  `,
-  parentIcon: css`
-    width: 56px;
-    height: 56px;
-    color: ${colors.textMuted};
-  `,
-  fileIcon: css`
-    width: 40px;
-    height: 40px;
-    color: ${colors.textMuted};
-  `,
-  openBtn: css`
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
-    z-index: 10;
-    height: 28px;
-    font-size: ${fontSize.sm};
-    font-weight: 500;
-    color: ${colors.primary};
-    background: ${colors.surface};
-    border: 1px solid ${colors.border};
-    padding: 0 8px;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.15s ease;
-    display: flex;
-    align-items: center;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-    
-    &:hover {
-      background-color: ${colors.primaryLight};
-      border-color: ${colors.primary};
-    }
-  `,
-  label: css`
-    padding: 10px 12px;
-    background-color: ${colors.surface};
-    border-top: 1px solid ${colors.borderLight};
-  `,
-  labelName: css`
-    font-size: ${fontSize.sm};
-    font-weight: 500;
-    color: ${colors.text};
-    margin: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  `,
-  labelMeta: css`
-    font-size: ${fontSize.xs};
-    color: ${colors.textMuted};
-    margin: 2px 0 0 0;
   `,
   dropOverlay: css`
     position: absolute;
@@ -348,229 +124,15 @@ const styles = {
     border-radius: 8px;
     cursor: pointer;
     transition: background 0.15s ease;
-    
+
     &:hover {
       background: ${colors.primaryHover};
     }
   `,
-  viewToggle: css`
-    display: flex;
-    align-items: center;
-    height: ${btnHeight};
-    background-color: ${colors.surface};
-    border: 1px solid ${colors.border};
-    border-radius: 6px;
-    overflow: hidden;
-  `,
-  viewBtn: css`
-    height: 100%;
-    padding: 0 10px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: ${colors.textSecondary};
-    transition: all 0.15s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    
-    &:hover {
-      color: ${colors.text};
-      background-color: ${colors.surfaceHover};
-    }
-  `,
-  viewBtnActive: css`
-    background-color: ${colors.primaryLight};
-    color: ${colors.primary};
-    
-    &:hover {
-      background-color: ${colors.primaryLight};
-      color: ${colors.primary};
-    }
-  `,
-  iconSpin: css`
-    animation: ${spin} 1s linear infinite;
-  `,
-  tableWrapper: css`
-    background: ${colors.surface};
-    border-radius: 8px;
-    border: 1px solid ${colors.border};
-    overflow-x: auto;
-  `,
-  table: css`
-    width: 100%;
-    min-width: 400px;
-    border-collapse: collapse;
-    white-space: nowrap;
-  `,
-  th: css`
-    text-align: left;
-    font-size: 11px;
-    color: ${colors.textMuted};
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 12px 16px;
-    font-weight: 600;
-    background: ${colors.background};
-    border-bottom: 1px solid ${colors.border};
-  `,
-  thCheckbox: css`
-    width: 48px;
-  `,
-  thSize: css`
-    width: 96px;
-  `,
-  row: css`
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-    user-select: none;
-    
-    &:hover {
-      background-color: ${colors.surfaceHover};
-    }
-    
-    &:not(:last-child) td {
-      border-bottom: 1px solid ${colors.borderLight};
-    }
-  `,
-  rowSelected: css`
-    background-color: ${colors.primaryLight};
-    
-    &:hover {
-      background-color: ${colors.primaryLight};
-    }
-  `,
-  parentRow: css`
-    cursor: pointer;
-    border-bottom: 1px solid ${colors.border};
-    
-    &:hover {
-      background-color: ${colors.surfaceHover};
-    }
-  `,
-  td: css`
-    padding: 12px 16px;
-  `,
-  checkboxCell: css`
-    padding: 12px 16px;
-    cursor: pointer;
-    vertical-align: middle;
-  `,
-  nameCell: css`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex: 1;
-  `,
-  folderIconWrapper: css`
-    width: 48px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  `,
-  folderIconSmall: css`
-    width: 24px;
-    height: 24px;
+  folderIcon: css`
+    width: 56px;
+    height: 56px;
     color: #f9935e;
-  `,
-  fileIconWrapper: css`
-    width: 48px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  `,
-  fileIconSmall: css`
-    width: 20px;
-    height: 20px;
-    color: ${colors.textMuted};
-  `,
-  parentIconSmall: css`
-    width: 20px;
-    height: 20px;
-    color: ${colors.textMuted};
-    flex-shrink: 0;
-  `,
-  name: css`
-    font-size: ${fontSize.base};
-    font-weight: 500;
-    color: ${colors.text};
-    letter-spacing: -0.01em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 300px;
-  `,
-  meta: css`
-    font-size: ${fontSize.sm};
-    color: ${colors.textSecondary};
-  `,
-  actionsCell: css`
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-left: auto;
-    flex-shrink: 0;
-  `,
-  listOpenBtn: css`
-    height: 32px;
-    font-size: ${fontSize.sm};
-    font-weight: 500;
-    color: ${colors.primary};
-    background: ${colors.surface};
-    border: 1px solid ${colors.border};
-    padding: 0 14px;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.15s ease;
-    display: inline-flex;
-    align-items: center;
-    
-    &:hover {
-      background-color: ${colors.primaryLight};
-      border-color: ${colors.primary};
-    }
-  `,
-  // Folder status badges
-  badge: css`
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  `,
-  badgeGray: css`
-    background-color: #9ca3af;
-  `,
-  badgeYellow: css`
-    background-color: #eab308;
-  `,
-  badgeGreen: css`
-    background-color: #10b981;
-  `,
-  badgeWrapper: css`
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  `,
-  badgeTooltip: css`
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 4px 8px;
-    background: ${colors.text};
-    color: ${colors.surface};
-    font-size: ${fontSize.xs};
-    border-radius: 4px;
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    z-index: 100;
   `,
 }
 
@@ -579,19 +141,6 @@ interface FontsSectionProps {
   setCurrentPath: (path: string) => void
   refreshKey: number
   triggerRefresh: () => void
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
-
-// Folder status cache
-interface FolderStatus {
-  needsGeneration: boolean
-  hasWoff2: boolean
-  assignments: string[]
 }
 
 export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerRefresh }: FontsSectionProps) {
@@ -606,7 +155,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [refreshing, setRefreshing] = useState(false)
-  
+
   // New state for assign workflow
   const [showAddNewModal, setShowAddNewModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
@@ -617,6 +166,15 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null)
   const [folderStatuses, setFolderStatuses] = useState<Record<string, FolderStatus>>({})
   const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [copiedPath, setCopiedPath] = useState<string | null>(null)
+
+  const { execute: executeStream, stop: stopStream } = useStreamingOperation({
+    setShowProgress,
+    setProgressTitle,
+    setProgressState: setProgress,
+    triggerRefresh,
+  })
 
   const fetchItems = useCallback(async () => {
     try {
@@ -643,17 +201,17 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   // Scan folder statuses for badges
   const scanFolderStatuses = useCallback(async (folders: FileItem[]) => {
     const statuses: Record<string, FolderStatus> = {}
-    
+
     for (const folder of folders) {
       if (folder.type !== 'folder') continue
-      
+
       try {
         const res = await fetch('/api/studio/fonts/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ folder: folder.path }),
         })
-        
+
         if (res.ok) {
           const data = await res.json()
           statuses[folder.path] = {
@@ -666,7 +224,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
         // Ignore errors
       }
     }
-    
+
     setFolderStatuses(statuses)
   }, [])
 
@@ -677,21 +235,25 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     }
   }, [items, currentPath, scanFolderStatuses])
 
+  // Filter items by search query
+  const filteredItems = searchQuery
+    ? items.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : items
+
   const isAtRoot = currentPath === '_fonts'
-  const isInSrc = currentPath === 'src' || currentPath.startsWith('src/')
 
   const handleItemClick = useCallback((item: FileItem, e: React.MouseEvent) => {
     e.stopPropagation()
-    
+
     if (e.shiftKey && lastSelectedPath) {
       // Range selection
       const fromIndex = items.findIndex(i => i.path === lastSelectedPath)
       const toIndex = items.findIndex(i => i.path === item.path)
-      
+
       if (fromIndex !== -1 && toIndex !== -1) {
         const start = Math.min(fromIndex, toIndex)
         const end = Math.max(fromIndex, toIndex)
-        
+
         setSelectedItems(prev => {
           const next = new Set(prev)
           for (let i = start; i <= end; i++) {
@@ -712,7 +274,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
         return next
       })
     }
-    
+
     setLastSelectedPath(item.path)
   }, [items, lastSelectedPath])
 
@@ -749,20 +311,18 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   }, [])
 
   const handleSelectAllWoff = useCallback(() => {
-    const woffFiles = items.filter(item => 
+    const woffFiles = items.filter(item =>
       item.type === 'file' && item.name.toLowerCase().endsWith('.woff2')
     )
     const allWoffSelected = woffFiles.every(item => selectedItems.has(item.path))
-    
+
     if (allWoffSelected) {
-      // Deselect all WOFF2 files
       setSelectedItems(prev => {
         const next = new Set(prev)
         woffFiles.forEach(item => next.delete(item.path))
         return next
       })
     } else {
-      // Select all WOFF2 files (add to existing selection)
       setSelectedItems(prev => {
         const next = new Set(prev)
         woffFiles.forEach(item => next.add(item.path))
@@ -772,20 +332,18 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   }, [items, selectedItems])
 
   const handleSelectAllTtf = useCallback(() => {
-    const ttfFiles = items.filter(item => 
+    const ttfFiles = items.filter(item =>
       item.type === 'file' && item.name.toLowerCase().endsWith('.ttf')
     )
     const allTtfSelected = ttfFiles.every(item => selectedItems.has(item.path))
-    
+
     if (allTtfSelected) {
-      // Deselect all TTF files
       setSelectedItems(prev => {
         const next = new Set(prev)
         ttfFiles.forEach(item => next.delete(item.path))
         return next
       })
     } else {
-      // Select all TTF files (add to existing selection)
       setSelectedItems(prev => {
         const next = new Set(prev)
         ttfFiles.forEach(item => next.add(item.path))
@@ -793,6 +351,14 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
       })
     }
   }, [items, selectedItems])
+
+  const handleCopyPath = useCallback((itemPath: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigator.clipboard.writeText(itemPath).then(() => {
+      setCopiedPath(itemPath)
+      setTimeout(() => setCopiedPath(null), 1500)
+    })
+  }, [])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -828,86 +394,18 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   // Handle assign confirmation - starts the streaming process
   const handleAssignConfirm = useCallback(async (assignments: string[]) => {
     setShowAssignModal(false)
-    setProgressTitle('Assigning Web Font')
-    setShowProgress(true)
-    setProgress({ status: 'processing', current: 0, total: 1, percent: 0, message: 'Starting...' })
 
-    try {
-      // Pass either folder or files based on selection type
-      const requestBody = singleFolderSelected
-        ? { folder: selectedFolderPath, assignments }
-        : { files: selectedWoff2Files, assignments }
-      
-      const res = await fetch('/api/studio/fonts/assign-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      })
+    const body = singleFolderSelected
+      ? { folder: selectedFolderPath, assignments }
+      : { files: selectedWoff2Files, assignments }
 
-      if (!res.ok || !res.body) {
-        setProgress({ status: 'error', current: 0, total: 0, percent: 0, message: 'Failed to start assignment' })
-        return
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const text = decoder.decode(value, { stream: true })
-        const lines = text.split('\n')
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              
-              if (data.status === 'progress') {
-                setProgress({
-                  status: 'processing',
-                  current: data.current || 0,
-                  total: data.total || 1,
-                  percent: data.total ? Math.round((data.current / data.total) * 100) : 0,
-                  message: data.message,
-                  currentFile: data.currentFile,
-                })
-              } else if (data.status === 'complete') {
-                setProgress({
-                  status: 'complete',
-                  current: data.created?.length || 0,
-                  total: data.created?.length || 0,
-                  percent: 100,
-                  message: data.message,
-                  processed: data.created?.length || 0,
-                })
-                triggerRefresh()
-              } else if (data.status === 'error') {
-                setProgress({
-                  status: 'error',
-                  current: 0,
-                  total: 0,
-                  percent: 0,
-                  message: data.message,
-                })
-              }
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-      }
-    } catch (err) {
-      setProgress({
-        status: 'error',
-        current: 0,
-        total: 0,
-        percent: 0,
-        message: String(err),
-      })
-    }
-  }, [selectedFolderPath, singleFolderSelected, selectedWoff2Files, triggerRefresh])
+    await executeStream({
+      endpoint: '/api/studio/fonts/assign-stream',
+      body,
+      title: 'Assigning Web Font',
+      operationType: 'process',
+    })
+  }, [selectedFolderPath, singleFolderSelected, selectedWoff2Files, executeStream])
 
   const handleProgressClose = useCallback(() => {
     setShowProgress(false)
@@ -917,80 +415,14 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   const handleRenameFolder = useCallback(async (newName: string) => {
     if (!selectedFolderPath) return
     setShowRenameFolderModal(false)
-    setProgressTitle('Renaming Folder')
-    setShowProgress(true)
-    setProgress({ status: 'processing', current: 0, total: 1, percent: 0, message: 'Starting...' })
 
-    try {
-      const res = await fetch('/api/studio/fonts/rename-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPath: selectedFolderPath, newName }),
-      })
-
-      if (!res.ok || !res.body) {
-        setProgress({ status: 'error', current: 0, total: 0, percent: 0, message: 'Failed to start rename' })
-        return
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const text = decoder.decode(value, { stream: true })
-        const lines = text.split('\n')
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              
-              if (data.status === 'progress') {
-                setProgress({
-                  status: 'processing',
-                  current: data.current || 0,
-                  total: data.total || 1,
-                  percent: data.total ? Math.round((data.current / data.total) * 100) : 0,
-                  message: data.message,
-                })
-              } else if (data.status === 'complete') {
-                setProgress({
-                  status: 'complete',
-                  current: 1,
-                  total: 1,
-                  percent: 100,
-                  message: data.message,
-                })
-                setSelectedItems(new Set())
-                triggerRefresh()
-              } else if (data.status === 'error') {
-                setProgress({
-                  status: 'error',
-                  current: 0,
-                  total: 0,
-                  percent: 0,
-                  message: data.message,
-                })
-              }
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-      }
-    } catch (err) {
-      setProgress({
-        status: 'error',
-        current: 0,
-        total: 0,
-        percent: 0,
-        message: String(err),
-      })
-    }
-  }, [selectedFolderPath, triggerRefresh])
+    await executeStream({
+      endpoint: '/api/studio/fonts/rename-stream',
+      body: { oldPath: selectedFolderPath, newName },
+      title: 'Renaming Folder',
+      onComplete: () => setSelectedItems(new Set()),
+    })
+  }, [selectedFolderPath, executeStream])
 
   const handleRenameFile = useCallback(async (newName: string) => {
     if (!selectedFilePath) return
@@ -1018,80 +450,15 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
 
   const handleDeleteConfirm = useCallback(async () => {
     setShowDeleteConfirm(false)
-    setProgressTitle('Deleting Files')
-    setShowProgress(true)
-    setProgress({ status: 'processing', current: 0, total: selectedItems.size, percent: 0, message: 'Starting...' })
-    
-    try {
-      const res = await fetch('/api/studio/fonts/delete-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: Array.from(selectedItems) }),
-      })
 
-      if (!res.ok || !res.body) {
-        setProgress({ status: 'error', current: 0, total: 0, percent: 0, message: 'Failed to start delete' })
-        return
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const text = decoder.decode(value, { stream: true })
-        const lines = text.split('\n')
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              
-              if (data.status === 'progress') {
-                setProgress({
-                  status: 'processing',
-                  current: data.current || 0,
-                  total: data.total || 1,
-                  percent: data.total ? Math.round((data.current / data.total) * 100) : 0,
-                  message: data.message,
-                })
-              } else if (data.status === 'complete') {
-                setProgress({
-                  status: 'complete',
-                  current: data.deleted?.length || 0,
-                  total: data.deleted?.length || 0,
-                  percent: 100,
-                  message: data.message,
-                })
-                setSelectedItems(new Set())
-                triggerRefresh()
-              } else if (data.status === 'error') {
-                setProgress({
-                  status: 'error',
-                  current: 0,
-                  total: 0,
-                  percent: 0,
-                  message: data.message,
-                })
-              }
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-      }
-    } catch (err) {
-      setProgress({
-        status: 'error',
-        current: 0,
-        total: 0,
-        percent: 0,
-        message: String(err),
-      })
-    }
-  }, [selectedItems, triggerRefresh])
+    await executeStream({
+      endpoint: '/api/studio/fonts/delete-stream',
+      body: { paths: Array.from(selectedItems) },
+      title: 'Deleting Files',
+      operationType: 'delete',
+      onComplete: () => setSelectedItems(new Set()),
+    })
+  }, [selectedItems, executeStream])
 
   const handleNewFolderClick = useCallback(() => {
     setShowNewFolderModal(true)
@@ -1099,7 +466,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
 
   const handleCreateFolder = useCallback(async (name: string) => {
     setShowNewFolderModal(false)
-    
+
     try {
       const response = await fetch('/api/studio/fonts/create-folder', {
         method: 'POST',
@@ -1137,9 +504,9 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
     if (!currentPath.startsWith('_fonts')) return
 
     const files = Array.from(e.dataTransfer.files).filter(
-      f => f.name.toLowerCase().endsWith('.ttf')
+      f => f.name.toLowerCase().endsWith('.ttf') || f.name.toLowerCase().endsWith('.otf')
     )
-    
+
     if (files.length === 0) return
 
     setProgressTitle('Uploading Files')
@@ -1187,7 +554,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
       percent: 100,
       message: `Uploaded ${uploaded} file${uploaded !== 1 ? 's' : ''}${errors.length > 0 ? `, ${errors.length} failed` : ''}`,
     })
-    
+
     triggerRefresh()
   }, [currentPath, triggerRefresh])
 
@@ -1206,96 +573,30 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
 
   return (
     <div css={styles.container}>
-      <div css={styles.toolbar}>
-        <div css={styles.toolbarLeft}>
-          {showUploadButton && (
-            <button
-              css={[styles.btn, styles.btnPrimary]}
-              onClick={() => setShowAddNewModal(true)}
-            >
-              <PlusIcon />
-              Add New
-            </button>
-          )}
-          <button
-            css={styles.btn}
-            onClick={() => {
-              if (singleFileSelected) {
-                setShowRenameFileModal(true)
-              } else if (singleFolderSelected) {
-                setShowRenameFolderModal(true)
-              } else {
-                handleNewFolderClick()
-              }
-            }}
-          >
-            {singleFileSelected || singleFolderSelected ? <RenameIcon /> : <FolderPlusIcon />}
-            {singleFileSelected ? 'Rename File' : singleFolderSelected ? 'Rename Folder' : 'New Folder'}
-          </button>
-          <button
-            css={[styles.btn, styles.btnDanger]}
-            onClick={handleDeleteClick}
-            disabled={selectedItems.size === 0}
-          >
-            <TrashIcon />
-            Delete
-          </button>
-          <button
-            css={styles.btn}
-            onClick={handleAssignClick}
-            disabled={!canAssign}
-            title={canAssign 
-              ? (hasSelectedWoff2Files ? `Assign ${selectedWoff2Files.length} woff2 file${selectedWoff2Files.length > 1 ? 's' : ''}` : 'Assign web font')
-              : 'Select a folder or woff2 files to assign'}
-          >
-            <FontIcon />
-            Assign Web Font
-          </button>
-        </div>
-        <div css={styles.toolbarRight}>
-          {someItemsSelected && (
-            <span css={styles.selectionCount}>
-              {selectedItems.size} selected
-              <button css={styles.clearBtn} onClick={handleClearSelection}>
-                Clear
-              </button>
-            </span>
-          )}
-          <button
-            css={styles.btn}
-            onClick={handleRefresh}
-            title="Refresh view"
-            disabled={refreshing}
-          >
-            <RefreshIcon spinning={refreshing} />
-          </button>
-
-          <div css={styles.viewToggle}>
-            <button
-              css={[styles.viewBtn, viewMode === 'grid' && styles.viewBtnActive]}
-              onClick={() => setViewMode('grid')}
-              aria-label="Grid view"
-            >
-              <GridIcon />
-            </button>
-            <button
-              css={[styles.viewBtn, viewMode === 'list' && styles.viewBtnActive]}
-              onClick={() => setViewMode('list')}
-              aria-label="List view"
-            >
-              <ListIcon />
-            </button>
-          </div>
-
-          <button
-            css={styles.btn}
-            onClick={() => setShowSettings(true)}
-            title="Font assignments settings"
-          >
-            <SettingsIcon />
-          </button>
-        </div>
-      </div>
+      <FontsToolbar
+        showUploadButton={showUploadButton}
+        selectedItems={selectedItems}
+        someItemsSelected={someItemsSelected}
+        singleFileSelected={singleFileSelected}
+        singleFolderSelected={singleFolderSelected}
+        canAssign={canAssign}
+        hasSelectedWoff2Files={hasSelectedWoff2Files}
+        selectedWoff2Files={selectedWoff2Files}
+        refreshing={refreshing}
+        viewMode={viewMode}
+        searchQuery={searchQuery}
+        onAddNew={() => setShowAddNewModal(true)}
+        onRenameFile={() => setShowRenameFileModal(true)}
+        onRenameFolder={() => setShowRenameFolderModal(true)}
+        onNewFolder={handleNewFolderClick}
+        onDelete={handleDeleteClick}
+        onAssign={handleAssignClick}
+        onClearSelection={handleClearSelection}
+        onSearchChange={e => setSearchQuery(e.target.value)}
+        onRefresh={handleRefresh}
+        onViewModeChange={setViewMode}
+        onShowSettings={() => setShowSettings(true)}
+      />
 
       <div
         css={styles.content}
@@ -1308,12 +609,12 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           <div css={styles.dropOverlay}>
             <div css={styles.dropMessage}>
               <UploadIcon />
-              <span>Drop TTF files to upload</span>
+              <span>Drop TTF/OTF files to upload</span>
             </div>
           </div>
         )}
 
-        {items.length === 0 && canCreate ? (
+        {filteredItems.length === 0 && canCreate && !searchQuery ? (
           <div css={styles.empty}>
             <span css={styles.emptyIcon}>
               <FolderIcon />
@@ -1324,295 +625,41 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
             </button>
           </div>
         ) : viewMode === 'grid' ? (
-          <>
-            {items.length > 0 && (
-              <div css={styles.selectAllRow}>
-                <label css={styles.selectAllLabel}>
-                  <input
-                    type="checkbox"
-                    css={styles.selectAllCheckbox}
-                    checked={allItemsSelected}
-                    ref={(el) => {
-                      if (el) el.indeterminate = someItemsSelected && !allItemsSelected
-                    }}
-                    onChange={handleSelectAll}
-                  />
-                  Select all ({items.length})
-                </label>
-                {items.some(i => i.name.toLowerCase().endsWith('.woff2')) && (
-                  <label css={styles.selectAllLabel}>
-                    <input
-                      type="checkbox"
-                      css={styles.selectAllCheckbox}
-                      checked={items.filter(i => i.name.toLowerCase().endsWith('.woff2')).every(i => selectedItems.has(i.path))}
-                      onChange={handleSelectAllWoff}
-                    />
-                    WOFF2
-                  </label>
-                )}
-                {items.some(i => i.name.toLowerCase().endsWith('.ttf')) && (
-                  <label css={styles.selectAllLabel}>
-                    <input
-                      type="checkbox"
-                      css={styles.selectAllCheckbox}
-                      checked={items.filter(i => i.name.toLowerCase().endsWith('.ttf')).every(i => selectedItems.has(i.path))}
-                      onChange={handleSelectAllTtf}
-                    />
-                    TTF
-                  </label>
-                )}
-              </div>
-            )}
-            <div css={styles.grid}>
-              {/* Parent folder navigation */}
-              {!isAtRoot && (
-              <div css={styles.item} onClick={handleNavigateUp} onDoubleClick={handleNavigateUp}>
-                <div css={styles.itemContent}>
-                  <ParentFolderIcon />
-                </div>
-                <div css={styles.label}>
-                  <p css={styles.labelName}>..</p>
-                  <p css={styles.labelMeta}>Parent folder</p>
-                </div>
-              </div>
-            )}
-
-            {items.map(item => {
-              const isSelected = selectedItems.has(item.path)
-              
-              return (
-                <div
-                  key={item.path}
-                  css={[styles.item, isSelected && styles.itemSelected]}
-                  onClick={(e) => handleItemClick(item, e)}
-                  onDoubleClick={() => handleOpen(item)}
-                >
-                  <div
-                    css={styles.checkboxWrapper}
-                    onClick={(e) => { e.stopPropagation(); handleItemClick(item, e) }}
-                  >
-                    <input
-                      type="checkbox"
-                      css={styles.checkbox}
-                      checked={isSelected}
-                      onChange={() => {}}
-                    />
-                  </div>
-                  <div css={styles.itemContent}>
-                    {/* Open button - bottom right */}
-                    <button
-                      css={styles.openBtn}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleOpen(item)
-                      }}
-                    >
-                      Open
-                    </button>
-                    
-                    {item.type === 'folder' ? (
-                      <FolderIcon />
-                    ) : (
-                      <FileIcon />
-                    )}
-                  </div>
-                  <div css={styles.label}>
-                    <p css={styles.labelName}>
-                      <span css={styles.badgeWrapper}>
-                        {item.type === 'folder' && folderStatuses[item.path] && (
-                          <span
-                            css={[
-                              styles.badge,
-                              folderStatuses[item.path].assignments.length > 0
-                                ? styles.badgeGreen
-                                : folderStatuses[item.path].hasWoff2
-                                  ? styles.badgeYellow
-                                  : styles.badgeGray,
-                            ]}
-                            title={
-                              folderStatuses[item.path].assignments.length > 0
-                                ? `Assigned to: ${folderStatuses[item.path].assignments.join(', ')}`
-                                : folderStatuses[item.path].hasWoff2
-                                  ? 'woff2 ready'
-                                  : 'TTF only'
-                            }
-                          />
-                        )}
-                        {item.name}
-                      </span>
-                    </p>
-                    <p css={styles.labelMeta}>
-                      {item.type === 'folder'
-                        ? `${item.fileCount || 0} files`
-                        : item.size ? formatSize(item.size) : ''}
-                    </p>
-                  </div>
-                </div>
-              )
-            })}
-            </div>
-          </>
+          <FontsGrid
+            items={items}
+            filteredItems={filteredItems}
+            selectedItems={selectedItems}
+            allItemsSelected={allItemsSelected}
+            someItemsSelected={someItemsSelected}
+            copiedPath={copiedPath}
+            folderStatuses={folderStatuses}
+            isAtRoot={isAtRoot}
+            onItemClick={handleItemClick}
+            onOpen={handleOpen}
+            onNavigateUp={handleNavigateUp}
+            onSelectAll={handleSelectAll}
+            onSelectAllWoff={handleSelectAllWoff}
+            onSelectAllTtf={handleSelectAllTtf}
+            onCopyPath={handleCopyPath}
+          />
         ) : (
-          /* List view */
-          <>
-            {items.length > 0 && (
-              <div css={styles.selectAllRow}>
-                <label css={styles.selectAllLabel}>
-                  <input
-                    type="checkbox"
-                    css={styles.selectAllCheckbox}
-                    checked={allItemsSelected}
-                    ref={(el) => {
-                      if (el) el.indeterminate = someItemsSelected && !allItemsSelected
-                    }}
-                    onChange={handleSelectAll}
-                  />
-                  Select all ({items.length})
-                </label>
-                {items.some(i => i.name.toLowerCase().endsWith('.woff2')) && (
-                  <label css={styles.selectAllLabel}>
-                    <input
-                      type="checkbox"
-                      css={styles.selectAllCheckbox}
-                      checked={items.filter(i => i.name.toLowerCase().endsWith('.woff2')).every(i => selectedItems.has(i.path))}
-                      onChange={handleSelectAllWoff}
-                    />
-                    WOFF2
-                  </label>
-                )}
-                {items.some(i => i.name.toLowerCase().endsWith('.ttf')) && (
-                  <label css={styles.selectAllLabel}>
-                    <input
-                      type="checkbox"
-                      css={styles.selectAllCheckbox}
-                      checked={items.filter(i => i.name.toLowerCase().endsWith('.ttf')).every(i => selectedItems.has(i.path))}
-                      onChange={handleSelectAllTtf}
-                    />
-                    TTF
-                  </label>
-                )}
-              </div>
-            )}
-            <div css={styles.tableWrapper}>
-              <table css={styles.table}>
-                <thead>
-                  <tr>
-                    <th css={[styles.th, styles.thCheckbox]}>
-                      {items.length > 0 && (
-                        <input
-                          type="checkbox"
-                          css={styles.checkbox}
-                          checked={allItemsSelected}
-                          ref={(el) => {
-                            if (el) el.indeterminate = someItemsSelected && !allItemsSelected
-                          }}
-                          onChange={handleSelectAll}
-                        />
-                      )}
-                    </th>
-                    <th css={styles.th}>Name</th>
-                    <th css={[styles.th, styles.thSize]}>Size</th>
-                  </tr>
-                </thead>
-              <tbody>
-                {/* Parent folder navigation */}
-                {!isAtRoot && (
-                  <tr css={styles.parentRow} onClick={handleNavigateUp}>
-                    <td css={styles.td}></td>
-                    <td css={styles.td}>
-                      <div css={styles.nameCell}>
-                        <svg css={styles.parentIconSmall} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                        </svg>
-                        <span css={styles.name}>..</span>
-                      </div>
-                    </td>
-                    <td css={[styles.td, styles.meta]}>Parent folder</td>
-                  </tr>
-                )}
-
-                {items.map(item => {
-                  const isSelected = selectedItems.has(item.path)
-                  
-                  return (
-                    <tr
-                      key={item.path}
-                      css={[styles.row, isSelected && styles.rowSelected]}
-                      onClick={(e) => handleItemClick(item, e)}
-                    >
-                      <td
-                        css={[styles.td, styles.checkboxCell]}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          css={styles.checkbox}
-                          checked={isSelected}
-                          onChange={() => handleItemClick(item, {} as React.MouseEvent)}
-                        />
-                      </td>
-                      <td css={styles.td}>
-                        <div css={styles.nameCell}>
-                          {item.type === 'folder' ? (
-                            <div css={styles.folderIconWrapper}>
-                              <svg css={styles.folderIconSmall} fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
-                              </svg>
-                            </div>
-                          ) : (
-                            <div css={styles.fileIconWrapper}>
-                              <svg css={styles.fileIconSmall} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                              </svg>
-                            </div>
-                          )}
-                          <span css={styles.badgeWrapper}>
-                            {item.type === 'folder' && folderStatuses[item.path] && (
-                              <span
-                                css={[
-                                  styles.badge,
-                                  folderStatuses[item.path].assignments.length > 0
-                                    ? styles.badgeGreen
-                                    : folderStatuses[item.path].hasWoff2
-                                      ? styles.badgeYellow
-                                      : styles.badgeGray,
-                                ]}
-                                title={
-                                  folderStatuses[item.path].assignments.length > 0
-                                    ? `Assigned to: ${folderStatuses[item.path].assignments.join(', ')}`
-                                    : folderStatuses[item.path].hasWoff2
-                                      ? 'woff2 ready'
-                                      : 'TTF only'
-                                }
-                              />
-                            )}
-                            <span css={styles.name} title={item.name}>{item.name}</span>
-                          </span>
-                          <div css={styles.actionsCell}>
-                            <button
-                              css={styles.listOpenBtn}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleOpen(item)
-                              }}
-                            >
-                              Open
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-                      <td css={[styles.td, styles.meta]}>
-                        {item.type === 'folder'
-                          ? `${item.fileCount || 0} files`
-                          : item.size ? formatSize(item.size) : '--'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            </div>
-          </>
+          <FontsList
+            items={items}
+            filteredItems={filteredItems}
+            selectedItems={selectedItems}
+            allItemsSelected={allItemsSelected}
+            someItemsSelected={someItemsSelected}
+            copiedPath={copiedPath}
+            folderStatuses={folderStatuses}
+            isAtRoot={isAtRoot}
+            onItemClick={handleItemClick}
+            onOpen={handleOpen}
+            onNavigateUp={handleNavigateUp}
+            onSelectAll={handleSelectAll}
+            onSelectAllWoff={handleSelectAllWoff}
+            onSelectAllTtf={handleSelectAllTtf}
+            onCopyPath={handleCopyPath}
+          />
         )}
       </div>
 
@@ -1690,6 +737,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
           title={progressTitle}
           progress={progress}
           onClose={handleProgressClose}
+          onStop={stopStream}
         />
       )}
 
@@ -1711,37 +759,7 @@ export function FontsSection({ currentPath, setCurrentPath, refreshKey, triggerR
   )
 }
 
-function PlusIcon() {
-  return (
-    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-    </svg>
-  )
-}
-
-function FolderPlusIcon() {
-  return (
-    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-    </svg>
-  )
-}
-
-function TrashIcon() {
-  return (
-    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-    </svg>
-  )
-}
-
-function RenameIcon() {
-  return (
-    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-    </svg>
-  )
-}
+// Icons still used by FontsSection (drop overlay and empty state)
 
 function UploadIcon() {
   return (
@@ -1755,63 +773,6 @@ function FolderIcon() {
   return (
     <svg css={styles.folderIcon} fill="currentColor" viewBox="0 0 24 24">
       <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
-    </svg>
-  )
-}
-
-function ParentFolderIcon() {
-  return (
-    <svg css={styles.parentIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-    </svg>
-  )
-}
-
-function FileIcon() {
-  return (
-    <svg css={styles.fileIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-    </svg>
-  )
-}
-
-function RefreshIcon({ spinning }: { spinning?: boolean }) {
-  return (
-    <svg css={[styles.btnIcon, spinning && styles.iconSpin]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-    </svg>
-  )
-}
-
-function GridIcon() {
-  return (
-    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-    </svg>
-  )
-}
-
-function ListIcon() {
-  return (
-    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-    </svg>
-  )
-}
-
-function FontIcon() {
-  return (
-    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-    </svg>
-  )
-}
-
-function SettingsIcon() {
-  return (
-    <svg css={styles.btnIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   )
 }

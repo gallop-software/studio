@@ -5,12 +5,28 @@ import { getDataPath } from '../../config'
 
 export async function loadMeta(): Promise<FullMeta> {
   const metaPath = getDataPath('_studio.json')
-  
+
   try {
     const content = await fs.readFile(metaPath, 'utf-8')
     return JSON.parse(content) as FullMeta
-  } catch {
-    return {}
+  } catch (err: unknown) {
+    // File doesn't exist yet — expected on first run
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+      return {}
+    }
+    // JSON parse error — corrupted file, backup and warn
+    if (err instanceof SyntaxError) {
+      const backupPath = metaPath + '.corrupt.' + Date.now()
+      try {
+        await fs.rename(metaPath, backupPath)
+        console.warn(`[studio] _studio.json was corrupted. Backed up to ${path.basename(backupPath)}`)
+      } catch {
+        console.warn('[studio] _studio.json was corrupted and could not be backed up')
+      }
+      return {}
+    }
+    // Other I/O errors (permissions, etc.) should not be silently swallowed
+    throw err
   }
 }
 
@@ -31,7 +47,9 @@ export async function saveMeta(meta: FullMeta): Promise<void> {
     }
   }
   
-  await fs.writeFile(metaPath, JSON.stringify(ordered, null, 2))
+  const tempPath = metaPath + '.tmp'
+  await fs.writeFile(tempPath, JSON.stringify(ordered, null, 2))
+  await fs.rename(tempPath, metaPath)
 }
 
 /**
